@@ -173,16 +173,15 @@ public class FileDataStorage extends AbstractDataStorage {
 
     @Override
     public boolean close() {
-        // Save all pending data
-        boolean result = save();
-
-        // Shutdown all debouncers
+        // Stop the debounced writers first: cancel pending saves and wait for in-flight ones, so the
+        // synchronous save below cannot race with a background write on the same data file.
         for (Debouncer debouncer : saveThrottlers.values()) {
             debouncer.shutdown();
         }
         saveThrottlers.clear();
 
-        return result;
+        // Then flush everything that is still in memory
+        return save();
     }
 
     /**
@@ -196,9 +195,10 @@ public class FileDataStorage extends AbstractDataStorage {
         String dirPath = scope.replace(':', '/');
         File scopeDir = new File(baseDirectory, dirPath);
 
-        // Create directory if it doesn't exist
+        // Create directory if it doesn't exist. mkdirs() returns false when another thread created it
+        // first (e.g. a debounced save racing with close()): only report a real failure.
         if (!scopeDir.exists()) {
-            if (!scopeDir.mkdirs()) {
+            if (!scopeDir.mkdirs() && !scopeDir.isDirectory()) {
                 logger.error("[{}] Failed to create scope directory: {}", storageType, scope);
             }
         }
