@@ -79,6 +79,13 @@ public class HealthServer {
         logger.info("Health server stopped");
     }
 
+    /**
+     * @return the port actually bound (useful when constructed with port 0), or -1 if not started
+     */
+    public int getPort() {
+        return serverSocket != null ? serverSocket.getLocalPort() : -1;
+    }
+
     public void setReady(boolean value) {
         this.ready.set(value);
     }

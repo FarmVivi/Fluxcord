@@ -23,9 +23,23 @@ public class EnvAwareYamlConfiguration extends YamlConfiguration {
         super(configFile);
     }
 
+    /**
+     * Environment lookup for a configuration key (see {@link EnvironmentUtils#getEnv(String)}).
+     * Overridable so tests can inject values without touching the real environment.
+     */
+    protected String lookupEnv(String key) {
+        return EnvironmentUtils.getEnv(key);
+    }
+
+    /** List variant: the raw value split on {@code :} (see {@link EnvironmentUtils#getEnvValues(String)}). */
+    protected String[] lookupEnvValues(String key) {
+        String value = lookupEnv(key);
+        return value != null ? value.split(":") : new String[0];
+    }
+
     @Override
     public String getString(String key) throws ConfigurationException {
-        String envValue = EnvironmentUtils.getEnv(key);
+        String envValue = lookupEnv(key);
         if (envValue != null) {
             return envValue;
         }
@@ -34,7 +48,7 @@ public class EnvAwareYamlConfiguration extends YamlConfiguration {
 
     @Override
     public String getString(String key, String defaultValue) {
-        String envValue = EnvironmentUtils.getEnv(key);
+        String envValue = lookupEnv(key);
         if (envValue != null) {
             return envValue;
         }
@@ -43,7 +57,7 @@ public class EnvAwareYamlConfiguration extends YamlConfiguration {
 
     @Override
     public int getInt(String key) throws ConfigurationException {
-        String envValue = EnvironmentUtils.getEnv(key);
+        String envValue = lookupEnv(key);
         if (envValue != null) {
             try {
                 return Integer.parseInt(envValue);
@@ -56,7 +70,7 @@ public class EnvAwareYamlConfiguration extends YamlConfiguration {
 
     @Override
     public int getInt(String key, int defaultValue) {
-        String envValue = EnvironmentUtils.getEnv(key);
+        String envValue = lookupEnv(key);
         if (envValue != null) {
             try {
                 return Integer.parseInt(envValue);
@@ -69,7 +83,7 @@ public class EnvAwareYamlConfiguration extends YamlConfiguration {
 
     @Override
     public boolean getBoolean(String key) throws ConfigurationException {
-        String envValue = EnvironmentUtils.getEnv(key);
+        String envValue = lookupEnv(key);
         if (envValue != null) {
             return Boolean.parseBoolean(envValue);
         }
@@ -78,7 +92,7 @@ public class EnvAwareYamlConfiguration extends YamlConfiguration {
 
     @Override
     public boolean getBoolean(String key, boolean defaultValue) {
-        String envValue = EnvironmentUtils.getEnv(key);
+        String envValue = lookupEnv(key);
         if (envValue != null) {
             return Boolean.parseBoolean(envValue);
         }
@@ -87,7 +101,7 @@ public class EnvAwareYamlConfiguration extends YamlConfiguration {
 
     @Override
     public List<String> getStringList(String key) throws ConfigurationException {
-        String[] envValues = EnvironmentUtils.getEnvValues(key);
+        String[] envValues = lookupEnvValues(key);
         if (envValues.length > 0) {
             return Arrays.asList(envValues);
         }
@@ -96,7 +110,7 @@ public class EnvAwareYamlConfiguration extends YamlConfiguration {
 
     @Override
     public List<String> getStringList(String key, List<String> defaultValue) {
-        String[] envValues = EnvironmentUtils.getEnvValues(key);
+        String[] envValues = lookupEnvValues(key);
         if (envValues.length > 0) {
             return Arrays.asList(envValues);
         }
