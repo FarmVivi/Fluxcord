@@ -41,6 +41,7 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 ## Learnings
 - 2026-09-19: Initial audit.
 - 2026-09-20: `FileDataStorage` writes are debounced via `core/util/Debouncer` (one single-thread scheduler per scope, daemon threads). `close()` must stop the debouncers (cancel pending + await in-flight, `Debouncer.cancelAndAwait`) **before** the synchronous `save()`, otherwise two `FileWriter`s truncate the same `data.json` concurrently and the next reader sees an empty scope. Was the cause of `FileDataStorageColdStartTest` failing only in the full suite; fixed 2026-09-20.
+- 2026-09-20 (later): the first `cancelAndAwait` was wrong — `FutureTask.cancel(false)` returns true and `isCancelled()` while the task is *running* (state stays NEW during run), so it never waited. The Debouncer now tracks `running` + a generation counter under its own monitor; `DebouncerTest` covers pending-cancel, in-flight wait and daemon threads.
 - 2026-09-20: `AbstractDataStorage.cache` is shared with `FileDataStorage.loadScopeData` (same map instance per scope): the cache *is* the on-disk data model for the FILE backend, so mutating it mutates what gets saved.
 
 ## Known issues / open questions

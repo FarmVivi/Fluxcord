@@ -14,7 +14,7 @@ For *writing* a plugin see `fluxcord-plugin-dev`; this skill is about the engine
 | File | Role |
 |---|---|
 | `core/plugin/PluginManager.java` (~960 lines) | implements `api.plugin.PluginLoader` + `Closeable`. Scans, loads, orders, enables, disables, reloads. Holds `plugins`, `classLoaders`, `pluginDescriptors`, `pluginJarPaths`, `failedPlugins` maps keyed by plugin **id**. |
-| `core/plugin/PluginClassLoader.java` | `URLClassLoader`, child-first for classes/resources **except** `CORE_PACKAGES` (`fr.farmvivi.fluxcord.core`, slf4j, `net.dv8tion.jda.api`, snakeyaml, gson, HikariCP, AWS SDK) which are parent-first. |
+| `core/plugin/PluginClassLoader.java` | `URLClassLoader`, child-first for classes/resources **except** `CORE_PACKAGES` (`fr.farmvivi.fluxcord.api`, `fr.farmvivi.fluxcord.core`, slf4j, `net.dv8tion.jda.api`, snakeyaml, gson, HikariCP, AWS SDK) which are parent-first. |
 | `core/plugin/PluginDescriptor.java` | record from `plugin.yml`: `id, name, main, version, description, authors, dependencies, softDependencies`. |
 | `core/plugin/DependencyResolver.java` | topological order from descriptors; `getMissingDependencies()` → those plugins are put in `failedPlugins`. |
 | `core/plugin/PluginConfiguration.java` | extends `YamlConfiguration`; copies default `config.yml` from the jar to `plugins/<id>/config.yml`; `initializeMigration(plugin)` uses `Plugin.getMigrationClass()` or the plugin itself if it implements `ConfigurableMigrationPlugin`, driven by `config_version`. |
@@ -39,7 +39,7 @@ Shutdown: `close()` = `preDisablePlugins()` → `disablePlugins()` → `postDisa
 - `System.exit` is never called here (only in `Fluxcord`); errors are logged and the plugin goes `ERROR`. Check the log line `Plugin loading complete: X loaded successfully, Y failed`.
 
 ## Testing
-- Only `PluginConfigurationTest` covers this package. There is no fixture for a plugin jar; for `PluginManager` tests, build a minimal jar in a temp dir (plugin.yml + a compiled `Plugin` class from the test classpath) or refactor `loadPlugin` to accept a descriptor + class for unit tests.
+- Covered: `PluginConfigurationTest`, `PluginDescriptorTest`, `DependencyResolverTest`, `PluginClassLoaderTest` (jar built on the fly, see Learnings). Not covered: `PluginManager` itself — reuse the jar-building helper of `PluginClassLoaderTest` with a `plugin.yml` + a compiled `Plugin` class from the test classpath (T1).
 - Smoke: `/verify --smoke` with the example plugins (`examples/plugins/*`) copied into `fluxcord-core/run/plugins/`.
 
 ## Improvement loop (mandatory — see /skill-maintenance)
@@ -47,9 +47,12 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 ## Learnings
 - 2026-09-19: Initial audit. Line numbers intentionally omitted (file will move a lot during the P1 chantier); grep method names instead.
+- 2026-09-20: `DependencyResolver` returned the load order reversed (post-order DFS already yields dependencies first; the `Collections.reverse` was wrong) and iterated a `HashMap` (non-deterministic). Fixed + `DependencyResolverTest`. Nothing noticed it because no shipped plugin declares a dependency.
+- 2026-09-20: `PluginClassLoaderTest` builds a real jar in a `@TempDir` by copying bytecode of classes from the test classpath (`com.example.fixture.SamplePluginClass`); fixture classes must live outside `fr.farmvivi.fluxcord.{api,core}` or they are parent-first by design. Reading resources through `url.openStream()` caches the `JarFile` and locks the jar on Windows even after `close()` — use `setUseCaches(false)`.
 
 ## Known issues / open questions
 - P1 (plan): merge the two lifecycle paths into one per-plugin state machine, and make disable release *everything* the plugin acquired.
 - `reloadPlugin` id/name key mismatch (see gotchas).
 - `loadPlugin` catches `Exception` broadly and returns `null`; the classloader created before the failure is not closed on most paths.
+- P3 done except the fail-fast on bundled api classes (now harmless).
 - Should `failedPlugins` block dependants? Currently a dependant of a failed plugin is still enabled (only *missing* deps are handled by the resolver).

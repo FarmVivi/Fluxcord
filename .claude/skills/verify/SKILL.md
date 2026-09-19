@@ -64,6 +64,7 @@ Before ending a task where this skill was used: fix anything above that turned o
 - 2026-09-20: A test that passes alone but fails in the full suite is usually a race in production code, not test order — treat it as a bug (see `fluxcord-storage` learnings for the `FileDataStorage.close()` case).
 - 2026-09-20: `exec:java` ignored `<workingDirectory>` (in-process goal): the bot started at the repo root and created `config.yml` + `logs/` there. Switched the pom to `exec:exec`; if stray `config.yml`/`logs/` appear at the root, that is the symptom. First measured smoke run: boot 4.5-5 s, 15 global commands synced, clean shutdown < 1 s.
 - 2026-09-20: CI now runs `mvn -B -ntp verify` (`.github/workflows/ci.yml`) on push/PR; JaCoCo reports land in `**/target/site/jacoco/` (core coverage 9 % at start).
+- 2026-09-20: The git remote is named `github` (not `origin`): `git push github develop`. `gh run watch <id> --exit-status` is a convenient way to wait for CI after a push.
 
 ## Known issues / open questions
 - Confirm `mvn -q -pl fluxcord-core -am test` picks up api changes without a prior `install` (it should, same reactor).

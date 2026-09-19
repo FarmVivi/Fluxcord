@@ -46,9 +46,11 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 ## Learnings
 - 2026-09-19: Initial audit.
+- 2026-09-20: Tests added: `YamlConfigurationTest`, `EnvAwareYamlConfigurationTest` (protected `lookupEnv`/`lookupEnvValues` seams replace the environment), `HealthServerTest` (`HealthServer(0)` + `getPort()` for an ephemeral port). snakeyaml resolves YAML 1.1 booleans (`yes`/`on`) itself; `getString` on a section returns `Map.toString()` instead of failing.
 
 ## Known issues / open questions
 - B1: operators are unreachable (see Permissions). Options to decide with the user: `permissions.operators: [userIds]` in config, map `OP` to Discord `ADMINISTRATOR`/guild owner, or an `op` console command. Probably all three.
+- Hygiene: `YamlConfiguration.save()` (snakeyaml dump) drops every comment of `config.yml`; it runs on core migration and on `SimpleCommandService.setPrefix` (global prefix). Characterized by `YamlConfigurationTest.saveDropsComments`. Decision 2026-09-20: fix later (probably stop writing config.yml from code).
 - B2: `Fluxcord` static fields + getters are dead API; replace with an instance `FluxcordRuntime` (constructor-wired services, `start()/stop()`), which also makes boot testable.
 - Presence config keys and intent list are hardcoded in `JDADiscordAPI`; plugins needing extra intents must add them in `onPreEnable`.
 - `System.exit(1)` inside helper methods makes unit testing impossible; throw and let `main` exit.
