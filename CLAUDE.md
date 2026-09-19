@@ -60,8 +60,10 @@ Tests are JUnit 5 + Mockito, and live almost entirely in `fluxcord-core/src/test
 ### Running locally
 
 - Runnable artifact: `fluxcord-core/target/fluxcord-core-*-shaded.jar` (`java -jar ...`). `build.sh` copies it to `target/fluxcord.jar`; `./build.sh run` builds and starts it.
-- Dev run: `mvn -pl fluxcord-core exec:java` uses working directory `fluxcord-core/run/` (git-ignored) and `logback-dev.xml`.
-- The bot reads `config.yml`, `plugins/`, `lang/` relative to the working directory. Copy `fluxcord-core/src/main/resources/config.yml` there and set `discord.token`.
+- Dev run: `mvn -pl fluxcord-core exec:exec` forks a JVM with working directory `fluxcord-core/run/` (git-ignored) and `logback-dev.xml`. (Not `exec:java`: it runs in-process and ignores `workingDirectory`, so the bot would start at the repo root and create `config.yml`/`logs/` there.)
+- Equivalent without Maven, and the way to drive the console from a script: `cd fluxcord-core/run && java -Dlogback.configurationFile=logback-dev.xml --enable-native-access=ALL-UNNAMED -jar ../target/fluxcord-core-*-shaded.jar` — piping `shutdown` on stdin triggers the clean shutdown path (`Goodbye!` in the log).
+- The bot reads `config.yml`, `plugins/`, `lang/` relative to the working directory. Copy `fluxcord-core/src/main/resources/config.yml` there and set `discord.token`. Health endpoints while running: `localhost:8081/healthz`, `/readyz`, `/version`.
+- Smoke-test procedure (what to look for in the log, how to stop cleanly on Windows): see the `/verify` skill, section 3.
 - Docker: `docker compose up --build`, or the `Dockerfile.*` variants described in README. `entrypoint.sh` installs/updates bundled plugin jars into `/app/plugins` based on `INSTALL_PLUGINS`, `INSTALL_EXAMPLES`, `AUTO_UPDATE_PLUGINS` env vars.
 
 ## Module layout
