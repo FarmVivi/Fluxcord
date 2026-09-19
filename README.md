@@ -1,5 +1,13 @@
 # Fluxcord
 
+[![CI](https://github.com/FarmVivi/fluxcord/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/FarmVivi/fluxcord/actions/workflows/ci.yml)
+[![Docker Image](https://github.com/FarmVivi/fluxcord/actions/workflows/docker-image-ci.yml/badge.svg?branch=develop)](https://github.com/FarmVivi/fluxcord/actions/workflows/docker-image-ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/FarmVivi/fluxcord?sort=semver)](https://github.com/FarmVivi/fluxcord/releases/latest)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=FarmVivi_fluxcord&metric=coverage&token=846a9a5e802338d174e0fed749182d29d265fc37)](https://sonarcloud.io/summary/new_code?id=FarmVivi_fluxcord)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=FarmVivi_fluxcord&metric=alert_status&token=846a9a5e802338d174e0fed749182d29d265fc37)](https://sonarcloud.io/summary/new_code?id=FarmVivi_fluxcord)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=FarmVivi_fluxcord&metric=bugs&token=846a9a5e802338d174e0fed749182d29d265fc37)](https://sonarcloud.io/summary/new_code?id=FarmVivi_fluxcord)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=FarmVivi_fluxcord&metric=code_smells&token=846a9a5e802338d174e0fed749182d29d265fc37)](https://sonarcloud.io/summary/new_code?id=FarmVivi_fluxcord)
+
 A modular, generic Discord bot engine designed for flexibility and extensibility. Built with a multi-module Maven
 architecture, it provides a comprehensive plugin system allowing developers to create powerful Discord bots with minimal
 effort.
@@ -283,7 +291,41 @@ mvn -T1C clean package -DskipTests
 
 # Install to local repository
 mvn clean install
+
+# Full verification, exactly what CI runs (tests + JaCoCo report in */target/site/jacoco/)
+mvn -B verify
 ```
+
+### Running locally
+
+The bot reads `config.yml`, `plugins/`, `lang/` and writes `logs/` relative to its working directory.
+`fluxcord-core/run/` is git-ignored and meant for that:
+
+```bash
+# One-time setup
+mkdir -p fluxcord-core/run/plugins
+cp fluxcord-core/src/main/resources/config.yml fluxcord-core/run/config.yml   # then set discord.token
+cp plugins/music-plugin/target/*-shaded.jar fluxcord-core/run/plugins/          # optional plugins
+
+# Start with the dev logging config (forked JVM, working directory fluxcord-core/run/)
+mvn -pl fluxcord-core exec:exec
+
+# Same without Maven (the console reads stdin: type `shutdown` for a clean stop)
+cd fluxcord-core/run
+java -Dlogback.configurationFile=logback-dev.xml --enable-native-access=ALL-UNNAMED -jar ../target/fluxcord-core-*-shaded.jar
+```
+
+Health endpoints while running: `http://localhost:8081/healthz`, `/readyz`, `/version` (port via `HEALTH_PORT`).
+
+### Continuous integration
+
+| Workflow | Trigger | What it does |
+| --- | --- | --- |
+| `ci.yml` | push/PR on `develop`, `main` | `mvn -B verify`: build + tests + JaCoCo reports (artifacts) |
+| `sonarqube-analysis.yml` | push/PR | SonarCloud analysis with test coverage |
+| `docker-image-ci.yml` | push/PR/tags | builds the image; publishes to GHCR on `develop`, `main` and `v*` tags |
+| `release-build.yml` | GitHub release | attaches the shaded jar to the release |
+| `bump-*-version.yml` | manual | bumps the reactor version |
 
 ### Docker Development
 

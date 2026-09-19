@@ -59,7 +59,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 - Broad `catch (Exception)` → catch what the call can throw; never swallow without logging the cause.
 - Null-checks on always-injected services (`if (eventManager != null)` ×20 in `PluginManager`) → make the constructor require them.
 - French/English mix in comments and logs: new text in English; rewrite only what you touch.
-- `sonar-project.properties` says `sonar.java.source=17` while the build targets 25.
+- ~~`sonar-project.properties` says `sonar.java.source=17` while the build targets 25.~~ Fixed 2026-09-20; the Sonar workflow now also runs the tests so coverage reaches SonarCloud.
 - The `Deploy` webhook step in `.github/workflows/docker-image-ci.yml` (and the `DEPLOY_WEBHOOK_URL` secret) is a leftover of the v2 VPS setup; deployments are now handled outside this repo. Remove the step.
 - `docs/` describe intended behaviour; after each chantier update the relevant page.
 
