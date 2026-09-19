@@ -77,11 +77,11 @@ public class DependencyResolver {
      * @return mapping of plugin name to its dependencies
      */
     private Map<String, Set<String>> buildDependencyGraph() {
-        Map<String, Set<String>> graph = new HashMap<>();
+        Map<String, Set<String>> graph = new TreeMap<>();
 
         // Add all plugins to the graph
         for (String pluginName : pluginDescriptors.keySet()) {
-            graph.put(pluginName, new HashSet<>());
+            graph.put(pluginName, new TreeSet<>());
         }
 
         // Add dependencies to the graph
@@ -121,15 +121,15 @@ public class DependencyResolver {
         Set<String> visited = new HashSet<>();
         Set<String> visiting = new HashSet<>();
 
-        // Visit each node
+        // Visit each node (the graph is a TreeMap, so independent plugins come out alphabetically)
         for (String node : graph.keySet()) {
             if (!visited.contains(node)) {
                 visit(node, graph, visited, visiting, result);
             }
         }
 
-        // Reverse the result to get the correct order
-        Collections.reverse(result);
+        // visit() appends a node only after all of its dependencies (post-order), so the list is
+        // already in load order: dependencies first, dependants after. Do not reverse it.
         return result;
     }
 

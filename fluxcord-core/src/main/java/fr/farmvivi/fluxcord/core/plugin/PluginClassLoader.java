@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PluginClassLoader extends URLClassLoader {
     // Core packages that should always be loaded from the parent class loader
     private static final Set<String> CORE_PACKAGES = Set.of(
+            "fr.farmvivi.fluxcord.api",   // the contract must be shared: a bundled copy would break Plugin/PluginContext casts
             "fr.farmvivi.fluxcord.core",
             "org.slf4j",
             "org.yaml.snakeyaml",
@@ -147,8 +148,15 @@ public class PluginClassLoader extends URLClassLoader {
     @Override
     public java.io.InputStream getResourceAsStream(String name) {
         URL url = getResource(name);
+        if (url == null) {
+            return null;
+        }
         try {
-            return url != null ? url.openStream() : null;
+            // No JarURLConnection cache: a cached JarFile outlives close() and keeps the plugin jar locked
+            // (Windows), which prevents replacing the jar on reload.
+            java.net.URLConnection connection = url.openConnection();
+            connection.setUseCaches(false);
+            return connection.getInputStream();
         } catch (IOException e) {
             return null;
         }

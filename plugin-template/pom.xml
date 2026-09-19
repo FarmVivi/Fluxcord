@@ -20,7 +20,7 @@
         <dependency>
             <groupId>fr.farmvivi.fluxcord</groupId>
             <artifactId>fluxcord-api</artifactId>
-            <scope>compile</scope>
+            <scope>provided</scope>
         </dependency>
 
         <!-- JDA for Discord API interactions -->
