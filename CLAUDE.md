@@ -6,6 +6,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Fluxcord is a modular Discord bot engine (Java 25, Maven multi-module, JDA 6). `develop` is the v3 modular refactor and the active branch; `main` is the legacy v2 monolith. Target `develop` for PRs unless told otherwise.
 
+State of the code (2026-09): v3 was largely generated with Codex and never fully tested. It runs, but systems fit together loosely, several bugs are known, and test coverage is thin. The current goal is **raising code quality**: see [docs/refactoring-plan.md](docs/refactoring-plan.md) for the prioritised chantiers and decisions log.
+
+## How to work in this repo
+
+1. **Verify every change.** A change is not done until it compiled and the relevant tests passed (`/verify`). For behaviour that tests can't reach (plugin loading, JDA wiring, command sync, storage backends, audio), do a smoke run and quote what the log showed. Report failures as failures. A Stop hook (`.claude/hooks/check-verified.sh`) blocks ending a turn while source files were edited after the last successful Maven run.
+2. **Ask when unsure — it is expected, not a weakness.** Use `AskUserQuestion` whenever a decision is the user's (API breaks, deleting a feature, naming, adding a dependency, scope of a chantier, anything with two reasonable designs) or when information is missing (token, environment, intended behaviour). Prefer one question with concrete options over guessing and redoing work.
+3. **Use and maintain the project skills** in `.claude/skills/` (see below). Load the matching `fluxcord-*` skill before touching a subsystem; run its improvement loop before finishing.
+4. **Small, verified steps.** Refactors go through `/refactor-module`: characterization tests first, one conceptual change at a time, plan updated at the end.
+5. Don't fix unrelated things silently: list them in `docs/refactoring-plan.md` or tell the user.
+6. **This repo is public.** The maintainer's private deployment/testing notes live in `CLAUDE.local.md` (git-excluded) and in a personal skill outside the repo; never copy hosting details, hostnames, tokens or kubeconfigs into committed files, commit messages or PR descriptions. Real-environment testing follows those private notes.
+
+## Skills, hooks and agents (`.claude/`)
+
+Skills are this project's "experts". Each `SKILL.md` is the owner of one system or workflow and is expected to be **wrong sometimes and corrected often**.
+
+| Skill | Kind | Use it when |
+| --- | --- | --- |
+| `/verify` | task | after any code change; picks the right Maven command, optional `--smoke` |
+| `/refactor-module <item>` | task | running one chantier from the refactoring plan |
+| `/skill-maintenance [--audit]` | meta | end of every task that used a skill; creating or cleaning skills |
+| `fluxcord-plugin-system` | reference | PluginManager, classloader, lifecycle, reload |
+| `fluxcord-plugin-dev` | reference | writing/modifying a plugin, poms, adapters |
+| `fluxcord-commands` | reference | command API, parsers, slash sync, cooldowns |
+| `fluxcord-events` | reference | internal bus vs JDA listeners |
+| `fluxcord-storage` | reference | data/binary storage, backends, fallback |
+| `fluxcord-i18n` | reference | lang files, namespaces, lookup cascade |
+| `fluxcord-audio` | reference | AudioService/pipeline, DAVE, music plugin |
+| `fluxcord-boot` | reference | Fluxcord.main, config, JDA connection, permissions, health, Docker |
+
+Reference skills auto-load through their `paths:` when you edit matching files; you can also invoke them explicitly. **The improvement loop** (in every skill, protocol in `/skill-maintenance`): after using a skill, (1) fix any statement the code contradicted, (2) append dated learnings a future session would need, (3) delete what is resolved or stale, (4) keep it short. Create a new skill (`.claude/skills/<name>/SKILL.md`) when a system or recurring workflow has no owner; don't duplicate CLAUDE.md in skills — CLAUDE.md is the map, skills hold the depth.
+
+Hooks (`.claude/settings.json`, scripts in `.claude/hooks/`): `PostToolUse` marks source edits and successful Maven runs in `.claude/state/` (git-ignored); `Stop` blocks the turn if edits are unverified. Docs-only turns: `touch .claude/state/last-build`.
+
+Subagents: use the built-in `Explore` agent for wide read-only searches; there are no custom agents in `.claude/agents/` yet — add one only for a repeatable role (e.g. a reviewer with a fixed checklist), and document it here.
+
 ## Build & test
 
 Requires JDK 25 and Maven. The project's `defaultGoal` is `clean package`.
@@ -32,7 +67,7 @@ Tests are JUnit 5 + Mockito, and live almost entirely in `fluxcord-core/src/test
 ## Module layout
 
 | Module | Role |
-|---|---|
+| --- | --- |
 | `fluxcord-api` | Public contracts only (interfaces, `AbstractPlugin`, adapters). Plugins compile against this. No implementation. |
 | `fluxcord-core` | The engine: `fr.farmvivi.fluxcord.core.Fluxcord` main class, all `Simple*Impl` implementations, shaded fat jar. |
 | `plugin-template` | Copy-me starter for new plugins (`com.example.plugin`). |
