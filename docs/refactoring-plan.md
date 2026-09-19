@@ -6,7 +6,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 
 ## 0. Safety net first
 
-- [ ] **T0 — CI runs the tests.** Add a `ci.yml` workflow (`push`/`pull_request` on `develop`, `main`): `mvn -B verify`. Today `docker-dev-build` and `sonarqube-analysis` use `-DskipTests`; a broken test is invisible.
+- [x] **T0 — CI runs the tests.** (2026-09-20) `.github/workflows/ci.yml`: `mvn -B -ntp verify` on push/PR to `develop`/`main` (Dependabot PRs included), Surefire reports uploaded on failure, JaCoCo 0.8.15 report-only in the root pom (core coverage at start: 9 %). First run surfaced a real race in `FileDataStorage.close()` vs the debounced background save (data loss at shutdown), fixed in the same batch.
 - [ ] **T1 — Test fixtures for the engine.** A `FakePlugin` (in-memory `Plugin` + `PluginDescriptor`) and a helper that builds a real plugin jar in a `@TempDir` (plugin.yml + compiled class) so `PluginManager` can be tested end-to-end. Unblocks P1/P2/E2.
 - [ ] **T2 — Characterization tests for the pure classes**: `SimpleEventManager`, `SimpleCommandRegistry`, `SimpleLanguageManager` cascade, `AbstractDataStorage` cache, `AudioPipeline` send strategy. Cheap, no JDA needed, and they pin behaviour before the chantiers below.
 
@@ -68,3 +68,4 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 | Date | Decision | By |
 |---|---|---|
 | 2026-09-19 | Plan created; skills + Stop hook introduced; first chantier to be chosen after review. | user + Claude |
+| 2026-09-20 | T0 done as a dedicated workflow + JaCoCo report-only (no threshold), CI also on Dependabot PRs. Keep working on `develop`; branches optional. | user |

@@ -26,7 +26,7 @@ paths:
 - The shaded jar keeps JDBC drivers SPI-registered via `ServicesResourceTransformer` in `fluxcord-core/pom.xml` — keep it when touching shading.
 
 ## Gotchas
-- `saveAll()` is called by `PluginManager.reloadPlugins()` before disabling; the shutdown path relies on `dataStorageManager.close()` in `Fluxcord.shutdownBot`. A JVM kill between debounce ticks loses the last writes (FILE backend).
+- `saveAll()` is called by `PluginManager.reloadPlugins()` before disabling; the shutdown path relies on `dataStorageManager.close()` in `Fluxcord.shutdownBot`, which now stops the debouncers before the final save. A JVM *kill* (not a clean shutdown) between debounce ticks still loses the last writes (FILE backend).
 - Scope strings are built by string concatenation in several places (`StorageKey` factories, adapters, `SimplePermissionManager`); grep before renaming a scope format — stored data would become unreachable.
 - `DataStorageManager` living in `fluxcord-api` as a class (with an SLF4J logger) means api consumers can't mock it as an interface and the api module carries implementation (plan item S1).
 - Changing backend FILE → DB does **not** migrate existing data; there is no migration tool.
@@ -40,6 +40,8 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 ## Learnings
 - 2026-09-19: Initial audit.
+- 2026-09-20: `FileDataStorage` writes are debounced via `core/util/Debouncer` (one single-thread scheduler per scope, daemon threads). `close()` must stop the debouncers (cancel pending + await in-flight, `Debouncer.cancelAndAwait`) **before** the synchronous `save()`, otherwise two `FileWriter`s truncate the same `data.json` concurrently and the next reader sees an empty scope. Was the cause of `FileDataStorageColdStartTest` failing only in the full suite; fixed 2026-09-20.
+- 2026-09-20: `AbstractDataStorage.cache` is shared with `FileDataStorage.loadScopeData` (same map instance per scope): the cache *is* the on-disk data model for the FILE backend, so mutating it mutates what gets saved.
 
 ## Known issues / open questions
 - S1: turn `DataStorageManager`/`BinaryStorageManager` into interfaces in api with implementations in core (API break for plugins that `new` them — unlikely; ask).
