@@ -1,6 +1,7 @@
 package fr.farmvivi.fluxcord.plugins.music;
 
 import fr.farmvivi.fluxcord.api.command.CommandResult;
+import fr.farmvivi.fluxcord.api.command.option.AutocompleteContext;
 import fr.farmvivi.fluxcord.api.command.option.OptionChoice;
 import fr.farmvivi.fluxcord.api.permissions.Permission;
 import fr.farmvivi.fluxcord.api.permissions.PermissionDefault;
@@ -93,12 +94,13 @@ public class MusicPlugin extends AbstractPlugin {
             musicManager.saveAllStates();
         }
 
-        if (scheduler != null) {
-            scheduler.shutdown();
-        }
-
+        // Players first (their track-end events still use the scheduler for UI refreshes), then the scheduler
         if (musicManager != null) {
             musicManager.shutdown();
+        }
+
+        if (scheduler != null) {
+            scheduler.shutdown();
         }
 
         if (playlistManager != null) {
@@ -132,7 +134,7 @@ public class MusicPlugin extends AbstractPlugin {
                     .description(getPluginLanguageManager().getString("music.command.play.description"))
                     .category("Music")
                     .aliases("p")
-                    .stringOption("query", getPluginLanguageManager().getString("music.command.play.option.query"), true)
+                    .stringOption("query", getPluginLanguageManager().getString("music.command.play.option.query"), true, this::suggestRecentTracks)
                     .booleanOption("now", getPluginLanguageManager().getString("music.command.play.option.now"), false)
                     .executor((ctx, cmd) -> {
                         String query = ctx.getRequiredOption("query");
@@ -178,7 +180,7 @@ public class MusicPlugin extends AbstractPlugin {
                     .description(getPluginLanguageManager().getString("music.command.queue.description"))
                     .category("Music")
                     .aliases("q")
-                    .integerOption("page", getPluginLanguageManager().getString("music.command.queue.option.page"), false, 1, 100)
+                    .integerOption("page", getPluginLanguageManager().getString("music.command.queue.option.page"), false, 1, 100, this::suggestQueuePages)
                     .executor((ctx, cmd) -> {
                         int page = ctx.getOption("page", 1);
                         new QueueCommand(this).execute(ctx, page);
@@ -202,7 +204,7 @@ public class MusicPlugin extends AbstractPlugin {
                     .description(getPluginLanguageManager().getString("music.command.volume.description"))
                     .category("Music")
                     .aliases("vol")
-                    .integerOption("level", getPluginLanguageManager().getString("music.command.volume.option.level"), false, 0, 100)
+                    .integerOption("level", getPluginLanguageManager().getString("music.command.volume.option.level"), false, 0, 100, this::suggestVolumes)
                     .executor((ctx, cmd) -> {
                         Integer level = ctx.<Integer>getOption("level").orElse(null);
                         new VolumeCommand(this).execute(ctx, level);
@@ -254,7 +256,7 @@ public class MusicPlugin extends AbstractPlugin {
             builder.name("remove")
                     .description(getPluginLanguageManager().getString("music.command.remove.description"))
                     .category("Music")
-                    .integerOption("position", getPluginLanguageManager().getString("music.command.remove.option.position"), true, 1, 1000)
+                    .integerOption("position", getPluginLanguageManager().getString("music.command.remove.option.position"), true, 1, 1000, this::suggestQueuePositions)
                     .executor((ctx, cmd) -> {
                         int position = ctx.getRequiredOption("position");
                         new RemoveCommand(this).execute(ctx, position);
@@ -266,7 +268,7 @@ public class MusicPlugin extends AbstractPlugin {
             builder.name("seek")
                     .description(getPluginLanguageManager().getString("music.command.seek.description"))
                     .category("Music")
-                    .stringOption("time", getPluginLanguageManager().getString("music.command.seek.option.time"), true)
+                    .stringOption("time", getPluginLanguageManager().getString("music.command.seek.option.time"), true, this::suggestSeekPositions)
                     .executor((ctx, cmd) -> {
                         String time = ctx.getRequiredOption("time");
                         new SeekCommand(this).execute(ctx, time);
@@ -323,6 +325,111 @@ public class MusicPlugin extends AbstractPlugin {
 
     public ScheduledExecutorService getScheduler() {
         return scheduler;
+    }
+
+    // --- Autocomplete providers (called on JDA threads while the user types: in-memory only) ---
+
+    private static final int SUGGESTION_LIMIT = 25;
+
+    private static String clip(String text, int max) {
+        return text.length() <= max ? text : text.substring(0, max - 1) + "…";
+    }
+
+    private static String formatTime(long millis) {
+        long seconds = millis / 1000;
+        long h = seconds / 3600, m = (seconds % 3600) / 60, s = seconds % 60;
+        return h > 0 ? String.format("%d:%02d:%02d", h, m, s) : String.format("%d:%02d", m, s);
+    }
+
+    /** /play: titles recently played in this server, matched against what is typed; value = the track URI. */
+    private java.util.List<OptionChoice<String>> suggestRecentTracks(AutocompleteContext ctx) {
+        if (ctx.guildId() == null) {
+            return java.util.List.of();
+        }
+        String typed = ctx.partial().toLowerCase(java.util.Locale.ROOT);
+        return musicManager.getRecentTracks(ctx.guildId()).entrySet().stream()
+                .filter(e -> typed.isEmpty() || e.getKey().toLowerCase(java.util.Locale.ROOT).contains(typed))
+                .limit(SUGGESTION_LIMIT)
+                .map(e -> new OptionChoice<>(clip(e.getKey(), 100), e.getValue()))
+                .toList();
+    }
+
+    /** /remove: "1. Title", "2. Title"... from the queue, filtered by position or title. */
+    private java.util.List<OptionChoice<Integer>> suggestQueuePositions(AutocompleteContext ctx) {
+        if (ctx.guildId() == null) {
+            return java.util.List.of();
+        }
+        String typed = ctx.partial().toLowerCase(java.util.Locale.ROOT);
+        java.util.List<OptionChoice<Integer>> choices = new java.util.ArrayList<>();
+        musicManager.findPlayer(ctx.guildId()).ifPresent(player -> {
+            java.util.List<com.sedmelluq.discord.lavaplayer.track.AudioTrack> queue = player.getTrackScheduler().getQueue();
+            for (int i = 0; i < queue.size() && choices.size() < SUGGESTION_LIMIT; i++) {
+                String label = (i + 1) + ". " + queue.get(i).getInfo().title;
+                if (typed.isEmpty() || label.toLowerCase(java.util.Locale.ROOT).contains(typed)) {
+                    choices.add(new OptionChoice<>(clip(label, 100), i + 1));
+                }
+            }
+        });
+        return choices;
+    }
+
+    /** /queue: the existing pages. */
+    private java.util.List<OptionChoice<Integer>> suggestQueuePages(AutocompleteContext ctx) {
+        if (ctx.guildId() == null) {
+            return java.util.List.of();
+        }
+        int size = musicManager.findPlayer(ctx.guildId()).map(p -> p.getTrackScheduler().getQueueSize()).orElse(0);
+        int pages = Math.max(1, (size + 9) / 10);
+        java.util.List<OptionChoice<Integer>> choices = new java.util.ArrayList<>();
+        for (int page = 1; page <= Math.min(pages, SUGGESTION_LIMIT); page++) {
+            if (ctx.partial().isEmpty() || String.valueOf(page).startsWith(ctx.partial())) {
+                choices.add(new OptionChoice<>(page + " / " + pages, page));
+            }
+        }
+        return choices;
+    }
+
+    /** /volume: the current level first, then the usual steps. */
+    private java.util.List<OptionChoice<Integer>> suggestVolumes(AutocompleteContext ctx) {
+        java.util.LinkedHashMap<Integer, String> levels = new java.util.LinkedHashMap<>();
+        if (ctx.guildId() != null) {
+            musicManager.findPlayer(ctx.guildId()).ifPresent(p -> levels.put(p.getVolume(), p.getVolume() + " (current)"));
+        }
+        for (int step : new int[]{100, 75, 50, 25, 10, 0}) {
+            levels.putIfAbsent(step, String.valueOf(step));
+        }
+        return levels.entrySet().stream()
+                .filter(e -> ctx.partial().isEmpty() || String.valueOf(e.getKey()).startsWith(ctx.partial()))
+                .map(e -> new OptionChoice<>(e.getValue(), e.getKey()))
+                .toList();
+    }
+
+    /** /seek: landmarks of the playing track (start, quarters, one minute before the end). */
+    private java.util.List<OptionChoice<String>> suggestSeekPositions(AutocompleteContext ctx) {
+        if (ctx.guildId() == null) {
+            return java.util.List.of();
+        }
+        return musicManager.findPlayer(ctx.guildId())
+                .map(p -> p.getPlayingTrack())
+                .filter(track -> track != null && track.getDuration() > 0 && track.getDuration() != Long.MAX_VALUE)
+                .map(track -> {
+                    long duration = track.getDuration();
+                    java.util.LinkedHashMap<String, String> marks = new java.util.LinkedHashMap<>();
+                    marks.put(formatTime(0), formatTime(0));
+                    for (int quarter = 1; quarter <= 3; quarter++) {
+                        String t = formatTime(duration * quarter / 4);
+                        marks.put(t + " (" + quarter * 25 + "%)", t);
+                    }
+                    if (duration > 60_000) {
+                        String t = formatTime(duration - 60_000);
+                        marks.put(t + " (-1:00)", t);
+                    }
+                    return marks.entrySet().stream()
+                            .filter(e -> ctx.partial().isEmpty() || e.getValue().startsWith(ctx.partial()))
+                            .map(e -> new OptionChoice<>(e.getKey(), e.getValue()))
+                            .toList();
+                })
+                .orElse(java.util.List.of());
     }
 }
 

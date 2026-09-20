@@ -49,6 +49,7 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 ## Learnings
 - 2026-09-19: Initial audit.
 - 2026-09-20: Tests added: `YamlConfigurationTest`, `EnvAwareYamlConfigurationTest` (protected `lookupEnv`/`lookupEnvValues` seams replace the environment), `HealthServerTest` (`HealthServer(0)` + `getPort()` for an ephemeral port). snakeyaml resolves YAML 1.1 booleans (`yes`/`on`) itself; `getString` on a section returns `Map.toString()` instead of failing.
+- 2026-09-20: Shutdown is driven by the **main thread**: `Fluxcord.requestShutdown()` releases the latch, main runs `performShutdown()` (once, `AtomicBoolean`) then `System.exit(0)`; the JVM hook (`Fluxcord-Shutdown`) calls the same method for SIGTERM/Ctrl+C. `ShutdownCommand` replies, waits 1 s, then requests. Before: `System.exit` from a daemon thread inside a slash-command executor left the JVM alive with logging dead and Discord showing "the application did not respond" (never fully explained — no thread was blocked in the dump).
 - 2026-09-20: `SimplePermissionManagerTest` (14). Earlier the guild-scoped check fell back to the global default resolution (guild id lost) and default-derived results were cached forever; both gone with the B1 rewrite.
 
 ## Known issues / open questions

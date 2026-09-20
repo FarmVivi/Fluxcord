@@ -224,6 +224,12 @@ public interface CommandBuilder {
     CommandBuilder integerOption(String name, String description, boolean required, Integer min, Integer max);
 
     /**
+     * Adds an integer option with a range and dynamic suggestions (values must be within the range).
+     */
+    CommandBuilder integerOption(String name, String description, boolean required, Integer min, Integer max,
+                                 AutocompleteProvider<Integer> autocompleteProvider);
+
+    /**
      * Adds a boolean option to the command.
      *
      * @param name        the option name

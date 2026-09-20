@@ -29,6 +29,14 @@
             <url>https://maven.lavalink.dev/releases</url>
         </repository>
 
+        <!-- Snapshots of youtube-source (per-commit builds), needed until 1.18.3 is released -->
+        <repository>
+            <id>lavalink-snapshots</id>
+            <url>https://maven.lavalink.dev/snapshots</url>
+            <releases><enabled>false</enabled></releases>
+            <snapshots><enabled>true</enabled></snapshots>
+        </repository>
+
         <!-- Repository pour LavaSrc (Spotify, Deezer, Apple Music support) -->
         <repository>
             <id>TopiWTF-releases</id>
@@ -68,17 +76,18 @@
             <version>2.2.7</version>
         </dependency>
 
-        <!-- YouTube source pour LavaPlayer -->
-        <!-- https://maven.lavalink.dev/#/releases/dev/lavalink/youtube -->
+        <!-- YouTube source pour LavaPlayer. 1.18.2 (2026-07) is broken by YouTube-side changes (issues #226 #236,
+             fixed on master in August/September 2026 but unreleased, see #244). Pinned to a per-commit snapshot
+             of master (2026-09-17); switch back to a release as soon as 1.18.3 exists. -->
         <dependency>
             <groupId>dev.lavalink.youtube</groupId>
             <artifactId>common</artifactId>
-            <version>1.18.2</version>
+            <version>2be8e542d3f6f178e048dca565892684c2e40177-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>dev.lavalink.youtube</groupId>
             <artifactId>v2</artifactId>
-            <version>1.18.2</version>
+            <version>2be8e542d3f6f178e048dca565892684c2e40177-SNAPSHOT</version>
         </dependency>
 
         <!-- LavaSrc pour sources additionnelles (Spotify, Deezer, Apple Music, etc.) -->

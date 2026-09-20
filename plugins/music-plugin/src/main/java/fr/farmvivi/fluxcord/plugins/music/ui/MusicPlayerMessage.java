@@ -391,7 +391,14 @@ public class MusicPlayerMessage {
         }
 
         ScheduledExecutorService scheduler = musicPlayer.getPlugin().getScheduler();
-        updateTask = scheduler.schedule(this::renderNow, UPDATE_THROTTLE_MS, TimeUnit.MILLISECONDS);
+        if (scheduler == null || scheduler.isShutdown()) {
+            return; // plugin is disabling: no UI refresh for the final track-end events
+        }
+        try {
+            updateTask = scheduler.schedule(this::renderNow, UPDATE_THROTTLE_MS, TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            // shut down between the check and the submit
+        }
     }
 
     /**

@@ -64,7 +64,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 - `docs/` describe intended behaviour; after each chantier update the relevant page.
 
 ### Found in the field
-- [ ] **M1 — YouTube playback broken (2026-09-20 smoke)**: `youtube-source 1.18.2` (latest) fails on player script `4fd832e7` ("must find sig function", "Sign in to confirm you're not a bot", HTTP 400 on IOS/ANDROID_MUSIC). Upstream issue, not a Fluxcord regression. Options: wait for a youtube-source release, or configure OAuth refresh token / poToken for the YouTube clients (needs a config key in the music plugin). Decide with the user.
+- [~] **M1 — YouTube playback.** `youtube-source 1.18.2` (latest release, 2026-07) is broken by YouTube-side changes (issues #226 #236 #240; IOS client version, TV client, cipher). Fixed on master but unreleased (#244). 2026-09-20: pinned the per-commit snapshot `2be8e542…-SNAPSHOT` (2026-09-17) from `maven.lavalink.dev/snapshots` — playback works again through the fallback clients, but the first attempt still logs `Must find sig function` for player `4fd832e7` (noisy, not fatal). **Switch back to a release as soon as 1.18.3 exists**; consider `remote poToken` (PR #229) if "Sign in to confirm" comes back.
 
 ## Decisions log
 

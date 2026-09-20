@@ -5,6 +5,7 @@ import fr.farmvivi.fluxcord.api.command.CommandContext;
 import fr.farmvivi.fluxcord.api.command.CommandResult;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
+import fr.farmvivi.fluxcord.core.Fluxcord;
 import fr.farmvivi.fluxcord.core.command.SimpleCommandBuilder;
 import fr.farmvivi.fluxcord.core.util.DiscordColor;
 import net.dv8tion.jda.api.EmbedBuilder;
@@ -76,8 +77,15 @@ public class ShutdownCommand {
 
         context.replyEmbed(embed);
 
-        Thread shutdownThread = new Thread(() -> System.exit(0));
-
+        // Let the reply reach Discord, then hand the shutdown to the main thread (see Fluxcord.requestShutdown)
+        Thread shutdownThread = new Thread(() -> {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            Fluxcord.requestShutdown();
+        }, "Shutdown-Request");
         shutdownThread.setDaemon(true);
         shutdownThread.start();
 

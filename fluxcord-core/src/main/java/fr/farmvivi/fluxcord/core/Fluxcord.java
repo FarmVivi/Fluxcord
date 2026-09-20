@@ -50,6 +50,8 @@ public class Fluxcord {
     private static DiscordAPI discordAPI;
     private static SimpleEventManager eventManager;
     private static Configuration coreConfig;
+    private static final CountDownLatch SHUTDOWN_REQUESTED = new CountDownLatch(1);
+    private static final java.util.concurrent.atomic.AtomicBoolean SHUTDOWN_DONE = new java.util.concurrent.atomic.AtomicBoolean(false);
     private static LanguageManager languageManager;
     private static DataStorageManager dataStorageManager;
     private static BinaryStorageManager binaryStorageManager;
@@ -106,13 +108,33 @@ public class Fluxcord {
         long startFinishedTimeMillis = System.currentTimeMillis();
         logger.info("Started in {}s!", (float) (startFinishedTimeMillis - startTimeMillis) / 1000);
 
-        // Keep the main thread alive
-        CountDownLatch latch = new CountDownLatch(1);
+        // Park the main thread until a shutdown is requested (shutdown command, console), then stop everything
+        // from here rather than from an arbitrary thread through System.exit + shutdown hook.
         try {
-            latch.await();
+            SHUTDOWN_REQUESTED.await();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        performShutdown();
+        System.exit(0);
+    }
+
+    /**
+     * Asks the bot to stop: the main thread runs the shutdown sequence and the JVM exits. Safe to call from
+     * any thread (a command executor, the console); returns immediately.
+     */
+    public static void requestShutdown() {
+        SHUTDOWN_REQUESTED.countDown();
+    }
+
+    /** Runs the shutdown sequence exactly once, whether triggered by requestShutdown() or by the JVM hook. */
+    private static void performShutdown() {
+        if (!SHUTDOWN_DONE.compareAndSet(false, true)) {
+            return;
+        }
+        logger.info("Shutting down...");
+        shutdownBot();
+        logger.info("Goodbye!");
     }
 
     /**
@@ -245,14 +267,8 @@ public class Fluxcord {
      * Registers the shutdown hook for clean shutdown.
      */
     private static void registerShutdownHook() {
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            logger.info("Shutting down...");
-
-            // Shutdown sequence
-            shutdownBot();
-
-            logger.info("Goodbye!");
-        }));
+        // SIGTERM / Ctrl+C / System.exit from elsewhere: same sequence, skipped if requestShutdown() already ran it
+        Runtime.getRuntime().addShutdownHook(new Thread(Fluxcord::performShutdown, "Fluxcord-Shutdown"));
     }
 
     /**

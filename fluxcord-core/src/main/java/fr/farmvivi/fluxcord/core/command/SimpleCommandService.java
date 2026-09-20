@@ -787,13 +787,25 @@ public class SimpleCommandService implements CommandService {
                             event.getOptions().stream().collect(java.util.stream.Collectors.toMap(
                                     OptionMapping::getName, OptionMapping::getAsString, (a, b) -> a))))
                     .stream()
-                    .map(choice -> new net.dv8tion.jda.api.interactions.commands.Command.Choice(choice.name(), String.valueOf(choice.value())))
+                    .map(SimpleCommandService::toJdaChoice)
                     .toList();
         } catch (RuntimeException e) {
             logger.warn("Autocomplete provider failed for /{} option {}", event.getName(), event.getFocusedOption().getName(), e);
             choices = List.of();
         }
         event.replyChoices(choices).queue(null, t -> logger.debug("Autocomplete reply failed (interaction expired?)", t));
+    }
+
+    /** Discord needs the value type to match the option type: numbers stay numbers, everything else is a string. */
+    private static net.dv8tion.jda.api.interactions.commands.Command.Choice toJdaChoice(OptionChoice<?> choice) {
+        Object value = choice.value();
+        if (value instanceof Integer || value instanceof Long || value instanceof Short) {
+            return new net.dv8tion.jda.api.interactions.commands.Command.Choice(choice.name(), ((Number) value).longValue());
+        }
+        if (value instanceof Number number) {
+            return new net.dv8tion.jda.api.interactions.commands.Command.Choice(choice.name(), number.doubleValue());
+        }
+        return new net.dv8tion.jda.api.interactions.commands.Command.Choice(choice.name(), String.valueOf(value));
     }
 
     /**

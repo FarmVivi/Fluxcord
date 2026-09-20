@@ -187,6 +187,20 @@ public class SimpleCommandBuilder implements CommandBuilder {
     }
 
     @Override
+    public CommandBuilder integerOption(String name, String description, boolean required, Integer min, Integer max,
+                                        AutocompleteProvider<Integer> autocompleteProvider) {
+        return option(new SimpleCommandOption.Builder<Integer>()
+                .name(name)
+                .description(description)
+                .type(OptionType2.INTEGER)
+                .required(required)
+                .minValue(min)
+                .maxValue(max)
+                .autocompleteProvider(autocompleteProvider)
+                .build());
+    }
+
+    @Override
     public CommandBuilder booleanOption(String name, String description, boolean required) {
         return option(new SimpleCommandOption.Builder<Boolean>()
                 .name(name)

@@ -37,6 +37,9 @@ public class MusicManager {
     private final MusicPlugin plugin;
     private final AudioPlayerManager audioPlayerManager;
     private final Map<Long, MusicPlayer> players;
+    // Recently loaded tracks per guild (title -> uri, newest first), used for /play suggestions
+    private final Map<Long, java.util.LinkedHashMap<String, String>> recentTracks = new ConcurrentHashMap<>();
+    private static final int RECENT_TRACKS = 25;
 
     public MusicManager(MusicPlugin plugin) {
         this.plugin = plugin;
@@ -64,6 +67,48 @@ public class MusicManager {
     /**
      * Destroys a music player for a guild.
      */
+    /** The guild'"'"'s player if one exists, without creating it (autocomplete must stay side-effect free). */
+    public Optional<MusicPlayer> findPlayer(String guildId) {
+        try {
+            return Optional.ofNullable(players.get(Long.parseLong(guildId)));
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
+    }
+
+    /** Titles recently played in the guild (newest first) with their URI. */
+    public Map<String, String> getRecentTracks(String guildId) {
+        try {
+            java.util.LinkedHashMap<String, String> recent = recentTracks.get(Long.parseLong(guildId));
+            if (recent == null) {
+                return Map.of();
+            }
+            synchronized (recent) {
+                java.util.LinkedHashMap<String, String> copy = new java.util.LinkedHashMap<>();
+                java.util.ArrayList<Map.Entry<String, String>> entries = new java.util.ArrayList<>(recent.entrySet());
+                java.util.Collections.reverse(entries);
+                entries.forEach(e -> copy.put(e.getKey(), e.getValue()));
+                return copy;
+            }
+        } catch (NumberFormatException e) {
+            return Map.of();
+        }
+    }
+
+    private void remember(Guild guild, AudioTrack track) {
+        if (track.getInfo().uri == null || track.getInfo().title == null) {
+            return;
+        }
+        java.util.LinkedHashMap<String, String> recent = recentTracks.computeIfAbsent(guild.getIdLong(), id -> new java.util.LinkedHashMap<>());
+        synchronized (recent) {
+            recent.remove(track.getInfo().title); // re-insert as newest
+            recent.put(track.getInfo().title, track.getInfo().uri);
+            while (recent.size() > RECENT_TRACKS) {
+                recent.remove(recent.keySet().iterator().next());
+            }
+        }
+    }
+
     public synchronized void destroyPlayer(Guild guild) {
         MusicPlayer player = players.remove(guild.getIdLong());
         if (player != null) {
@@ -122,6 +167,7 @@ public class MusicManager {
             public void trackLoaded(AudioTrack track) {
                 logger.info("[{}] Track loaded: {} ({})",
                         guild.getName(), track.getInfo().title, track.getInfo().uri);
+                remember(guild, track);
 
                 PluginLanguageAdapter lm = plugin.getPluginLanguageManager();
                 Locale locale = ctx.getLocale();
