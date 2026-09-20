@@ -4,7 +4,7 @@ import fr.farmvivi.fluxcord.api.command.Command;
 import fr.farmvivi.fluxcord.api.command.CommandContext;
 import fr.farmvivi.fluxcord.api.command.exception.CommandParseException;
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
-import fr.farmvivi.fluxcord.api.command.option.OptionType2;
+import fr.farmvivi.fluxcord.api.command.option.OptionType;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.core.command.SimpleCommandContext;
 import net.dv8tion.jda.api.entities.Guild;
@@ -114,7 +114,7 @@ public class SlashCommandParser implements CommandParser {
      * @return the parsed value
      * @throws CommandParseException if parsing fails
      */
-    private Object parseOptionValue(OptionType2 type, OptionMapping mapping) throws CommandParseException {
+    private Object parseOptionValue(OptionType type, OptionMapping mapping) throws CommandParseException {
         try {
             return switch (type) {
                 case STRING -> mapping.getAsString();

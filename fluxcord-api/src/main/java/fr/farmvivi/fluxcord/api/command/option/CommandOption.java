@@ -31,7 +31,7 @@ public interface CommandOption<T> {
      *
      * @return the option type
      */
-    OptionType2 getType();
+    OptionType getType();
 
     /**
      * Checks if the option is required.

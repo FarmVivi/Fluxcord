@@ -3,7 +3,7 @@ package fr.farmvivi.fluxcord.core.command;
 import fr.farmvivi.fluxcord.api.command.Command;
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
 import fr.farmvivi.fluxcord.api.command.option.OptionChoice;
-import fr.farmvivi.fluxcord.api.command.option.OptionType2;
+import fr.farmvivi.fluxcord.api.command.option.OptionType;
 import net.dv8tion.jda.api.interactions.FileType;
 import net.dv8tion.jda.api.interactions.InteractionContextType;
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions;
@@ -58,16 +58,16 @@ final class SlashCommandDataMapper {
                 option.getDescription(), option.isRequired());
 
         if (option.getMinValue() != null) {
-            if (option.getType() == OptionType2.INTEGER) {
+            if (option.getType() == OptionType.INTEGER) {
                 data.setMinValue(option.getMinValue().longValue());
-            } else if (option.getType() == OptionType2.NUMBER) {
+            } else if (option.getType() == OptionType.NUMBER) {
                 data.setMinValue(option.getMinValue().doubleValue());
             }
         }
         if (option.getMaxValue() != null) {
-            if (option.getType() == OptionType2.INTEGER) {
+            if (option.getType() == OptionType.INTEGER) {
                 data.setMaxValue(option.getMaxValue().longValue());
-            } else if (option.getType() == OptionType2.NUMBER) {
+            } else if (option.getType() == OptionType.NUMBER) {
                 data.setMaxValue(option.getMaxValue().doubleValue());
             }
         }
@@ -93,7 +93,7 @@ final class SlashCommandDataMapper {
         if (option.getAutocompleteProvider() != null) {
             data.setAutoComplete(true);
         }
-        if (option.getType() == OptionType2.ATTACHMENT && !option.getFileTypes().isEmpty()) {
+        if (option.getType() == OptionType.ATTACHMENT && !option.getFileTypes().isEmpty()) {
             data.addFileTypes(option.getFileTypes().stream().map(SlashCommandDataMapper::toFileType).toList());
         }
         return data;

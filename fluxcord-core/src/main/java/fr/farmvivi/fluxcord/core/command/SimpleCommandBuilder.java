@@ -7,7 +7,7 @@ import fr.farmvivi.fluxcord.api.command.CommandResult;
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
 import fr.farmvivi.fluxcord.api.command.option.AutocompleteProvider;
 import fr.farmvivi.fluxcord.api.command.option.OptionChoice;
-import fr.farmvivi.fluxcord.api.command.option.OptionType2;
+import fr.farmvivi.fluxcord.api.command.option.OptionType;
 import fr.farmvivi.fluxcord.core.command.option.SimpleCommandOption;
 
 import java.util.ArrayList;
@@ -102,7 +102,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<String>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.STRING)
+                .type(OptionType.STRING)
                 .required(required)
                 .build());
     }
@@ -113,7 +113,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<String>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.STRING)
+                .type(OptionType.STRING)
                 .required(required)
                 .choices(List.of(choices))
                 .build());
@@ -124,7 +124,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<String>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.STRING)
+                .type(OptionType.STRING)
                 .required(required)
                 .validator(validator)
                 .build());
@@ -135,7 +135,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<String>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.STRING)
+                .type(OptionType.STRING)
                 .required(required)
                 .autocompleteProvider(autocompleteProvider)
                 .build());
@@ -146,7 +146,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<Integer>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.INTEGER)
+                .type(OptionType.INTEGER)
                 .required(required)
                 .build());
     }
@@ -157,7 +157,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<Integer>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.INTEGER)
+                .type(OptionType.INTEGER)
                 .required(required)
                 .choices(List.of(choices))
                 .build());
@@ -168,7 +168,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<Integer>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.INTEGER)
+                .type(OptionType.INTEGER)
                 .required(required)
                 .validator(validator)
                 .build());
@@ -179,7 +179,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<Integer>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.INTEGER)
+                .type(OptionType.INTEGER)
                 .required(required)
                 .minValue(min)
                 .maxValue(max)
@@ -192,7 +192,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<Integer>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.INTEGER)
+                .type(OptionType.INTEGER)
                 .required(required)
                 .minValue(min)
                 .maxValue(max)
@@ -205,7 +205,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<Boolean>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.BOOLEAN)
+                .type(OptionType.BOOLEAN)
                 .required(required)
                 .build());
     }
@@ -215,7 +215,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<Object>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.USER)
+                .type(OptionType.USER)
                 .required(required)
                 .build());
     }
@@ -225,7 +225,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<Object>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.CHANNEL)
+                .type(OptionType.CHANNEL)
                 .required(required)
                 .build());
     }
@@ -235,7 +235,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<Object>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.ROLE)
+                .type(OptionType.ROLE)
                 .required(required)
                 .build());
     }
@@ -245,7 +245,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<Object>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.MENTIONABLE)
+                .type(OptionType.MENTIONABLE)
                 .required(required)
                 .build());
     }
@@ -255,7 +255,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<Double>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.NUMBER)
+                .type(OptionType.NUMBER)
                 .required(required)
                 .build());
     }
@@ -265,7 +265,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<Double>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.NUMBER)
+                .type(OptionType.NUMBER)
                 .required(required)
                 .minValue(min)
                 .maxValue(max)
@@ -277,7 +277,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<Object>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.ATTACHMENT)
+                .type(OptionType.ATTACHMENT)
                 .required(required)
                 .build());
     }
@@ -287,14 +287,14 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return option(new SimpleCommandOption.Builder<Object>()
                 .name(name)
                 .description(description)
-                .type(OptionType2.ATTACHMENT)
+                .type(OptionType.ATTACHMENT)
                 .required(required)
                 .fileTypes(List.of(fileTypes))
                 .build());
     }
 
     @Override
-    public CommandBuilder option(OptionType2 type, String name, String description, boolean required) {
+    public CommandBuilder option(OptionType type, String name, String description, boolean required) {
         return option(new SimpleCommandOption.Builder<Object>()
                 .name(name)
                 .description(description)

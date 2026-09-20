@@ -53,7 +53,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 
 - [x] **A1 — Key by plugin id** (done with P2, 2026-09-20).
 - [x] **A2 — Extract the send strategy** (done 2026-09-20: `SendStrategy`, one-pass BE mixer, `AudioSettings` fade/ducking, frame event opt-in) (bypass vs mix, Opus rejection, priority fades) from `AudioPipeline` into a testable class; translate the French comments while there. Decided 2026-09-20: bypass now applies volume × fade in its existing LE→BE pass (no extra pass; Opus untouched).
-- [ ] **A3 — `ai-audio-plugin`** is a stub of TODOs; remove from the reactor or make it a real example — user decision.
+- [~] **A3 — `ai-audio-plugin`.** Decision 2026-09-20: keep it in the reactor. It is the placeholder for a future voice AI plugin (listens to the voice channel and answers by voice in given scenarios; needs a fast voice-to-voice model). Nothing to do until that work starts.
 
 ## 8. Hygiene (do opportunistically inside the chantiers above, never as drive-by commits)
 
@@ -79,3 +79,4 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 | 2026-09-20 | S1/S2: break the api cleanly (no @Deprecated shims) — `ScopedStorage`/`ScopedBinaryStorage` replace the 16 scoped views; S4 will use H2 (test scope). | user |
 | 2026-09-20 | C4: command names stay global; collisions are refused loudly (error log naming both owners), no per-plugin prefixing. | user |
 | 2026-09-20 | P5 follow-up: plugins go through `PluginContext`/`AbstractPlugin` scoped views only; legacy getters and shared-manager accessors removed (API break, no stable v3 yet). | user |
+| 2026-09-20 | `OptionType2` renamed to `OptionType` (api break, plugins replace the import). `ai-audio-plugin` stays as the seed of a future voice-to-voice AI plugin. | user |

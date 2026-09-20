@@ -15,7 +15,7 @@ One `Command` model serves three front-ends: Discord slash commands, prefixed te
 | File | Role |
 |---|---|
 | `api/command/Command.java`, `CommandBuilder.java`, `CommandContext.java`, `CommandResult.java`, `CommandService.java`, `CommandRegistry.java` | public contract. `CommandBuilder` has `name/description/category/group/permission/translationKey/alias(es)/guildOnly/guilds/enabled/cooldown`, typed options (`stringOption`, `integerOption` with choices/validator/autocomplete/min-max, `booleanOption`, `userOption`, `channelOption`, `roleOption`, ...), subcommands, and `executor`. |
-| `api/command/option/OptionType2.java` | enum mirroring JDA `OptionType` (the `2` suffix is a naming accident from the generation; plan item C3 renames it). |
+| `api/command/option/OptionType.java` | enum mirroring JDA's `OptionType` (renamed from `OptionType2` on 2026-09-20; `getJdaType()` gives the JDA constant). |
 | `api/command/PluginCommandAdapter.java` | per-plugin façade (`registerCommand`, `unregisterAll`, `getPrefix(guildId)`, sync helpers). |
 | `core/command/SimpleCommandService.java` (~600 lines) | the façade: registry, parsers list, prefixes, JDA sync (`synchronizeCommands` → global + per-guild `updateCommands`, debounced after boot), `enable()`/`disable()`, `processCommand(jdaEvent)` → `dispatch`, autocomplete, system commands. |
 | `core/command/CommandExecutor.java` | the execution pipeline: gating (service enabled → command enabled → guild-only → permission → cooldown → cancellable `CommandExecuteEvent`), execution, cooldown map, metrics, `CommandExecutedEvent`. Console (`ctx.getUser() == null`) skips guild/permission/cooldown. Refusals return a localised error result and are not counted. |
@@ -43,7 +43,7 @@ Prefix: default from `commands.default-prefix`; per-guild override stored via `D
 - `i18n` keys for messages live in core `lang/*.yml` under `commands.messages.*` (`system_disabled`, `disabled`, `guild_only`, `permission_error`, `cooldown`, `execution_cancelled`, `execution_error`); the service uses `ctx.getLocale()`.
 - `synchronizeCommands` silently no-ops when JDA isn't `CONNECTED` — the usual cause of "my command doesn't show up" after a reload.
 - Guild-scoped commands (`guilds(...)`) are synced per guild; global ones take up to an hour to propagate on Discord's side — use guild scope while developing.
-- `OptionType2` ↔ JDA `OptionType` conversion happens in `SimpleCommandService.convertOptionType`; attachment options go through `toFileType`.
+- api `OptionType` ↔ JDA `OptionType` conversion is `OptionType.getJdaType()` (used by `SlashCommandDataMapper`); attachment file types go through `toFileType`.
 
 ## Testing
 - `SimpleCommandRegistryTest`, `CommandAutocompleteTest`, `CommandExecutionTest` (gating, cooldowns, events, metrics, and the reply contract of `processCommand` with mocked `SlashCommandInteractionEvent`s — errors are embeds: capture `reply("").addEmbeds(...)`), `SlashCommandDataMapperTest`, `SubcommandRoutingTest`, `CommandMessageBuilderTest` (the three transports with mocked JDA actions; console captured through `System.setOut`). Missing: `TextCommandParser` (mention/role/channel parsing), `ConsoleCommandParser`, `CommandMessageBuilder`.
@@ -64,4 +64,3 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 - 2026-09-20 (C5): `MessageCreateBuilder.build()` throws on an empty message, so an empty reply travels as `null` to the target. `InteractionCommandContext` (a second, unused `CommandContext` for modals) was dead code — the music plugin has its own `ModalCommandContext`.
 
 ## Known issues / open questions
-- C3 (rename `OptionType2`): still open, API break — ask the user.

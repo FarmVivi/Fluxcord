@@ -3,7 +3,7 @@ package fr.farmvivi.fluxcord.core.command.option;
 import fr.farmvivi.fluxcord.api.command.option.AutocompleteProvider;
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
 import fr.farmvivi.fluxcord.api.command.option.OptionChoice;
-import fr.farmvivi.fluxcord.api.command.option.OptionType2;
+import fr.farmvivi.fluxcord.api.command.option.OptionType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,7 +19,7 @@ import java.util.function.Predicate;
 public record SimpleCommandOption<T>(
         String name,
         String description,
-        OptionType2 type,
+        OptionType type,
         boolean required,
         List<OptionChoice<T>> choices,
         Predicate<T> validator,
@@ -56,7 +56,7 @@ public record SimpleCommandOption<T>(
     }
 
     @Override
-    public OptionType2 getType() {
+    public OptionType getType() {
         return type;
     }
 
@@ -115,7 +115,7 @@ public record SimpleCommandOption<T>(
         private final List<String> fileTypes = new ArrayList<>();
         private String name;
         private String description;
-        private OptionType2 type;
+        private OptionType type;
         private boolean required;
         private Predicate<T> validator;
         private AutocompleteProvider<T> autocompleteProvider;
@@ -152,7 +152,7 @@ public record SimpleCommandOption<T>(
          * @param type the option type
          * @return this builder
          */
-        public Builder<T> type(OptionType2 type) {
+        public Builder<T> type(OptionType type) {
             this.type = type;
             return this;
         }

@@ -3,7 +3,7 @@ package fr.farmvivi.fluxcord.api.command;
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
 import fr.farmvivi.fluxcord.api.command.option.AutocompleteProvider;
 import fr.farmvivi.fluxcord.api.command.option.OptionChoice;
-import fr.farmvivi.fluxcord.api.command.option.OptionType2;
+import fr.farmvivi.fluxcord.api.command.option.OptionType;
 
 import java.util.List;
 import java.util.function.BiFunction;
@@ -336,7 +336,7 @@ public interface CommandBuilder {
      * @param required    true if the option is required
      * @return this builder
      */
-    CommandBuilder option(OptionType2 type, String name, String description, boolean required);
+    CommandBuilder option(OptionType type, String name, String description, boolean required);
 
     /**
      * Adds a generic option to the command.
