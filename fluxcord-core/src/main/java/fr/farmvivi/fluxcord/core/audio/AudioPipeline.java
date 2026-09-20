@@ -78,6 +78,15 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
      * - Retourne un ByteBuffer array-backed pointant sur le buffer interne réutilisé
      */
     private ByteBuffer ensureBigEndianFrame(ByteBuffer le) {
+        return ensureBigEndianFrame(le, 1.0f);
+    }
+
+    /**
+     * Convertit une trame PCM little-endian en big-endian (attente JDA) dans le buffer réutilisable, en
+     * appliquant {@code gain} pendant la même passe (volume × fade d'une source relayée seule). Avec un gain de
+     * 1 la boucle se réduit à l'échange d'octets.
+     */
+    private ByteBuffer ensureBigEndianFrame(ByteBuffer le, float gain) {
         // Lecture: s'assurer d'un tableau source
         byte[] src;
         int srcOff;
@@ -100,11 +109,22 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
         int copy = Math.min(len, FRAME_SIZE_BYTES);
         int i = 0;
         // Conversion LE->BE pour la partie à copier
-        for (; i + 1 < copy; i += 2) {
-            byte lo = src[srcOff + i];
-            byte hi = src[srcOff + i + 1];
-            dst[i] = hi;
-            dst[i + 1] = lo;
+        if (gain == 1.0f) {
+            for (; i + 1 < copy; i += 2) {
+                byte lo = src[srcOff + i];
+                byte hi = src[srcOff + i + 1];
+                dst[i] = hi;
+                dst[i + 1] = lo;
+            }
+        } else {
+            for (; i + 1 < copy; i += 2) {
+                int sample = (short) ((src[srcOff + i] & 0xFF) | (src[srcOff + i + 1] << 8));
+                int scaled = (int) (sample * gain);
+                if (scaled > Short.MAX_VALUE) scaled = Short.MAX_VALUE;
+                if (scaled < Short.MIN_VALUE) scaled = Short.MIN_VALUE;
+                dst[i] = (byte) (scaled >> 8);
+                dst[i + 1] = (byte) scaled;
+            }
         }
         // Si nombre impair (ne devrait pas arriver), compléter le dernier octet par 0
         if ((copy & 1) == 1) {
@@ -414,7 +434,12 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
             boolean bypassMode = bypassModeComputed;
             boolean sendOpus = outputIsOpus;
 
+            float bypassGain = 1.0f;
             if (bypassMode) {
+                // Les fades avancent aussi en bypass, sinon un fade-in ne progresserait jamais
+                for (String pluginName : sendHandlers.keySet()) {
+                    priorityManager.updateFade(pluginName);
+                }
                 // Mode bypass dynamique: plugin sélectionné dans canProvide()
                 if (selectedBypassPluginName == null) {
                     audio = null;
@@ -425,7 +450,9 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
                         audio = handler.provide20MsAudio();
                         activeSourceCount = (audio != null ? 1 : 0);
                         // Ajuste le format de sortie effectif selon le handler (sécurité)
-                        sendOpus = handler != null && handler.isOpus();
+                        sendOpus = handler.isOpus();
+                        // Volume × fade de la source relayée, appliqué pendant la conversion LE->BE (PCM seulement)
+                        bypassGain = calculateEffectiveVolume(selectedBypassPluginName, sourceHandler);
                     } else {
                         audio = null;
                     }
@@ -477,7 +504,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
                     return audio;
                 } else {
                     // JDA attend du PCM BigEndian si isOpus() == false
-                    return ensureBigEndianFrame(audio);
+                    return ensureBigEndianFrame(audio, bypassGain);
                 }
             }
             return null;

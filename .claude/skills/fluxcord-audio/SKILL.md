@@ -36,10 +36,9 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 ## Learnings
 - 2026-09-19: Initial audit. Volume range is read from `AudioService` constants — verify actual numbers before documenting them.
-- 2026-09-20: Internal PCM convention is **little-endian** (docs/audio-api.md); `ensureBigEndianFrame` swaps at the JDA boundary, the mixer outputs LE. Fade fix: `updateFade` now runs before the multiplier is read, so ducking is audible on the first frame (was one frame late). Characterized, not changed: **bypass ignores the source volume and the fade multiplier** (a single PCM source always plays at 100 %, and a ducked source snaps back to full level as soon as it is alone); one PCM + one Opus active → PCM bypassed, Opus dropped for the frame.
+- 2026-09-20: Internal PCM convention is **little-endian** (docs/audio-api.md); `ensureBigEndianFrame` swaps at the JDA boundary, the mixer outputs LE. Fade fix: `updateFade` now runs before the multiplier is read, so ducking is audible on the first frame (was one frame late). Decision 2026-09-20: **bypass applies volume × fade during the LE→BE pass** (`ensureBigEndianFrame(le, gain)`, gain 1 = plain swap) and fades are stepped in bypass too, so `setVolume` works for a lone PCM source and the fade-in after an announcement is audible. Opus relay is untouched. Characterized: one PCM + one Opus active → PCM bypassed, Opus dropped for the frame.
 
 ## Known issues / open questions
 - A1: `AudioServiceImpl` keys by `plugin.getName()` while `PluginManager` keys by id; `closeAllConnectionsForPlugin` therefore depends on names being unique. Switch to id (part of the identity chantier).
-- Bypass ignores volume/fade (see Learnings) — decide with the user whether a single PCM source should go through the mixer when volume < 100 or a fade is in progress.
 - A2: `AudioPipeline` mixes frame strategy, mixing, fades, receive fan-out and JDA adapter in one class; extract `SendStrategy` (bypass/mix decision) to make it testable.
 - `plugins/ai-audio-plugin` is a stub full of TODOs (speech recognition / TTS services do nothing) — decide with the user whether to keep it in the reactor.

@@ -121,15 +121,14 @@ class AudioPipelineTest {
     // --- bypass ---------------------------------------------------------------------------------
 
     @Test
-    void singlePcmSourceIsBypassedAsBigEndianAtFullVolume() {
+    void singlePcmSourceIsBypassedAsBigEndian() {
         FakeSource source = new FakeSource(false, (short) 1000);
-        pipeline.registerSendHandler(music, source, 50, 50); // volume 50 %
+        pipeline.registerSendHandler(music, source, 100, 50);
 
         ByteBuffer out = frame();
 
         assertFalse(pipeline.isOpus());
         assertEquals(FRAME_BYTES, out.remaining());
-        // Characterization: bypass ignores the source volume (only the mixer applies it).
         assertEquals(1000, firstSampleBigEndian(out));
         assertEquals(1, source.provideCalls);
 
@@ -260,15 +259,42 @@ class AudioPipelineTest {
         }
         assertEquals(0, levels[FADE_FRAMES - 1], "fully ducked after 200 ms");
 
+        // Announcement over: back alone (bypass) but the fade-in still ramps up over 200 ms.
         announcement.active = false;
-        assertEquals(1000, firstSampleBigEndian(frame()),
-                "characterization: back alone → bypass, which ignores the fade multiplier (no fade-in)");
-
-        announcement.active = true;
-        for (int i = 0; i <= FADE_FRAMES; i++) {
-            frame();
+        short[] ramp = new short[FADE_FRAMES];
+        for (int i = 0; i < FADE_FRAMES; i++) {
+            ramp[i] = firstSampleBigEndian(frame());
         }
-        assertEquals(0, firstSampleBigEndian(frame()), "ducked again");
+        assertTrue(ramp[0] > 0 && ramp[0] < 1000, "fade-in starts on the first frame: " + ramp[0]);
+        for (int i = 1; i < FADE_FRAMES; i++) {
+            assertTrue(ramp[i] >= ramp[i - 1], "monotonic fade-in: " + ramp[i - 1] + " -> " + ramp[i]);
+        }
+        assertEquals(1000, ramp[FADE_FRAMES - 1], "back to full level after 200 ms");
+        assertEquals(1000, firstSampleBigEndian(frame()));
+    }
+
+    @Test
+    void singlePcmSourceVolumeIsAppliedInBypass() {
+        FakeSource source = new FakeSource(false, (short) 1000);
+        pipeline.registerSendHandler(music, source, 50, 50);
+
+        assertEquals(500, firstSampleBigEndian(frame()));
+        pipeline.setVolume(music, 100);
+        assertEquals(1000, firstSampleBigEndian(frame()));
+        pipeline.setVolume(music, 0);
+        assertEquals(0, firstSampleBigEndian(frame()));
+    }
+
+    @Test
+    void bypassGainClipsLikeTheMixer() {
+        FakeSource source = new FakeSource(false, (short) -30000);
+        pipeline.registerSendHandler(music, source, 100, 50);
+        assertEquals(-30000, firstSampleBigEndian(frame()), "gain 1: pure byte swap, no clipping needed");
+
+        // A fade multiplier cannot exceed 1 and volume is capped at 100, so clipping can only come
+        // from rounding; check the sign path and the exact swap on a negative sample.
+        pipeline.setVolume(music, 50);
+        assertEquals(-15000, firstSampleBigEndian(frame()));
     }
 
     @Test

@@ -51,7 +51,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 ## 7. Audio
 
 - [ ] **A1 — Key by plugin id** (see P2).
-- [ ] **A2 — Extract the send strategy** (bypass vs mix, Opus rejection, priority fades) from `AudioPipeline` into a testable class; translate the French comments while there. Open question found 2026-09-20: bypass (single PCM source) ignores volume and fade — decide whether volume < 100 or an active fade should force the mixer path.
+- [ ] **A2 — Extract the send strategy** (bypass vs mix, Opus rejection, priority fades) from `AudioPipeline` into a testable class; translate the French comments while there. Decided 2026-09-20: bypass now applies volume × fade in its existing LE→BE pass (no extra pass; Opus untouched).
 - [ ] **A3 — `ai-audio-plugin`** is a stub of TODOs; remove from the reactor or make it a real example — user decision.
 
 ## 8. Hygiene (do opportunistically inside the chantiers above, never as drive-by commits)
@@ -70,3 +70,4 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 | 2026-09-19 | Plan created; skills + Stop hook introduced; first chantier to be chosen after review. | user + Claude |
 | 2026-09-20 | T0 done as a dedicated workflow + JaCoCo report-only (no threshold), CI also on Dependabot PRs. Keep working on `develop`; branches optional. | user |
 | 2026-09-20 | E1: polymorphic dispatch and Bukkit `ignoreCancelled` semantics (API behaviour change; no plugin in the repo used `ignoreCancelled`). | user |
+| 2026-09-20 | i18n fallback: configured default locale before en-US. Audio: lone PCM source keeps the bypass path but gets volume/fade applied in the byte-swap pass. | user |

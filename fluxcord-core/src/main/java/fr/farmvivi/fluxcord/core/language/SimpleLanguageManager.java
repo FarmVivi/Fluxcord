@@ -299,7 +299,56 @@ public class SimpleLanguageManager implements LanguageManager {
             }
         }
 
-        // 3. Si la locale n'est pas l'anglais, essayer dans la locale anglaise du dossier runtime
+        // 3. Si la locale n'est pas la locale par défaut configurée, essayer celle-ci (runtime) — avant l'anglais,
+        //    pour qu'un bot configuré fr-FR réponde en français à une locale inconnue
+        if (!locale.equals(defaultLocale)) {
+            translation = getTranslationFromRuntime(namespace, defaultLocale, actualKey);
+            if (translation != null) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Translation hit (runtime) for [{}:{}] in default locale {}", namespace, actualKey, defaultLocale.toLanguageTag());
+                }
+                // If we have an event manager, fire a string retrieval event
+                if (eventManager != null) {
+                    StringRetrievalEvent event = new StringRetrievalEvent(
+                            namespace, defaultLocale, actualKey, null, translation);
+                    eventManager.fireEvent(event);
+
+                    // If the event overrode the value, use that instead
+                    if (event.isOverridden()) {
+                        return event.getValue();
+                    }
+                }
+                return translation;
+            }
+            if (logger.isDebugEnabled()) {
+                logger.debug("Translation miss (runtime) for [{}:{}] in default locale {}", namespace, actualKey, defaultLocale.toLanguageTag());
+            }
+
+            // 4. Essayer dans la locale par défaut des ressources
+            translation = getTranslationFromResources(namespace, defaultLocale, actualKey);
+            if (translation != null) {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Translation hit (resources) for [{}:{}] in default locale {}", namespace, actualKey, defaultLocale.toLanguageTag());
+                }
+                // If we have an event manager, fire a string retrieval event
+                if (eventManager != null) {
+                    StringRetrievalEvent event = new StringRetrievalEvent(
+                            namespace, defaultLocale, actualKey, null, translation);
+                    eventManager.fireEvent(event);
+
+                    // If the event overrode the value, use that instead
+                    if (event.isOverridden()) {
+                        return event.getValue();
+                    }
+                }
+                return translation;
+            }
+            if (logger.isDebugEnabled()) {
+                logger.debug("Translation miss (resources) for [{}:{}] in default locale {}", namespace, actualKey, defaultLocale.toLanguageTag());
+            }
+        }
+
+        // 5. Si la locale n'est pas l'anglais, essayer dans la locale anglaise du dossier runtime (filet final)
         if (!locale.getLanguage().equals("en")) {
             Locale englishLocale = Locale.forLanguageTag("en-US");
             translation = getTranslationFromRuntime(namespace, englishLocale, actualKey);
@@ -324,7 +373,7 @@ public class SimpleLanguageManager implements LanguageManager {
                 logger.debug("Translation miss (runtime) for [{}:{}] in fallback en-US", namespace, actualKey);
             }
 
-            // 4. Essayer dans la locale anglaise des ressources par défaut
+            // 6. Essayer dans la locale anglaise des ressources par défaut
             translation = getTranslationFromResources(namespace, englishLocale, actualKey);
             if (translation != null) {
                 if (logger.isDebugEnabled()) {
@@ -345,54 +394,6 @@ public class SimpleLanguageManager implements LanguageManager {
             }
             if (logger.isDebugEnabled()) {
                 logger.debug("Translation miss (resources) for [{}:{}] in fallback en-US", namespace, actualKey);
-            }
-        }
-
-        // 5. Si la locale n'est pas la locale par défaut, essayer dans la locale par défaut du runtime
-        if (!locale.equals(defaultLocale)) {
-            translation = getTranslationFromRuntime(namespace, defaultLocale, actualKey);
-            if (translation != null) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Translation hit (runtime) for [{}:{}] in default locale {}", namespace, actualKey, defaultLocale.toLanguageTag());
-                }
-                // If we have an event manager, fire a string retrieval event
-                if (eventManager != null) {
-                    StringRetrievalEvent event = new StringRetrievalEvent(
-                            namespace, defaultLocale, actualKey, null, translation);
-                    eventManager.fireEvent(event);
-
-                    // If the event overrode the value, use that instead
-                    if (event.isOverridden()) {
-                        return event.getValue();
-                    }
-                }
-                return translation;
-            }
-            if (logger.isDebugEnabled()) {
-                logger.debug("Translation miss (runtime) for [{}:{}] in default locale {}", namespace, actualKey, defaultLocale.toLanguageTag());
-            }
-
-            // 6. Essayer dans la locale par défaut des ressources
-            translation = getTranslationFromResources(namespace, defaultLocale, actualKey);
-            if (translation != null) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Translation hit (resources) for [{}:{}] in default locale {}", namespace, actualKey, defaultLocale.toLanguageTag());
-                }
-                // If we have an event manager, fire a string retrieval event
-                if (eventManager != null) {
-                    StringRetrievalEvent event = new StringRetrievalEvent(
-                            namespace, defaultLocale, actualKey, null, translation);
-                    eventManager.fireEvent(event);
-
-                    // If the event overrode the value, use that instead
-                    if (event.isOverridden()) {
-                        return event.getValue();
-                    }
-                }
-                return translation;
-            }
-            if (logger.isDebugEnabled()) {
-                logger.debug("Translation miss (resources) for [{}:{}] in default locale {}", namespace, actualKey, defaultLocale.toLanguageTag());
             }
         }
 

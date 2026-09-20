@@ -109,15 +109,17 @@ class SimpleLanguageManagerTest {
     }
 
     @Test
-    void englishIsTriedBeforeTheConfiguredDefaultLocale() {
-        // Characterization: with default fr-FR, a German user still gets en-US before fr-FR.
+    void configuredDefaultLocaleIsTriedBeforeEnglish() {
+        // Decision 2026-09-20: a bot configured fr-FR answers an unknown locale in French; en-US is the last net.
         SimpleLanguageManager frDefault = new SimpleLanguageManager(FR_FR);
-        assertEquals("This command is disabled", frDefault.getString(DE_DE, "commands.messages.disabled"));
+        assertEquals("Cette commande est désactivée", frDefault.getString(DE_DE, "commands.messages.disabled"));
+        assertEquals("This command is disabled", frDefault.getString(EN_US, "commands.messages.disabled"),
+                "an explicit English request still gets English");
 
-        // The default locale is only reached when en-US has no value either.
+        frDefault.loadLanguage("core", EN_US, Map.of("only.english", "Only"));
+        assertEquals("Only", frDefault.getString(DE_DE, "only.english"), "en-US still catches what the default lacks");
         frDefault.loadLanguage("core", FR_FR, Map.of("only.french", "Seulement"));
-        assertEquals("Seulement", frDefault.getString(DE_DE, "only.french"));
-        assertEquals("Seulement", frDefault.getString(EN_US, "only.french"));
+        assertEquals("Seulement", frDefault.getString(EN_US, "only.french"), "and the default catches what en-US lacks");
     }
 
     @Test
