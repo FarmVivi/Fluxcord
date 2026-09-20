@@ -3,67 +3,35 @@ package fr.farmvivi.fluxcord.api.storage.binary;
 import fr.farmvivi.fluxcord.api.plugin.Plugin;
 
 /**
- * Adapter for plugin-specific binary storage operations.
- * Automatically handles namespacing and scoping for the plugin.
+ * A plugin's window on the binary storage: the same scopes as {@link BinaryStorageManager}, with every path
+ * placed under the plugin id ({@code <pluginId>/<path>}).
  */
 public class PluginBinaryStorageAdapter {
-    private final Plugin plugin;
     private final BinaryStorageManager storageManager;
     private final String namespace;
 
-    /**
-     * Creates a new plugin binary storage adapter.
-     *
-     * @param plugin         the plugin
-     * @param storageManager the binary storage manager
-     */
     public PluginBinaryStorageAdapter(Plugin plugin, BinaryStorageManager storageManager) {
-        this.plugin = plugin;
         this.storageManager = storageManager;
         this.namespace = plugin.getId();
     }
 
-    /**
-     * Gets the global binary storage context for this plugin.
-     * Paths are automatically namespaced with the plugin name.
-     *
-     * @return the plugin's global binary storage
-     */
-    public PluginGlobalBinaryStorage getGlobalStorage() {
-        return new PluginGlobalBinaryStorage(storageManager.getGlobalStorage(), namespace);
+    /** @return the plugin's view of the global scope */
+    public ScopedBinaryStorage getGlobalStorage() {
+        return storageManager.getGlobalStorage().namespaced(namespace);
     }
 
-    /**
-     * Gets the user binary storage context for this plugin.
-     * Paths are automatically namespaced with the plugin name.
-     *
-     * @param userId the user ID
-     * @return the plugin's user binary storage
-     */
-    public PluginUserBinaryStorage getUserStorage(String userId) {
-        return new PluginUserBinaryStorage(storageManager.getUserStorage(userId), namespace);
+    /** @return the plugin's view of a user's scope */
+    public ScopedBinaryStorage getUserStorage(String userId) {
+        return storageManager.getUserStorage(userId).namespaced(namespace);
     }
 
-    /**
-     * Gets the guild binary storage context for this plugin.
-     * Paths are automatically namespaced with the plugin name.
-     *
-     * @param guildId the guild ID
-     * @return the plugin's guild binary storage
-     */
-    public PluginGuildBinaryStorage getGuildStorage(String guildId) {
-        return new PluginGuildBinaryStorage(storageManager.getGuildStorage(guildId), namespace);
+    /** @return the plugin's view of a guild's scope */
+    public ScopedBinaryStorage getGuildStorage(String guildId) {
+        return storageManager.getGuildStorage(guildId).namespaced(namespace);
     }
 
-    /**
-     * Gets the user-guild binary storage context for this plugin.
-     * Paths are automatically namespaced with the plugin name.
-     *
-     * @param userId  the user ID
-     * @param guildId the guild ID
-     * @return the plugin's user-guild binary storage
-     */
-    public PluginUserGuildBinaryStorage getUserGuildStorage(String userId, String guildId) {
-        return new PluginUserGuildBinaryStorage(storageManager.getUserGuildStorage(userId, guildId), namespace);
+    /** @return the plugin's view of a user's scope inside a guild */
+    public ScopedBinaryStorage getUserGuildStorage(String userId, String guildId) {
+        return storageManager.getUserGuildStorage(userId, guildId).namespaced(namespace);
     }
 }

@@ -42,7 +42,7 @@ public class StorageFactory {
                 // Create database storage
                 DatabaseDataStorage dbStorage = new DatabaseDataStorage(config, eventManager);
                 logger.info("Using database storage");
-                return new DataStorageManager(dbStorage);
+                return new SimpleDataStorageManager(dbStorage);
             } catch (Exception e) {
                 logger.error("Failed to initialize database storage: {}", e.getMessage());
                 if (!isFallbackEnabled(config)) {
@@ -89,7 +89,7 @@ public class StorageFactory {
 
         FileDataStorage fileStorage = new FileDataStorage(storageFolder, eventManager, debounceMs);
         logger.info("Using file storage in {}", storageFolder.getAbsolutePath());
-        return new DataStorageManager(fileStorage);
+        return new SimpleDataStorageManager(fileStorage);
     }
 
     /**

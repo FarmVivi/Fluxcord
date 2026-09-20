@@ -3,74 +3,43 @@ package fr.farmvivi.fluxcord.api.storage;
 import fr.farmvivi.fluxcord.api.plugin.Plugin;
 
 /**
- * Adapter for plugin-specific data storage operations.
- * Automatically handles namespacing and scoping for the plugin.
+ * A plugin's window on the data storage: the same scopes as {@link DataStorageManager}, with every key
+ * namespaced by the plugin id ({@code <pluginId>.<key>}) so plugins never collide with each other or with the
+ * core.
  */
 public class PluginDataStorageAdapter {
-    private final Plugin plugin;
     private final DataStorageManager storageManager;
     private final String namespace;
 
-    /**
-     * Creates a new plugin data storage adapter.
-     *
-     * @param plugin         the plugin
-     * @param storageManager the data storage manager
-     */
     public PluginDataStorageAdapter(Plugin plugin, DataStorageManager storageManager) {
-        this.plugin = plugin;
         this.storageManager = storageManager;
         this.namespace = plugin.getId();
     }
 
-    /**
-     * Gets the global storage context for this plugin.
-     * Keys are automatically namespaced with the plugin name.
-     *
-     * @return the plugin's global storage
-     */
-    public PluginGlobalStorage getGlobalStorage() {
-        return new PluginGlobalStorage(storageManager.getGlobalStorage(), namespace);
+    /** @return the plugin's view of the global scope */
+    public ScopedStorage getGlobalStorage() {
+        return storageManager.getGlobalStorage().namespaced(namespace);
+    }
+
+    /** @return the plugin's view of a user's scope */
+    public ScopedStorage getUserStorage(String userId) {
+        return storageManager.getUserStorage(userId).namespaced(namespace);
+    }
+
+    /** @return the plugin's view of a guild's scope */
+    public ScopedStorage getGuildStorage(String guildId) {
+        return storageManager.getGuildStorage(guildId).namespaced(namespace);
+    }
+
+    /** @return the plugin's view of a user's scope inside a guild */
+    public ScopedStorage getUserGuildStorage(String userId, String guildId) {
+        return storageManager.getUserGuildStorage(userId, guildId).namespaced(namespace);
     }
 
     /**
-     * Gets the user storage context for this plugin.
-     * Keys are automatically namespaced with the plugin name.
+     * Flushes pending writes of the whole storage (not only this plugin's keys).
      *
-     * @param userId the user ID
-     * @return the plugin's user storage
-     */
-    public PluginUserStorage getUserStorage(String userId) {
-        return new PluginUserStorage(storageManager.getUserStorage(userId), namespace);
-    }
-
-    /**
-     * Gets the guild storage context for this plugin.
-     * Keys are automatically namespaced with the plugin name.
-     *
-     * @param guildId the guild ID
-     * @return the plugin's guild storage
-     */
-    public PluginGuildStorage getGuildStorage(String guildId) {
-        return new PluginGuildStorage(storageManager.getGuildStorage(guildId), namespace);
-    }
-
-    /**
-     * Gets the user-guild storage context for this plugin.
-     * Keys are automatically namespaced with the plugin name.
-     *
-     * @param userId  the user ID
-     * @param guildId the guild ID
-     * @return the plugin's user-guild storage
-     */
-    public PluginUserGuildStorage getUserGuildStorage(String userId, String guildId) {
-        return new PluginUserGuildStorage(storageManager.getUserGuildStorage(userId, guildId), namespace);
-    }
-
-    /**
-     * Saves all pending changes.
-     *
-     * @return true if the operation was successful
+     * @return true when the flush succeeded
      */
     public boolean saveAll() {
         return storageManager.saveAll();

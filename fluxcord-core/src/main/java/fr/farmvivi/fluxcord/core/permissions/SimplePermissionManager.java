@@ -8,8 +8,7 @@ import fr.farmvivi.fluxcord.api.permissions.events.PermissionChangeEvent;
 import fr.farmvivi.fluxcord.api.permissions.events.PermissionCheckEvent;
 import fr.farmvivi.fluxcord.api.plugin.Plugin;
 import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
-import fr.farmvivi.fluxcord.api.storage.UserGuildStorage;
-import fr.farmvivi.fluxcord.api.storage.UserStorage;
+import fr.farmvivi.fluxcord.api.storage.ScopedStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -236,7 +235,7 @@ public class SimplePermissionManager implements PermissionManager {
         if (userId == null) {
             return;
         }
-        UserStorage storage = userStorage(userId);
+        ScopedStorage storage = userStorage(userId);
         for (String key : storage.getKeys()) {
             if (key.startsWith(PERMISSION_KEY_PREFIX)) {
                 storage.remove(key);
@@ -251,7 +250,7 @@ public class SimplePermissionManager implements PermissionManager {
         if (userId == null || guildId == null) {
             return;
         }
-        UserGuildStorage storage = userGuildStorage(userId, guildId);
+        ScopedStorage storage = userGuildStorage(userId, guildId);
         for (String key : storage.getKeys()) {
             if (key.startsWith(PERMISSION_KEY_PREFIX)) {
                 storage.remove(key);
@@ -350,11 +349,11 @@ public class SimplePermissionManager implements PermissionManager {
         logger.debug("Cleared permission caches");
     }
 
-    private UserStorage userStorage(String userId) {
+    private ScopedStorage userStorage(String userId) {
         return dataStorageManager.getUserStorage(userId);
     }
 
-    private UserGuildStorage userGuildStorage(String userId, String guildId) {
+    private ScopedStorage userGuildStorage(String userId, String guildId) {
         return dataStorageManager.getUserGuildStorage(userId, guildId);
     }
 

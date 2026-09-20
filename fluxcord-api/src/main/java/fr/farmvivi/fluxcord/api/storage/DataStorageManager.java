@@ -1,81 +1,35 @@
 package fr.farmvivi.fluxcord.api.storage;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
- * Manager class that provides a unified interface to the storage system.
- * This is the main entry point for plugins to interact with data storage.
+ * Entry point of the key/value storage: hands out {@link ScopedStorage} views over the configured backend.
+ * Plugins normally go through {@code AbstractPlugin.getPluginDataStorage()}, which namespaces these views by
+ * plugin id; the core uses this manager directly.
  */
-public class DataStorageManager {
-    private static final Logger logger = LoggerFactory.getLogger(DataStorageManager.class);
+public interface DataStorageManager {
 
-    private final DataStorage storage;
+    /** @return the view of the global scope */
+    ScopedStorage getGlobalStorage();
 
-    /**
-     * Creates a new data storage manager.
-     *
-     * @param storage the underlying storage implementation
-     */
-    public DataStorageManager(DataStorage storage) {
-        this.storage = storage;
-    }
+    /** @return the view of a user's scope */
+    ScopedStorage getUserStorage(String userId);
 
-    /**
-     * Gets the global storage.
-     *
-     * @return the global storage
-     */
-    public GlobalStorage getGlobalStorage() {
-        return new GlobalStorage(storage);
-    }
+    /** @return the view of a guild's scope */
+    ScopedStorage getGuildStorage(String guildId);
+
+    /** @return the view of a user's scope inside a guild */
+    ScopedStorage getUserGuildStorage(String userId, String guildId);
 
     /**
-     * Gets the user storage for a specific user.
+     * Flushes pending writes to the backend.
      *
-     * @param userId the user ID
-     * @return the user storage
+     * @return true when the flush succeeded
      */
-    public UserStorage getUserStorage(String userId) {
-        return new UserStorage(storage, userId);
-    }
+    boolean saveAll();
 
     /**
-     * Gets the guild storage for a specific guild.
+     * Flushes and releases the backend.
      *
-     * @param guildId the guild ID
-     * @return the guild storage
+     * @return true when the backend closed cleanly
      */
-    public GuildStorage getGuildStorage(String guildId) {
-        return new GuildStorage(storage, guildId);
-    }
-
-    /**
-     * Gets the user-guild storage for a specific user and guild.
-     *
-     * @param userId  the user ID
-     * @param guildId the guild ID
-     * @return the user-guild storage
-     */
-    public UserGuildStorage getUserGuildStorage(String userId, String guildId) {
-        return new UserGuildStorage(storage, userId, guildId);
-    }
-
-    /**
-     * Saves all pending changes.
-     *
-     * @return true if the operation was successful
-     */
-    public boolean saveAll() {
-        return storage.save();
-    }
-
-    /**
-     * Closes the storage and releases resources.
-     *
-     * @return true if the operation was successful
-     */
-    public boolean close() {
-        return storage.close();
-    }
+    boolean close();
 }

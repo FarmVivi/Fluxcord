@@ -1,72 +1,28 @@
 package fr.farmvivi.fluxcord.api.storage.binary;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
- * Manager class for binary storage operations.
- * Provides convenience methods for accessing different storage scopes.
+ * Entry point of the binary (file) storage: hands out {@link ScopedBinaryStorage} views over the configured
+ * backend. Plugins normally go through {@code AbstractPlugin.getPluginBinaryStorage()}, which namespaces these
+ * views by plugin id.
  */
-public class BinaryStorageManager {
-    private static final Logger logger = LoggerFactory.getLogger(BinaryStorageManager.class);
+public interface BinaryStorageManager {
 
-    private final BinaryStorage storage;
+    /** @return the view of the global scope */
+    ScopedBinaryStorage getGlobalStorage();
 
-    /**
-     * Creates a new binary storage manager.
-     *
-     * @param storage the storage implementation
-     */
-    public BinaryStorageManager(BinaryStorage storage) {
-        this.storage = storage;
-    }
+    /** @return the view of a user's scope */
+    ScopedBinaryStorage getUserStorage(String userId);
 
-    /**
-     * Gets the global binary storage.
-     *
-     * @return the global storage
-     */
-    public GlobalBinaryStorage getGlobalStorage() {
-        return new GlobalBinaryStorage(storage);
-    }
+    /** @return the view of a guild's scope */
+    ScopedBinaryStorage getGuildStorage(String guildId);
+
+    /** @return the view of a user's scope inside a guild */
+    ScopedBinaryStorage getUserGuildStorage(String userId, String guildId);
 
     /**
-     * Gets the user binary storage for a specific user.
+     * Releases the backend.
      *
-     * @param userId the user ID
-     * @return the user storage
+     * @return true when the backend closed cleanly
      */
-    public UserBinaryStorage getUserStorage(String userId) {
-        return new UserBinaryStorage(storage, userId);
-    }
-
-    /**
-     * Gets the guild binary storage for a specific guild.
-     *
-     * @param guildId the guild ID
-     * @return the guild storage
-     */
-    public GuildBinaryStorage getGuildStorage(String guildId) {
-        return new GuildBinaryStorage(storage, guildId);
-    }
-
-    /**
-     * Gets the user-guild binary storage for a specific user and guild.
-     *
-     * @param userId  the user ID
-     * @param guildId the guild ID
-     * @return the user-guild storage
-     */
-    public UserGuildBinaryStorage getUserGuildStorage(String userId, String guildId) {
-        return new UserGuildBinaryStorage(storage, userId, guildId);
-    }
-
-    /**
-     * Closes the storage manager and releases resources.
-     *
-     * @return true if closed successfully
-     */
-    public boolean close() {
-        return storage.close();
-    }
+    boolean close();
 }

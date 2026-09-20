@@ -2,7 +2,7 @@ package fr.farmvivi.fluxcord.plugins.music.ui;
 
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import fr.farmvivi.fluxcord.api.language.PluginLanguageAdapter;
-import fr.farmvivi.fluxcord.api.storage.PluginGuildStorage;
+import fr.farmvivi.fluxcord.api.storage.ScopedStorage;
 import fr.farmvivi.fluxcord.plugins.music.player.MusicPlayer;
 import fr.farmvivi.fluxcord.plugins.music.utils.TimeParser;
 import net.dv8tion.jda.api.EmbedBuilder;
@@ -494,7 +494,7 @@ public class MusicPlayerMessage {
      */
     private void saveMessage() {
         String guildId = musicPlayer.getGuild().getId();
-        PluginGuildStorage guildStorage = musicPlayer.getPlugin().getPluginDataStorage().getGuildStorage(guildId);
+        ScopedStorage guildStorage = musicPlayer.getPlugin().getPluginDataStorage().getGuildStorage(guildId);
         // Persist Discord snowflakes as Strings: stored as JSON numbers they would be reloaded as
         // doubles and lose precision (a 19-digit ID gets rounded), breaking message retrieval.
         if (messageId != null) {
@@ -532,7 +532,7 @@ public class MusicPlayerMessage {
      */
     private void restoreMessage() {
         String guildId = musicPlayer.getGuild().getId();
-        PluginGuildStorage guildStorage = musicPlayer.getPlugin().getPluginDataStorage().getGuildStorage(guildId);
+        ScopedStorage guildStorage = musicPlayer.getPlugin().getPluginDataStorage().getGuildStorage(guildId);
         Long storedMessageId = parseIdOrNull(guildStorage.get("player_messages.message_id", String.class).orElse(null));
         Long storedChannelId = parseIdOrNull(guildStorage.get("player_messages.channel_id", String.class).orElse(null));
 

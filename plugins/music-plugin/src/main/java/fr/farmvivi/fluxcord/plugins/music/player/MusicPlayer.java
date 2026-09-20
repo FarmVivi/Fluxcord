@@ -3,7 +3,7 @@ package fr.farmvivi.fluxcord.plugins.music.player;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
-import fr.farmvivi.fluxcord.api.storage.PluginGuildStorage;
+import fr.farmvivi.fluxcord.api.storage.ScopedStorage;
 import fr.farmvivi.fluxcord.plugins.music.MusicPlugin;
 import fr.farmvivi.fluxcord.plugins.music.audio.AudioPlayerSendHandler;
 import fr.farmvivi.fluxcord.plugins.music.state.PlaybackState;
@@ -464,7 +464,7 @@ public class MusicPlayer {
         }
         try {
             PlaybackState state = captureState();
-            PluginGuildStorage storage = plugin.getPluginDataStorage().getGuildStorage(guild.getId());
+            ScopedStorage storage = plugin.getPluginDataStorage().getGuildStorage(guild.getId());
             if (state.hasPlayback() && state.getVoiceChannelId() != null) {
                 storage.set(STATE_KEY, state.toMap());
             } else {

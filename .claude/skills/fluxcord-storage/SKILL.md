@@ -10,8 +10,8 @@ paths:
 
 ## Key/value data storage
 - Contract: `api/storage/DataStorage` — `get(StorageKey, Class<T>)`, `set`, `exists`, `remove`, `getKeys(scope)`, `getAll(scope)`, `clear(scope)`, `save()`, `close()`. `StorageKey(scope, key)` record with factories `global(key)`, `user(userId, key)`, `guild(guildId, key)`, `userGuild(userId, guildId, key)` — scope is a string like `user:<id>`.
-- `api/storage/DataStorageManager` is a **concrete class in the api module** wrapping one `DataStorage`; it hands out scoped views `GlobalStorage`, `UserStorage`, `GuildStorage`, `UserGuildStorage`, and `saveAll()/close()`.
-- Plugin namespacing: `PluginDataStorageAdapter` (from `AbstractPlugin.getPluginDataStorage()`) returns `PluginGlobalStorage`/`PluginUserStorage`/`PluginGuildStorage`/`PluginUserGuildStorage`, which prefix keys with `<pluginId>.` — same scope, prefixed key. Core uses unprefixed keys (e.g. `commands.prefix` in guild scope for prefixes, permissions in `SimplePermissionManager`).
+- `api/storage/DataStorageManager` is an **interface** (impl `core/storage/SimpleDataStorageManager`, built by `StorageFactory`); `getGlobalStorage()/getUserStorage(id)/getGuildStorage(id)/getUserGuildStorage(u, g)` return one `api/storage/ScopedStorage` (final class: `DataStorage` + scope + key prefix), plus `saveAll()/close()`. Scope strings come from `StorageKey.globalScope()/userScope()/guildScope()/userGuildScope()` — the only place the formats live.
+- Plugin namespacing: `PluginDataStorageAdapter` (from `AbstractPlugin.getPluginDataStorage()`) returns `scopedView.namespaced(pluginId)`: keys are stored as `<pluginId>.<key>` in the same scope; `getKeys()/getAll()` strip the prefix and hide other keys, `clear()` removes only the namespaced keys (an un-namespaced `clear()` drops the whole scope). Core uses unprefixed views (`commands.prefix` in guild scope, `permission.*` in `SimplePermissionManager`).
 - Values are serialized with Gson (both backends); `get` deserializes to the requested class. Records / complex generics need care (Gson + Java records works since 2.10 but check `TypeToken` needs for lists).
 
 ### Implementations (`core/storage`)
@@ -21,18 +21,17 @@ paths:
 - `StorageFactory.createStorageManager(config, eventManager)` — reads `data.storage.type` (`FILE`|`DB`), validates DB settings, and if `data.storage.fallback: true` degrades to FILE when the DB is unreachable at boot (otherwise throws → `Fluxcord` exits).
 
 ## Binary storage
-- Contract: `api/storage/binary/BinaryStorage` (+ `BinaryStorageKey`, scoped views `GlobalBinaryStorage`... and `Plugin*BinaryStorage` namespaced variants, events `FileUploadEvent`/`FileDownloadEvent`/`FileDeleteEvent`).
+- Contract: `api/storage/binary/BinaryStorage` (+ `BinaryStorageKey`, events `FileUploadEvent`/`FileDownloadEvent`/`FileDeleteEvent`). `BinaryStorageManager` is an interface (impl `core/storage/binary/SimpleBinaryStorageManager`) returning `ScopedBinaryStorage` views; `PluginBinaryStorageAdapter` namespaces paths under `<pluginId>/` and `listFiles` strips it. Paths are normalised (`\` → `/`, leading `/` dropped) by `BinaryStorageKey.normalizePath` (package-private, shared with the view).
 - `core/storage/binary/AbstractBinaryStorage`, `file/FileBinaryStorage` (folder from `data.binary.storage.file.folder`), `s3/S3BinaryStorage` (~510 lines, AWS SDK v2: bucket/region/keys/endpoint/prefix/`path_style_access`). `BinaryStorageFactory` mirrors `StorageFactory` incl. `fallback`.
 - The shaded jar keeps JDBC drivers SPI-registered via `ServicesResourceTransformer` in `fluxcord-core/pom.xml` — keep it when touching shading.
 
 ## Gotchas
 - `saveAll()` is called by `PluginManager.reloadPlugins()` before disabling; the shutdown path relies on `dataStorageManager.close()` in `Fluxcord.shutdownBot`, which now stops the debouncers before the final save. A JVM *kill* (not a clean shutdown) between debounce ticks still loses the last writes (FILE backend).
 - Scope strings are built by string concatenation in several places (`StorageKey` factories, adapters, `SimplePermissionManager`); grep before renaming a scope format — stored data would become unreachable.
-- `DataStorageManager` living in `fluxcord-api` as a class (with an SLF4J logger) means api consumers can't mock it as an interface and the api module carries implementation (plan item S1).
 - Changing backend FILE → DB does **not** migrate existing data; there is no migration tool.
 
 ## Testing
-- Existing: `AbstractDataStorageTest` (fake backend, 13), `FileDataStorageTest` (9), `FileDataStorageColdStartTest`, `SqlDialectTest`. Missing: `DatabaseDataStorage` (could use H2 in MySQL mode, or Testcontainers — ask the user before adding a test dependency), fallback path of the factories, binary storages.
+- Existing: `AbstractDataStorageTest` (fake backend, 13), `FileDataStorageTest` (9), `FileDataStorageColdStartTest`, `SqlDialectTest`, `ScopedStorageTest` (scope formats, plugin prefixing, binary paths — the on-disk layout contract). Missing: `DatabaseDataStorage` (could use H2 in MySQL mode, or Testcontainers — ask the user before adding a test dependency), fallback path of the factories, binary storages.
 - For file storage tests use `@TempDir` and a tiny `saveDebounceMs`.
 
 ## Improvement loop (mandatory — see /skill-maintenance)
@@ -45,7 +44,7 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 - 2026-09-20: `AbstractDataStorage.cache` is shared with `FileDataStorage.loadScopeData` (same map instance per scope): the cache *is* the on-disk data model for the FILE backend, so mutating it mutates what gets saved.
 - 2026-09-20: **Data-loss bug fixed**: `AbstractDataStorage.set` created the scope's cache entry *before* `doSet`, so on a cold scope `FileDataStorage.loadScopeData` saw a non-null (empty) cache and never read the file — the next save wrote only the new key (e.g. saving `music.state` after a restart wiped `commands.prefix` of that guild). Also: removing the last key was never persisted (`saveScopeData` skipped empty maps), and a corrupt `data.json` threw `JsonSyntaxException` on every access (only `IOException` was caught).
 
+- 2026-09-20 (S1/S2): managers are interfaces; the 16 scoped-view classes were deleted in favour of `ScopedStorage`/`ScopedBinaryStorage` (`namespaced(id)` composes prefixes: `a.b.key`). Plugins that referenced `PluginGuildStorage` & co must switch to `ScopedStorage` (music plugin done). Tests for the storage layer live in `fluxcord-core` — `fluxcord-api` has no test module.
+
 ## Known issues / open questions
-- S1: turn `DataStorageManager`/`BinaryStorageManager` into interfaces in api with implementations in core (API break for plugins that `new` them — unlikely; ask).
-- S2: the 8 scoped-view classes × 2 (plain / plugin-prefixed) × 2 (data / binary) are near-duplicates; consider one generic `ScopedStorage` with a key-prefix strategy.
 - Gson instances are static per class; a shared, configured `Gson` (records, `Instant`, enums) would avoid divergence between FILE and DB serialization.

@@ -11,6 +11,7 @@ import fr.farmvivi.fluxcord.api.plugin.PluginLifecycle;
 import fr.farmvivi.fluxcord.api.plugin.events.PluginEnableEvent;
 import fr.farmvivi.fluxcord.api.plugin.events.PluginLifecycleChangeEvent;
 import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
+import fr.farmvivi.fluxcord.core.storage.SimpleDataStorageManager;
 import fr.farmvivi.fluxcord.api.storage.binary.BinaryStorageManager;
 import fr.farmvivi.fluxcord.core.command.SimpleCommandRegistry;
 import fr.farmvivi.fluxcord.core.event.SimpleEventManager;
@@ -62,7 +63,7 @@ class PluginManagerTest {
 
         events = new SimpleEventManager();
         SimpleLanguageManager language = new SimpleLanguageManager(Locale.forLanguageTag("en-US"), events);
-        DataStorageManager storage = new DataStorageManager(new FileDataStorage(root.resolve("data").toFile(), events, 0));
+        DataStorageManager storage = new SimpleDataStorageManager(new FileDataStorage(root.resolve("data").toFile(), events, 0));
         permissions = new SimplePermissionManager(events, storage);
         registry = new SimpleCommandRegistry();
         CommandService commandService = mock(CommandService.class);

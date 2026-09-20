@@ -51,7 +51,7 @@ public class BinaryStorageFactory {
                 // Create S3 storage
                 S3BinaryStorage s3Storage = new S3BinaryStorage("s3", bucketName, prefix, endpoint, region, accessKey, secretKey, pathStyleAccess, eventManager);
                 logger.info("Using S3 binary storage with bucket {}", bucketName);
-                return new BinaryStorageManager(s3Storage);
+                return new SimpleBinaryStorageManager(s3Storage);
             } catch (Exception e) {
                 logger.error("Failed to initialize S3 binary storage: {}", e.getMessage());
                 if (!isFallbackEnabled(config)) {
@@ -90,7 +90,7 @@ public class BinaryStorageFactory {
 
         FileBinaryStorage fileBinaryStorage = new FileBinaryStorage("file", binaryFolder, eventManager);
         logger.info("Using file binary storage in {}", binaryFolder.getAbsolutePath());
-        return new BinaryStorageManager(fileBinaryStorage);
+        return new SimpleBinaryStorageManager(fileBinaryStorage);
     }
 
     /**

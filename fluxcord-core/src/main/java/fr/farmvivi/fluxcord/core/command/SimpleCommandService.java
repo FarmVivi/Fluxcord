@@ -16,7 +16,7 @@ import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
 import fr.farmvivi.fluxcord.api.plugin.Plugin;
 import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
-import fr.farmvivi.fluxcord.api.storage.GuildStorage;
+import fr.farmvivi.fluxcord.api.storage.ScopedStorage;
 import fr.farmvivi.fluxcord.core.command.listener.CommandListener;
 import fr.farmvivi.fluxcord.core.command.parser.CommandParser;
 import fr.farmvivi.fluxcord.core.command.parser.ConsoleCommandParser;
@@ -152,7 +152,7 @@ public class SimpleCommandService implements CommandService {
             return defaultPrefix;
         }
 
-        GuildStorage guildStorage = storageManager.getGuildStorage(guildId);
+        ScopedStorage guildStorage = storageManager.getGuildStorage(guildId);
         return guildStorage.get("commands.prefix", String.class).orElse(defaultPrefix);
     }
 
@@ -167,7 +167,7 @@ public class SimpleCommandService implements CommandService {
             throw new IllegalArgumentException("Prefix cannot be null or empty");
         }
 
-        GuildStorage guildStorage = storageManager.getGuildStorage(guildId);
+        ScopedStorage guildStorage = storageManager.getGuildStorage(guildId);
         guildStorage.set("commands.prefix", prefix);
     }
 

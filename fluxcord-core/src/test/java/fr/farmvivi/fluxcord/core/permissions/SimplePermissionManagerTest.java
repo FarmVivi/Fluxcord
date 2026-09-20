@@ -10,6 +10,7 @@ import fr.farmvivi.fluxcord.api.plugin.PluginContext;
 import fr.farmvivi.fluxcord.api.plugin.PluginLifecycle;
 import fr.farmvivi.fluxcord.api.storage.DataStorage;
 import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
+import fr.farmvivi.fluxcord.core.storage.SimpleDataStorageManager;
 import fr.farmvivi.fluxcord.api.storage.StorageKey;
 import fr.farmvivi.fluxcord.core.event.SimpleEventManager;
 import org.junit.jupiter.api.AfterEach;
@@ -66,7 +67,7 @@ class SimplePermissionManagerTest {
     private final SimpleEventManager events = new SimpleEventManager();
     private final MemoryStorage storage = new MemoryStorage();
     private final SimplePermissionManager manager =
-            new SimplePermissionManager(events, new DataStorageManager(storage));
+            new SimplePermissionManager(events, new SimpleDataStorageManager(storage));
     private final StubPlugin plugin = new StubPlugin("music");
 
     @AfterEach
@@ -129,7 +130,7 @@ class SimplePermissionManagerTest {
 
     @Test
     void configuredOperatorsUnlockOpDefaults() {
-        SimplePermissionManager withOps = new SimplePermissionManager(events, new DataStorageManager(storage), List.of("1"));
+        SimplePermissionManager withOps = new SimplePermissionManager(events, new SimpleDataStorageManager(storage), List.of("1"));
         withOps.registerPermission(new Perm("p.op", "", PermissionDefault.OP), plugin);
         withOps.registerPermission(new Perm("p.notop", "", PermissionDefault.NOT_OP), plugin);
 
@@ -176,7 +177,7 @@ class SimplePermissionManagerTest {
 
     @Test
     void explicitOverrideBeatsOperatorStatus() {
-        SimplePermissionManager withOps = new SimplePermissionManager(events, new DataStorageManager(storage), List.of("1"));
+        SimplePermissionManager withOps = new SimplePermissionManager(events, new SimpleDataStorageManager(storage), List.of("1"));
         withOps.registerPermission(new Perm("p.op", "", PermissionDefault.OP), plugin);
         withOps.setPermission("1", "p.op", false);
         assertFalse(withOps.hasPermission("1", "p.op"));

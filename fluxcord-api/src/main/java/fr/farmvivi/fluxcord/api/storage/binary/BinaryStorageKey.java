@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.api.storage.binary;
 
+import fr.farmvivi.fluxcord.api.storage.StorageKey;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -16,7 +17,7 @@ public record BinaryStorageKey(String scope, String path) {
      * @return a binary storage key with global scope
      */
     public static BinaryStorageKey global(String path) {
-        return new BinaryStorageKey("global", normalizePath(path));
+        return new BinaryStorageKey(StorageKey.globalScope(), normalizePath(path));
     }
 
     /**
@@ -27,7 +28,7 @@ public record BinaryStorageKey(String scope, String path) {
      * @return a binary storage key with user scope
      */
     public static BinaryStorageKey user(String userId, String path) {
-        return new BinaryStorageKey("user:" + userId, normalizePath(path));
+        return new BinaryStorageKey(StorageKey.userScope(userId), normalizePath(path));
     }
 
     /**
@@ -38,7 +39,7 @@ public record BinaryStorageKey(String scope, String path) {
      * @return a binary storage key with guild scope
      */
     public static BinaryStorageKey guild(String guildId, String path) {
-        return new BinaryStorageKey("guild:" + guildId, normalizePath(path));
+        return new BinaryStorageKey(StorageKey.guildScope(guildId), normalizePath(path));
     }
 
     /**
@@ -50,7 +51,7 @@ public record BinaryStorageKey(String scope, String path) {
      * @return a binary storage key with user-guild scope
      */
     public static BinaryStorageKey userGuild(String userId, String guildId, String path) {
-        return new BinaryStorageKey("user:" + userId + ":guild:" + guildId, normalizePath(path));
+        return new BinaryStorageKey(StorageKey.userGuildScope(userId, guildId), normalizePath(path));
     }
 
     /**
@@ -59,7 +60,7 @@ public record BinaryStorageKey(String scope, String path) {
      * @param path the path to normalize
      * @return the normalized path
      */
-    private static String normalizePath(String path) {
+    static String normalizePath(String path) {
         if (path == null) {
             return "";
         }

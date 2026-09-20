@@ -241,8 +241,9 @@ String localized = getPluginLanguageManager().getString(Locale.FRENCH, "goodbye"
 
 **Entry Points**:
 
-- `storage.fr.farmvivi.fluxcord.api.DataStorageManager` - Storage management
-- `storage.fr.farmvivi.fluxcord.api.PluginDataStorageAdapter` - Plugin-scoped storage
+- `fr.farmvivi.fluxcord.api.storage.DataStorageManager` - Storage management (interface; the core implements it)
+- `fr.farmvivi.fluxcord.api.storage.PluginDataStorageAdapter` - Plugin-scoped storage (`getPluginDataStorage()`)
+- `fr.farmvivi.fluxcord.api.storage.ScopedStorage` - the view every `get*Storage(...)` returns: one scope, plus a key prefix (`<pluginId>.`) when obtained through the plugin adapter
 
 **How to Use**:
 
@@ -252,6 +253,9 @@ getPluginDataStorage().getGlobalStorage().set("server.uptime", System.currentTim
 getPluginDataStorage().getUserStorage(userId).set("preferences.theme", "dark");
 getPluginDataStorage().getGuildStorage(guildId).set("config.prefix", "!");
 getPluginDataStorage().getUserGuildStorage(userId, guildId).set("xp", 1500);
+
+// Keys are stored as "<pluginId>.<key>" inside the scope, so plugins never collide with each other or with
+// core keys (e.g. "commands.prefix"); getKeys()/getAll()/clear() only see the plugin's own keys.
 
 // Save changes
 getPluginDataStorage().saveAll();
@@ -273,8 +277,9 @@ getPluginDataStorage().saveAll();
 
 **Entry Points**:
 
-- `fr.farmvivi.fluxcord.api.storage.BinaryStorageManager` - Binary storage management
-- `binary.storage.fr.farmvivi.fluxcord.api.PluginBinaryStorageAdapter` - Plugin-scoped binary storage
+- `fr.farmvivi.fluxcord.api.storage.binary.BinaryStorageManager` - Binary storage management (interface; the core implements it)
+- `fr.farmvivi.fluxcord.api.storage.binary.PluginBinaryStorageAdapter` - Plugin-scoped binary storage (`getPluginBinaryStorage()`)
+- `fr.farmvivi.fluxcord.api.storage.binary.ScopedBinaryStorage` - the view every `get*Storage(...)` returns; plugin files live under `<pluginId>/`
 
 **How to Use**:
 

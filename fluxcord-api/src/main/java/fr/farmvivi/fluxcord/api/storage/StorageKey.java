@@ -8,6 +8,26 @@ import org.jetbrains.annotations.NotNull;
  * (global, user, guild, user-guild).
  */
 public record StorageKey(String scope, String key) {
+    /** The scope string shared by every global key. */
+    public static String globalScope() {
+        return "global";
+    }
+
+    /** The scope string of a user's keys ({@code user:<id>}). */
+    public static String userScope(String userId) {
+        return "user:" + userId;
+    }
+
+    /** The scope string of a guild's keys ({@code guild:<id>}). */
+    public static String guildScope(String guildId) {
+        return "guild:" + guildId;
+    }
+
+    /** The scope string of a user's keys inside a guild ({@code user:<id>:guild:<id>}). */
+    public static String userGuildScope(String userId, String guildId) {
+        return "user:" + userId + ":guild:" + guildId;
+    }
+
     /**
      * Creates a global storage key.
      *
@@ -15,7 +35,7 @@ public record StorageKey(String scope, String key) {
      * @return a storage key with global scope
      */
     public static StorageKey global(String key) {
-        return new StorageKey("global", key);
+        return new StorageKey(globalScope(), key);
     }
 
     /**
@@ -26,7 +46,7 @@ public record StorageKey(String scope, String key) {
      * @return a storage key with user scope
      */
     public static StorageKey user(String userId, String key) {
-        return new StorageKey("user:" + userId, key);
+        return new StorageKey(userScope(userId), key);
     }
 
     /**
@@ -37,7 +57,7 @@ public record StorageKey(String scope, String key) {
      * @return a storage key with guild scope
      */
     public static StorageKey guild(String guildId, String key) {
-        return new StorageKey("guild:" + guildId, key);
+        return new StorageKey(guildScope(guildId), key);
     }
 
     /**
@@ -49,7 +69,7 @@ public record StorageKey(String scope, String key) {
      * @return a storage key with user-guild scope
      */
     public static StorageKey userGuild(String userId, String guildId, String key) {
-        return new StorageKey("user:" + userId + ":guild:" + guildId, key);
+        return new StorageKey(userGuildScope(userId, guildId), key);
     }
 
     /**

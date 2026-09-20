@@ -39,8 +39,8 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 
 ## 5. Storage
 
-- [ ] **S1 — Managers as interfaces.** `DataStorageManager` / `BinaryStorageManager` are concrete classes in `fluxcord-api` (with loggers). Move implementation to core, keep interfaces in api.
-- [ ] **S2 — Collapse the scoped views.** 4 plain + 4 plugin-prefixed views × data/binary = 16 near-identical classes. One generic scoped view with a key-prefix strategy.
+- [x] **S1 — Managers as interfaces.** Done 2026-09-20: `DataStorageManager` / `BinaryStorageManager` are api interfaces, implemented by `core/storage/SimpleDataStorageManager` and `core/storage/binary/SimpleBinaryStorageManager` (created by the factories).
+- [x] **S2 — Collapse the scoped views.** Done 2026-09-20: the 16 view classes are replaced by `api/storage/ScopedStorage` and `api/storage/binary/ScopedBinaryStorage` (scope + optional namespace prefix via `namespaced(id)`; `StorageKey.*Scope()` factories own the scope formats). Storage layout unchanged (`ScopedStorageTest`). API break: plugins that named `PluginGuildStorage` & co now use `ScopedStorage`.
 - [ ] **S3 — Shared Gson configuration** (records, `Instant`, enums) for FILE and DB backends; document what value types are supported.
 - [ ] **S4 — DB tests.** H2 (MySQL/PostgreSQL modes) or Testcontainers for `DatabaseDataStorage`; ask before adding the dependency.
 
@@ -75,3 +75,4 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 | 2026-09-20 | E1: polymorphic dispatch and Bukkit `ignoreCancelled` semantics (API behaviour change; no plugin in the repo used `ignoreCancelled`). | user |
 | 2026-09-20 | i18n fallback: configured default locale before en-US. Audio: lone PCM source keeps the bypass path but gets volume/fade applied in the byte-swap pass. | user |
 | 2026-09-20 | B1: operators = config list + guild owner/ADMINISTRATOR (no `op` command); `perm` command manages stored overrides. Ducking default 20 %. | user |
+| 2026-09-20 | S1/S2: break the api cleanly (no @Deprecated shims) — `ScopedStorage`/`ScopedBinaryStorage` replace the 16 scoped views; S4 will use H2 (test scope). | user |

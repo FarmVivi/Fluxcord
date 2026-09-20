@@ -1,7 +1,7 @@
 package fr.farmvivi.fluxcord.plugins.music.playlist;
 
 import fr.farmvivi.fluxcord.api.storage.PluginDataStorageAdapter;
-import fr.farmvivi.fluxcord.api.storage.PluginGlobalStorage;
+import fr.farmvivi.fluxcord.api.storage.ScopedStorage;
 import fr.farmvivi.fluxcord.plugins.music.MusicPlugin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -132,7 +132,7 @@ public class PlaylistManager {
      */
     private void loadPlaylists() {
         PluginDataStorageAdapter adapter = plugin.getPluginDataStorage();
-        PluginGlobalStorage storage = adapter.getGlobalStorage();
+        ScopedStorage storage = adapter.getGlobalStorage();
 
         // Load user playlists
         Map<String, Object> userData = storage.getAll().entrySet().stream()
@@ -177,7 +177,7 @@ public class PlaylistManager {
      */
     private void savePlaylists() {
         PluginDataStorageAdapter adapter = plugin.getPluginDataStorage();
-        PluginGlobalStorage storage = adapter.getGlobalStorage();
+        ScopedStorage storage = adapter.getGlobalStorage();
 
         // First clear previous entries for this namespace subset
         // Remove existing user playlists keys
