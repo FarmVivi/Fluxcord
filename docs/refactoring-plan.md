@@ -21,7 +21,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 ## 2. Boot & permissions
 
 - [x] **B1 — Operators.** Done 2026-09-20: `permissions.operators` in config.yml, guild owner/ADMINISTRATOR mapping via a resolver installed after connect, `perm set|unset|list|nodes` command for stored per-user overrides (`/op` dropped on 2026-09-20: operators are file + Discord roles only); `shutdown` gated on operator status. Defaults evaluated live, only stored overrides cached.
-- [ ] **B2 — `Fluxcord` bootstrapper → instance.** Replace the static fields/getters (unused outside the class) with a `FluxcordRuntime` object built by a small `main`; remove `System.exit` from helper methods (throw, exit only in `main`). Makes boot testable and reload (`PluginManager.reloadPlugins` reconnecting JDA) reviewable.
+- [x] **B2 — `Fluxcord` bootstrapper → instance.** Done 2026-09-20: `core/FluxcordRuntime(baseDir, config, discordAPI)` wires the services, `start()`/`stop()` (once, never throws)/`requestShutdown()`/`awaitShutdownRequest()`/`startHealthServer(port)`; `Fluxcord.main` is ~60 lines and the only place with `System.exit`; the static getters are gone. `ShutdownCommand` gets a `Runnable` (`SimpleCommandService.setShutdownHandler`). `FluxcordRuntimeTest` (7) boots the engine with a fixture plugin and a mocked `DiscordAPI`, including a failed connect and a restart reading back stored data.
 - [ ] **B3 — Configuration typing.** `CoreConfiguration` is read with string keys all over (`Fluxcord`, `StorageFactory`, `SimpleCommandService`...). Introduce typed config records (`DiscordConfig`, `StorageConfig`, `CommandsConfig`) parsed once, with validation in one place.
 
 ## 3. Commands

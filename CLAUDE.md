@@ -80,18 +80,18 @@ Versions of all dependencies are pinned in the root `pom.xml` `<dependencyManage
 
 ## Architecture
 
-### Boot sequence (`Fluxcord.main`)
+### Boot sequence (`Fluxcord.main` → `FluxcordRuntime`)
 
-`Fluxcord` is a static-singleton bootstrapper. Order matters:
+`Fluxcord.main` is a thin entry point: it loads `config.yml` (`CoreConfiguration`), checks the token, builds a `FluxcordRuntime(baseDir, config, new JDADiscordAPI(token))`, starts the health server, calls `runtime.start()`, then parks on `awaitShutdownRequest()` and runs `runtime.stop()` from the main thread. `System.exit` only happens in `main`; `FluxcordRuntime` throws. `FluxcordRuntimeTest` boots the whole engine on a temp dir with a mocked `DiscordAPI`.
 
-1. Load `config.yml` (`CoreConfiguration`), resolve token/locale/prefix.
-2. Build services: `SimpleLanguageManager` → `SimpleEventManager` + `JDADiscordAPI` → storage managers (`StorageFactory`, `BinaryStorageFactory`) → `SimplePermissionManager`, `AudioServiceImpl` → `SimpleCommandService`, `ConsoleCommandService` → `PluginManager` (receives every service).
-3. `pluginManager.loadPlugins()` + `preEnablePlugins()` **before** JDA connects — plugins can still mutate `DiscordAPI.getBuilder()` (intents, listeners) at this point.
-4. `discordAPI.connect().join()`, then `commandService.setJDA(...)`.
-5. `enablePlugins()` → `commandService.enable()` (slash-command sync) → `postEnablePlugins()`.
-6. Health server (`core/health/HealthServer`, port 8081 by default) flips to ready.
+`FluxcordRuntime` constructor wires every service from the config: `SimpleEventManager` → `SimpleLanguageManager` (+ `lang/`) → storage managers (`StorageFactory`, `BinaryStorageFactory`) → `SimplePermissionManager`, `AudioServiceImpl` → `SimpleCommandService` (+ shutdown handler), `ConsoleCommandService` → `PluginManager` (receives every service). `start()` order matters:
 
-Shutdown is the reverse via a JVM shutdown hook.
+1. `pluginManager.loadPlugins()` + `preEnablePlugins()` **before** JDA connects — plugins can still mutate `DiscordAPI.getBuilder()` (intents, listeners) at this point.
+2. `discordAPI.connect().join()`, then `commandService.setJDA(...)`, console `setJDA`, guild-operator resolver.
+3. `enablePlugins()` → `commandService.enable()` (slash-command sync) → `postEnablePlugins()` → console start → default presence.
+4. Health server (`core/health/HealthServer`, port 8081 by default, `HEALTH_PORT`) flips to ready.
+
+`stop()` is the reverse (plugins, commands, console, Discord, events, storages, health), runs at most once, and is also what the JVM shutdown hook calls.
 
 ### Plugin system (`core/plugin`)
 

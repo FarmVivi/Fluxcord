@@ -5,7 +5,6 @@ import fr.farmvivi.fluxcord.api.command.CommandContext;
 import fr.farmvivi.fluxcord.api.command.CommandResult;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
-import fr.farmvivi.fluxcord.core.Fluxcord;
 import fr.farmvivi.fluxcord.core.command.SimpleCommandBuilder;
 import fr.farmvivi.fluxcord.core.util.DiscordColor;
 import net.dv8tion.jda.api.EmbedBuilder;
@@ -25,10 +24,16 @@ public class ShutdownCommand {
      * @param languageManager the language manager for translations
      */
     private final PermissionManager permissionManager;
+    private final Runnable shutdownHandler;
 
-    public ShutdownCommand(LanguageManager languageManager, PermissionManager permissionManager) {
+    /**
+     * @param shutdownHandler what actually stops the bot (the runtime's {@code requestShutdown}); called from a
+     *                        daemon thread one second after the reply, so it must return quickly
+     */
+    public ShutdownCommand(LanguageManager languageManager, PermissionManager permissionManager, Runnable shutdownHandler) {
         this.languageManager = languageManager;
         this.permissionManager = permissionManager;
+        this.shutdownHandler = shutdownHandler;
 
         command = new SimpleCommandBuilder()
                 .name("shutdown")
@@ -77,14 +82,14 @@ public class ShutdownCommand {
 
         context.replyEmbed(embed);
 
-        // Let the reply reach Discord, then hand the shutdown to the main thread (see Fluxcord.requestShutdown)
+        // Let the reply reach Discord, then hand the shutdown to the runtime (FluxcordRuntime.requestShutdown)
         Thread shutdownThread = new Thread(() -> {
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }
-            Fluxcord.requestShutdown();
+            shutdownHandler.run();
         }, "Shutdown-Request");
         shutdownThread.setDaemon(true);
         shutdownThread.start();

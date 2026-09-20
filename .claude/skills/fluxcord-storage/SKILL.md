@@ -26,7 +26,7 @@ paths:
 - The shaded jar keeps JDBC drivers SPI-registered via `ServicesResourceTransformer` in `fluxcord-core/pom.xml` — keep it when touching shading.
 
 ## Gotchas
-- `saveAll()` is called by `PluginManager.reloadPlugins()` before disabling; the shutdown path relies on `dataStorageManager.close()` in `Fluxcord.shutdownBot`, which now stops the debouncers before the final save. A JVM *kill* (not a clean shutdown) between debounce ticks still loses the last writes (FILE backend).
+- `saveAll()` is called by `PluginManager.reloadPlugins()` before disabling; the shutdown path relies on `dataStorageManager.close()` in `FluxcordRuntime.stop()`, which stops the debouncers before the final save. A JVM *kill* (not a clean shutdown) between debounce ticks still loses the last writes (FILE backend).
 - Scope strings are built by string concatenation in several places (`StorageKey` factories, adapters, `SimplePermissionManager`); grep before renaming a scope format — stored data would become unreachable.
 - Changing backend FILE → DB does **not** migrate existing data; there is no migration tool.
 

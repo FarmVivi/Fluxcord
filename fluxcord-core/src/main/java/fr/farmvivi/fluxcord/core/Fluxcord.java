@@ -1,503 +1,114 @@
 package fr.farmvivi.fluxcord.core;
 
-import fr.farmvivi.fluxcord.api.audio.AudioService;
-import fr.farmvivi.fluxcord.api.command.CommandService;
-import fr.farmvivi.fluxcord.api.config.Configuration;
-import fr.farmvivi.fluxcord.api.discord.DiscordAPI;
-import fr.farmvivi.fluxcord.api.language.LanguageManager;
-import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
-import net.dv8tion.jda.api.JDA;
-import net.dv8tion.jda.api.Permission;
-import net.dv8tion.jda.api.entities.Guild;
-import net.dv8tion.jda.api.entities.Member;
-import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
-import fr.farmvivi.fluxcord.api.storage.binary.BinaryStorageManager;
-import fr.farmvivi.fluxcord.core.audio.AudioServiceImpl;
-import fr.farmvivi.fluxcord.core.audio.AudioSettings;
-import fr.farmvivi.fluxcord.core.command.SimpleCommandService;
 import fr.farmvivi.fluxcord.core.config.CoreConfiguration;
-import fr.farmvivi.fluxcord.core.console.ConsoleCommandService;
 import fr.farmvivi.fluxcord.core.discord.JDADiscordAPI;
-import fr.farmvivi.fluxcord.core.event.SimpleEventManager;
-import fr.farmvivi.fluxcord.core.health.HealthServer;
-import fr.farmvivi.fluxcord.core.language.LanguageFileLoader;
-import fr.farmvivi.fluxcord.core.language.SimpleLanguageManager;
-import fr.farmvivi.fluxcord.core.permissions.SimplePermissionManager;
-import fr.farmvivi.fluxcord.core.plugin.PluginManager;
-import fr.farmvivi.fluxcord.core.storage.StorageFactory;
-import fr.farmvivi.fluxcord.core.storage.binary.BinaryStorageFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Locale;
+import java.io.InputStream;
 import java.util.Properties;
-import java.util.concurrent.CountDownLatch;
 
 /**
- * Main class for Fluxcord.
- * This class is responsible for loading and managing plugins.
+ * Entry point: reads {@code config.yml} from the working directory, builds a {@link FluxcordRuntime} on the real
+ * Discord connection, starts it, then parks until a shutdown is requested (shutdown command, console, SIGTERM)
+ * and stops it from the main thread. Every failure before the bot is up ends the JVM with exit code 1.
  */
-public class Fluxcord {
+public final class Fluxcord {
     public static final String NAME;
     public static final String VERSION;
+    /** True for release builds (version without {@code -SNAPSHOT}). */
     public static final boolean PRODUCTION;
     private static final Logger logger;
 
-    // Instances for global access/management
-    private static PluginManager pluginManager;
-    private static DiscordAPI discordAPI;
-    private static SimpleEventManager eventManager;
-    private static Configuration coreConfig;
-    private static final CountDownLatch SHUTDOWN_REQUESTED = new CountDownLatch(1);
-    private static final java.util.concurrent.atomic.AtomicBoolean SHUTDOWN_DONE = new java.util.concurrent.atomic.AtomicBoolean(false);
-    private static LanguageManager languageManager;
-    private static DataStorageManager dataStorageManager;
-    private static BinaryStorageManager binaryStorageManager;
-    private static SimplePermissionManager permissionManager;
-    private static AudioService audioService;
-    private static CommandService commandService;
-    private static ConsoleCommandService consoleCommandService;
-    private static HealthServer healthServer;
-
     static {
         Properties properties = new Properties();
-        try {
-            properties.load(Fluxcord.class.getClassLoader().getResourceAsStream("project.properties"));
+        try (InputStream in = Fluxcord.class.getClassLoader().getResourceAsStream("project.properties")) {
+            if (in == null) {
+                throw new IOException("project.properties not found on the classpath");
+            }
+            properties.load(in);
         } catch (IOException e) {
-            Logger initLogger = LoggerFactory.getLogger("FluxcordInit");
-            initLogger.error("Cannot read properties file 'project.properties'", e);
+            LoggerFactory.getLogger("FluxcordInit").error("Cannot read properties file 'project.properties'", e);
             System.exit(1);
         }
-
         NAME = properties.getProperty("name");
         VERSION = properties.getProperty("version");
         PRODUCTION = !VERSION.contains("-SNAPSHOT");
-
         logger = LoggerFactory.getLogger(NAME);
     }
 
-    /**
-     * Main entry point.
-     *
-     * @param args command line arguments
-     */
+    private Fluxcord() {
+    }
+
     public static void main(String[] args) {
         long startTimeMillis = System.currentTimeMillis();
-
         logger.info("Démarrage de {} v{} en cours...", NAME, VERSION);
-
-        // Log system information
         logSystemInfo();
 
-        // Initialize bot components
-        if (!initializeComponents()) {
+        FluxcordRuntime runtime;
+        try {
+            File baseDir = new File(".").getAbsoluteFile().getParentFile();
+            CoreConfiguration config = new CoreConfiguration(new File(baseDir, "config.yml"));
+            String token = config.getString("discord.token");
+            if (token == null || token.isBlank() || token.equals("YOUR_BOT_TOKEN")) {
+                logger.error("Please set your bot token in config.yml");
+                System.exit(1);
+                return;
+            }
+            runtime = new FluxcordRuntime(baseDir, config, new JDADiscordAPI(token));
+        } catch (Exception e) {
+            logger.error("Failed to initialise: {}", e.getMessage(), e);
+            System.exit(1);
             return;
         }
 
-        // Register shutdown hook for clean shutdown
-        registerShutdownHook();
+        // SIGTERM / Ctrl+C / System.exit from elsewhere: same sequence, skipped if it already ran
+        Runtime.getRuntime().addShutdownHook(new Thread(runtime::stop, "Fluxcord-Shutdown"));
+        runtime.startHealthServer(healthPort());
 
-        // Start health HTTP server (not ready yet)
-        startHealthServer();
-
-        // Start the bot using the proper sequence
-        startBot();
-
-        long startFinishedTimeMillis = System.currentTimeMillis();
-        logger.info("Started in {}s!", (float) (startFinishedTimeMillis - startTimeMillis) / 1000);
-
-        // Park the main thread until a shutdown is requested (shutdown command, console), then stop everything
-        // from here rather than from an arbitrary thread through System.exit + shutdown hook.
         try {
-            SHUTDOWN_REQUESTED.await();
+            runtime.start();
+        } catch (Exception e) {
+            logger.error("Failed to start: {}", e.getMessage(), e);
+            runtime.stop();
+            System.exit(1);
+            return;
+        }
+        logger.info("Started in {}s!", (float) (System.currentTimeMillis() - startTimeMillis) / 1000);
+
+        // Park the main thread until a shutdown is requested, then stop everything from here rather than from
+        // an arbitrary thread through System.exit + shutdown hook
+        try {
+            runtime.awaitShutdownRequest();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        performShutdown();
+        runtime.stop();
         System.exit(0);
     }
 
-    /**
-     * Asks the bot to stop: the main thread runs the shutdown sequence and the JVM exits. Safe to call from
-     * any thread (a command executor, the console); returns immediately.
-     */
-    public static void requestShutdown() {
-        SHUTDOWN_REQUESTED.countDown();
-    }
-
-    /** Runs the shutdown sequence exactly once, whether triggered by requestShutdown() or by the JVM hook. */
-    private static void performShutdown() {
-        if (!SHUTDOWN_DONE.compareAndSet(false, true)) {
-            return;
+    /** {@code HEALTH_PORT} environment variable, default 8081. */
+    static int healthPort() {
+        String envPort = System.getenv("HEALTH_PORT");
+        if (envPort == null || envPort.isBlank()) {
+            return 8081;
         }
-        logger.info("Shutting down...");
-        shutdownBot();
-        logger.info("Goodbye!");
+        try {
+            return Integer.parseInt(envPort.trim());
+        } catch (NumberFormatException e) {
+            logger.warn("Invalid HEALTH_PORT '{}', falling back to 8081", envPort);
+            return 8081;
+        }
     }
 
-    /**
-     * Logs system information.
-     */
     private static void logSystemInfo() {
         if (logger.isInfoEnabled()) {
-            logger.info("System.getProperty('os.name') == '{}'", System.getProperty("os.name"));
-            logger.info("System.getProperty('os.version') == '{}'", System.getProperty("os.version"));
-            logger.info("System.getProperty('os.arch') == '{}'", System.getProperty("os.arch"));
-            logger.info("System.getProperty('java.version') == '{}'", System.getProperty("java.version"));
-            logger.info("System.getProperty('java.vendor') == '{}'", System.getProperty("java.vendor"));
-            logger.info("System.getProperty('sun.arch.data.model') == '{}'", System.getProperty("sun.arch.data.model"));
-            logger.info("System.getProperty('user.timezone') == '{}'", System.getProperty("user.timezone"));
-            logger.info("System.getProperty('user.country') == '{}'", System.getProperty("user.country"));
-            logger.info("System.getProperty('user.language') == '{}'", System.getProperty("user.language"));
-        }
-    }
-
-    /**
-     * Initializes all components needed for the bot.
-     *
-     * @return true if initialization was successful, false otherwise
-     */
-    private static boolean initializeComponents() {
-        File pluginsFolder = ensurePluginsFolder();
-
-        File configFile = new File("config.yml");
-        if (!loadCoreConfiguration(configFile)) {
-            return false;
-        }
-
-        String token;
-        try {
-            token = coreConfig.getString("discord.token");
-            if (token == null || token.equals("YOUR_BOT_TOKEN")) {
-                logger.error("Please set your bot token in config.yml");
-                System.exit(1);
-                return false;
-            }
-        } catch (Exception e) {
-            logger.error("Failed to get discord.token from config.yml", e);
-            System.exit(1);
-            return false;
-        }
-
-        String defaultLanguage = coreConfig.getString("language.default", "en-US");
-        Locale defaultLocale = Locale.forLanguageTag(defaultLanguage);
-        if (defaultLocale.getLanguage().isEmpty()) {
-            logger.warn("Invalid default language '{}', falling back to en-US", defaultLanguage);
-            defaultLocale = Locale.US;
-        }
-
-        String defaultPrefix = coreConfig.getString("commands.default-prefix", "!");
-
-        createLanguageServices(defaultLocale);
-        createEventAndDiscord(token);
-        createStorageManagers();
-        createCommandAndPluginManagers(pluginsFolder, defaultPrefix);
-
-        return true;
-    }
-
-    private static File ensurePluginsFolder() {
-        File pluginsFolder = new File("plugins");
-        if (!pluginsFolder.exists()) {
-            pluginsFolder.mkdirs();
-        }
-        return pluginsFolder;
-    }
-
-    private static boolean loadCoreConfiguration(File configFile) {
-        try {
-            coreConfig = new CoreConfiguration(configFile);
-            return true;
-        } catch (Exception e) {
-            logger.error("Failed to load config.yml", e);
-            System.exit(1);
-            return false;
-        }
-    }
-
-    private static void createLanguageServices(Locale defaultLocale) {
-        languageManager = new SimpleLanguageManager(defaultLocale);
-
-        LanguageFileLoader languageFileLoader = new LanguageFileLoader(languageManager, new File("lang"));
-        languageFileLoader.loadLanguageFiles();
-    }
-
-    private static void createEventAndDiscord(String token) {
-        eventManager = new SimpleEventManager();
-        discordAPI = new JDADiscordAPI(token);
-    }
-
-    private static void createStorageManagers() {
-        dataStorageManager = StorageFactory.createStorageManager(coreConfig, eventManager);
-        binaryStorageManager = BinaryStorageFactory.createBinaryStorageManager(coreConfig, eventManager);
-        permissionManager = new SimplePermissionManager(eventManager, dataStorageManager,
-                coreConfig.getStringList("permissions.operators", java.util.List.of()));
-        audioService = new AudioServiceImpl(eventManager, AudioSettings.fromConfig(coreConfig));
-    }
-
-    private static void createCommandAndPluginManagers(File pluginsFolder, String defaultPrefix) {
-        commandService = new SimpleCommandService(
-                eventManager,
-                languageManager,
-                permissionManager,
-                coreConfig,
-                dataStorageManager,
-                defaultPrefix
-        );
-
-        // Create console command service
-        consoleCommandService = new ConsoleCommandService(commandService);
-
-        pluginManager = new PluginManager(
-                pluginsFolder,
-                eventManager,
-                discordAPI,
-                languageManager,
-                dataStorageManager,
-                binaryStorageManager,
-                permissionManager,
-                audioService,
-                commandService
-        );
-    }
-
-    /**
-     * Registers the shutdown hook for clean shutdown.
-     */
-    private static void registerShutdownHook() {
-        // SIGTERM / Ctrl+C / System.exit from elsewhere: same sequence, skipped if requestShutdown() already ran it
-        Runtime.getRuntime().addShutdownHook(new Thread(Fluxcord::performShutdown, "Fluxcord-Shutdown"));
-    }
-
-    /**
-     * Starts the bot using the proper sequence.
-     */
-    private static void startBot() {
-        // 1. Load plugins
-        pluginManager.loadPlugins();
-
-        // 2. Pre-enable plugins (they can now configure JDABuilder)
-        pluginManager.preEnablePlugins();
-
-        // 3. Connect to Discord
-        try {
-            discordAPI.connect().join();
-
-            // Set the startup presence right after connecting
-            discordAPI.setStartupPresence();
-
-            // Set JDA instance for command service
-            commandService.setJDA(discordAPI.getJDA());
-
-            // Set JDA instance for console command service
-            consoleCommandService.setJDA(discordAPI.getJDA());
-
-            // Guild-level operators: the owner and ADMINISTRATOR members of a guild (resolved from the JDA cache)
-            JDA jda = discordAPI.getJDA();
-            permissionManager.setGuildOperatorResolver((userId, guildId) -> {
-                Guild guild = jda.getGuildById(guildId);
-                if (guild == null) {
-                    return false;
-                }
-                if (guild.getOwnerId().equals(userId)) {
-                    return true;
-                }
-                Member member = guild.getMemberById(userId);
-                return member != null && member.hasPermission(Permission.ADMINISTRATOR);
-            });
-        } catch (Exception e) {
-            logger.error("Failed to connect to Discord", e);
-            System.exit(1);
-            return;
-        }
-
-        // 4. Enable plugins
-        pluginManager.enablePlugins();
-
-        // 5. Enable command service after plugins are loaded
-        commandService.enable();
-
-        // 6. Post-enable plugins
-        pluginManager.postEnablePlugins();
-
-        // 7. Start console command service
-        consoleCommandService.start();
-
-        // 8. Set the default presence after all plugins are enabled
-        discordAPI.setDefaultPresence();
-
-        // 9. Mark ready for health server
-        if (healthServer != null) {
-            healthServer.setReady(true);
-        }
-    }
-
-    /**
-     * Shuts down the bot using the proper sequence.
-     */
-    private static void shutdownBot() {
-        // Use the new close() method which handles the full shutdown sequence
-        if (pluginManager != null) {
-            try {
-                pluginManager.close();
-            } catch (Exception e) {
-                logger.error("Error during plugin shutdown", e);
+            for (String key : new String[]{"os.name", "os.version", "os.arch", "java.version", "java.vendor",
+                    "sun.arch.data.model", "user.timezone", "user.country", "user.language"}) {
+                logger.info("System.getProperty('{}') == '{}'", key, System.getProperty(key));
             }
         }
-
-        // Disable command service
-        if (commandService != null) {
-            commandService.disable();
-        }
-
-        // Stop console command service
-        if (consoleCommandService != null) {
-            consoleCommandService.stop();
-        }
-
-        // Disconnect from Discord
-        if (discordAPI != null) {
-            try {
-                discordAPI.disconnect().join();
-            } catch (Exception e) {
-                logger.error("Failed to disconnect from Discord", e);
-            }
-        }
-
-        // Shutdown other services
-        if (eventManager != null) {
-            eventManager.shutdown();
-        }
-
-        if (dataStorageManager != null) {
-            dataStorageManager.close();
-        }
-
-        if (binaryStorageManager != null) {
-            binaryStorageManager.close();
-        }
-
-        if (healthServer != null) {
-            healthServer.stop();
-        }
-    }
-
-    private static void startHealthServer() {
-        String envPort = System.getenv("HEALTH_PORT");
-        int port;
-        try {
-            port = envPort != null && !envPort.isBlank() ? Integer.parseInt(envPort) : 8081;
-        } catch (NumberFormatException nfe) {
-            logger.warn("Invalid HEALTH_PORT '{}', falling back to 8081", envPort);
-            port = 8081;
-        }
-        try {
-            healthServer = new HealthServer(port);
-            healthServer.setVersion(VERSION);
-            healthServer.start();
-        } catch (Exception e) {
-            logger.warn("Failed to start health server on port {}: {}", port, e.getMessage());
-        }
-    }
-
-    /**
-     * Gets the language manager.
-     *
-     * @return the language manager
-     */
-    public static LanguageManager getLanguageManager() {
-        return languageManager;
-    }
-
-    /**
-     * Gets the plugin manager.
-     *
-     * @return the plugin manager
-     */
-    public static PluginManager getPluginManager() {
-        return pluginManager;
-    }
-
-    /**
-     * Gets the Discord API.
-     *
-     * @return the Discord API
-     */
-    public static DiscordAPI getDiscordAPI() {
-        return discordAPI;
-    }
-
-    /**
-     * Gets the event manager.
-     *
-     * @return the event manager
-     */
-    public static SimpleEventManager getEventManager() {
-        return eventManager;
-    }
-
-    /**
-     * Gets the data storage manager.
-     *
-     * @return the data storage manager
-     */
-    public static DataStorageManager getDataStorageManager() {
-        return dataStorageManager;
-    }
-
-    /**
-     * Gets the binary storage manager.
-     *
-     * @return the binary storage manager
-     */
-    public static BinaryStorageManager getBinaryStorageManager() {
-        return binaryStorageManager;
-    }
-
-    /**
-     * Gets the core configuration.
-     *
-     * @return the core configuration
-     */
-    public static Configuration getCoreConfig() {
-        return coreConfig;
-    }
-
-    /**
-     * Gets the permission manager.
-     *
-     * @return the permission manager
-     */
-    public static PermissionManager getPermissionManager() {
-        return permissionManager;
-    }
-
-    /**
-     * Gets the audio service.
-     *
-     * @return the audio service, or null if audio is disabled
-     */
-    public static AudioService getAudioService() {
-        return audioService;
-    }
-
-    /**
-     * Gets the command service.
-     *
-     * @return the command service
-     */
-    public static CommandService getCommandService() {
-        return commandService;
-    }
-
-    /**
-     * Gets the console command service.
-     *
-     * @return the console command service
-     */
-    public static ConsoleCommandService getConsoleCommandService() {
-        return consoleCommandService;
     }
 }

@@ -63,6 +63,8 @@ public class SimpleCommandService implements CommandService {
     private boolean duringInitialization = false;
     // Debounced synchronization using existing Debouncer utility
     private Debouncer commandSyncDebouncer;
+    /** What the built-in shutdown command runs; a no-op with a warning until the runtime installs one. */
+    private Runnable shutdownHandler = () -> logger.warn("No shutdown handler installed: shutdown command ignored");
 
     /**
      * Creates a new SimpleCommandService.
@@ -99,6 +101,13 @@ public class SimpleCommandService implements CommandService {
 
         // Initialize command sync debouncer
         this.commandSyncDebouncer = new Debouncer(SYNC_DELAY_MS, this::performSynchronization);
+    }
+
+    /**
+     * Installs what the {@code shutdown} system command triggers (see {@code FluxcordRuntime.requestShutdown}).
+     */
+    public void setShutdownHandler(Runnable shutdownHandler) {
+        this.shutdownHandler = Objects.requireNonNull(shutdownHandler, "shutdownHandler");
     }
 
     @Override
@@ -417,7 +426,7 @@ public class SimpleCommandService implements CommandService {
 
         // Register shutdown command if enabled
         if (configuration.getBoolean("commands.system.shutdown", true)) {
-            registerCommand(new ShutdownCommand(languageManager, permissionManager).getCommand());
+            registerCommand(new ShutdownCommand(languageManager, permissionManager, () -> shutdownHandler.run()).getCommand());
         }
 
         // Register perm command if enabled
