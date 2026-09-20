@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.InputStream;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -68,6 +69,17 @@ public final class FluxcordRuntime {
      * @throws RuntimeException when a storage backend cannot be initialised (see {@link StorageFactory})
      */
     public FluxcordRuntime(File baseDir, CoreSettings settings, DiscordAPI discordAPI) {
+        this(baseDir, settings, discordAPI, System.in);
+    }
+
+    /**
+     * Same as {@link #FluxcordRuntime(File, CoreSettings, DiscordAPI)} with an explicit console input. Tests pass
+     * their own stream: a runtime reading {@code System.in} inside a surefire fork steals the channel surefire
+     * uses to acknowledge the JVM exit, which then hangs 30 s and is killed before JaCoCo can write its dump.
+     *
+     * @param consoleInput where the console commands are read from (one command per line)
+     */
+    public FluxcordRuntime(File baseDir, CoreSettings settings, DiscordAPI discordAPI, InputStream consoleInput) {
         this.baseDir = Objects.requireNonNull(baseDir, "baseDir");
         this.settings = Objects.requireNonNull(settings, "settings");
         this.discordAPI = Objects.requireNonNull(discordAPI, "discordAPI");
@@ -89,7 +101,7 @@ public final class FluxcordRuntime {
         this.commandService = new SimpleCommandService(eventManager, languageManager, permissionManager,
                 settings.commands(), dataStorageManager);
         this.commandService.setShutdownHandler(this::requestShutdown);
-        this.consoleCommandService = new ConsoleCommandService(commandService);
+        this.consoleCommandService = new ConsoleCommandService(commandService, consoleInput);
 
         this.pluginManager = new PluginManager(pluginsFolder, eventManager, discordAPI, languageManager,
                 dataStorageManager, binaryStorageManager, permissionManager, audioService, commandService);

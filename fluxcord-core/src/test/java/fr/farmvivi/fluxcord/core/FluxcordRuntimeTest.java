@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.file.Files;
@@ -79,7 +80,7 @@ class FluxcordRuntimeTest {
 
     @Test
     void wiresServicesFromTheConfiguration() {
-        runtime = new FluxcordRuntime(root.toFile(), settings, discord);
+        runtime = new FluxcordRuntime(root.toFile(), settings, discord, InputStream.nullInputStream());
 
         assertEquals(Locale.FRANCE, runtime.getLanguageManager().getDefaultLocale());
         assertEquals("?", runtime.getCommandService().getPrefix());
@@ -93,7 +94,7 @@ class FluxcordRuntimeTest {
     @Test
     void startRunsTheBootSequenceInOrderAndStopReversesIt() throws Exception {
         PluginJars.plugin(root.resolve("plugins"), "alpha");
-        runtime = new FluxcordRuntime(root.toFile(), settings, discord);
+        runtime = new FluxcordRuntime(root.toFile(), settings, discord, InputStream.nullInputStream());
         runtime.startHealthServer(0);
         int port = runtime.getHealthServer().getPort();
         assertEquals(503, status(port, "/readyz"), "not ready before start()");
@@ -133,7 +134,7 @@ class FluxcordRuntimeTest {
     void aFailedConnectionPropagatesAndStopStillCleansUp() throws Exception {
         PluginJars.plugin(root.resolve("plugins"), "alpha");
         when(discord.connect()).thenReturn(CompletableFuture.failedFuture(new IllegalStateException("bad token")));
-        runtime = new FluxcordRuntime(root.toFile(), settings, discord);
+        runtime = new FluxcordRuntime(root.toFile(), settings, discord, InputStream.nullInputStream());
 
         RuntimeException failure = assertThrows(RuntimeException.class, runtime::start);
         assertTrue(failure.getCause() instanceof IllegalStateException, String.valueOf(failure.getCause()));
@@ -147,7 +148,7 @@ class FluxcordRuntimeTest {
 
     @Test
     void shutdownRequestReleasesTheWaiter() throws Exception {
-        runtime = new FluxcordRuntime(root.toFile(), settings, discord);
+        runtime = new FluxcordRuntime(root.toFile(), settings, discord, InputStream.nullInputStream());
         Thread waiter = new Thread(() -> {
             try {
                 runtime.awaitShutdownRequest();
@@ -183,12 +184,12 @@ class FluxcordRuntimeTest {
 
     @Test
     void storedGuildPrefixSurvivesARestart() throws Exception {
-        runtime = new FluxcordRuntime(root.toFile(), settings, discord);
+        runtime = new FluxcordRuntime(root.toFile(), settings, discord, InputStream.nullInputStream());
         runtime.start();
         runtime.getCommandService().setPrefix("g1", "$");
         runtime.stop();
 
-        runtime = new FluxcordRuntime(root.toFile(), settings, discord);
+        runtime = new FluxcordRuntime(root.toFile(), settings, discord, InputStream.nullInputStream());
         assertEquals("$", runtime.getCommandService().getPrefix("g1"));
         assertEquals("$", runtime.getDataStorageManager().getGuildStorage("g1").get("commands.prefix", String.class).orElseThrow());
         assertEquals("?", runtime.getCommandService().getPrefix("g2"));
