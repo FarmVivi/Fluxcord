@@ -4,8 +4,9 @@ config_version: 1
 
 # Music settings
 music:
-  # Default volume for new players (0-100)
-  default_volume: 50
+  # Default volume for new players (0-100). 100 = Opus passthrough (no re-encoding), like most bots;
+  # users can lower the bot in their own Discord client.
+  default_volume: 100
   
   # Maximum number of tracks in queue
   max_queue_size: 100

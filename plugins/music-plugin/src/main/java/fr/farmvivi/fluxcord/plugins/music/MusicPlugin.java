@@ -279,7 +279,7 @@ public class MusicPlugin extends AbstractPlugin {
     }
 
     private void loadConfiguration() {
-        int defaultVolume = getConfiguration().getInt("music.default_volume", 50);
+        int defaultVolume = getConfiguration().getInt("music.default_volume", MusicPlayer.DEFAULT_VOLUME);
         int maxQueue = getConfiguration().getInt("music.max_queue_size", 100);
         int maxTrackDurationMs = getConfiguration().getInt("music.max_track_duration", 600_000);
         boolean enableSpotify = getConfiguration().getBoolean("providers.spotify.enabled", true);

@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit;
  * Manages audio playback, queue, and player state.
  */
 public class MusicPlayer {
-    public static final int DEFAULT_VOLUME = 50;
+    public static final int DEFAULT_VOLUME = 100;
     public static final int QUIT_TIMEOUT_SECONDS = 300; // 5 minutes
     /** Guild storage key under which the playback state is persisted. */
     public static final String STATE_KEY = "playback_state";
@@ -292,10 +292,10 @@ public class MusicPlayer {
      */
     public void setVolume(int volume) {
         this.volume = Math.max(0, Math.min(100, volume));
+        // Applied once, in lavaplayer (before Opus encoding). At 100 lavaplayer passes Opus frames through
+        // untouched; the core pipeline relays Opus as-is, so the core-side volume is deliberately not set
+        // (it would scale the audio a second time if this handler ever provided PCM).
         audioPlayer.setVolume(this.volume);
-
-        // Update volume in AudioService
-        plugin.getContext().getAudioService().setVolume(guild, plugin, this.volume);
 
         playerMessage.refresh();
         saveState();
