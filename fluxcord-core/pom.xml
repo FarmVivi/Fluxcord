@@ -10,6 +10,11 @@
         <version>3.0.0-SNAPSHOT</version>
     </parent>
 
+    <properties>
+        <!-- Coverage comes from the aggregate (api + core) built by fluxcord-core; see its pom. -->
+        <sonar.coverage.jacoco.xmlReportPaths>${maven.multiModuleProjectDirectory}/fluxcord-core/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+    </properties>
+
     <artifactId>fluxcord-core</artifactId>
 
     <name>Fluxcord Core</name>
@@ -138,7 +143,10 @@
 
     <build>
         <plugins>
-            <!-- Aggregated coverage (this module + fluxcord-api) for SonarCloud; see the root pom. -->
+            <!-- Aggregated coverage (this module + fluxcord-api): the api classes are only exercised by the core
+                 tests, so per-module reports would show fluxcord-api at 0%. Sonar reads this report in api and core
+                 (sonar.coverage.jacoco.xmlReportPaths in both poms; not in the root pom, or every plugin module
+                 would warn that none of its files match). -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>

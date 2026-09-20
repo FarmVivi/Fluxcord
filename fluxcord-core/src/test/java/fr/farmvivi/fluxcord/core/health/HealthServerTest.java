@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import java.io.IOException;
-import java.net.ConnectException;
+import java.net.ServerSocket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -90,6 +90,11 @@ class HealthServerTest {
 
         server.stop();
 
-        assertThrows(ConnectException.class, () -> get("/healthz"));
+        // The port is free again (rebinding is the proof; how fast a client notices - refused or timed out -
+        // depends on the host's TCP stack, which is why the request is only asserted to fail).
+        try (ServerSocket rebound = new ServerSocket(port)) {
+            assertEquals(port, rebound.getLocalPort());
+        }
+        assertThrows(IOException.class, () -> get("/healthz"));
     }
 }

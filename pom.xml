@@ -33,9 +33,6 @@
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
         <!-- Skip sonar analysis by default - enable with -Psonar profile -->
         <sonar.skip>true</sonar.skip>
-        <!-- One aggregated JaCoCo report for every module: the api classes are only exercised by the core tests,
-             so a per-module report would show fluxcord-api at 0%. Built by fluxcord-core (report-aggregate). -->
-        <sonar.coverage.jacoco.xmlReportPaths>${maven.multiModuleProjectDirectory}/fluxcord-core/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
 
         <!-- Dependency versions -->
         <slf4j.version>2.0.19</slf4j.version>
@@ -375,8 +372,8 @@
         <!-- Pas de configuration exec ici pour ne pas interférer avec les modules -->
         <plugins>
             <!-- Test coverage: agent attached to surefire, per-module XML/HTML report at verify.
-                 Report only, no threshold (see docs/refactoring-plan.md T0). The report Sonar reads is the
-                 aggregate built in fluxcord-core (sonar.coverage.jacoco.xmlReportPaths above). -->
+                 Report only, no threshold (see docs/refactoring-plan.md T0). Sonar reads the aggregate
+                 built in fluxcord-core (see sonar.coverage.jacoco.xmlReportPaths in the api and core poms). -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>

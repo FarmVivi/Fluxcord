@@ -10,6 +10,11 @@
         <version>3.0.0-SNAPSHOT</version>
     </parent>
 
+    <properties>
+        <!-- Coverage comes from the aggregate (api + core) built by fluxcord-core; see its pom. -->
+        <sonar.coverage.jacoco.xmlReportPaths>${maven.multiModuleProjectDirectory}/fluxcord-core/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+    </properties>
+
     <artifactId>fluxcord-api</artifactId>
 
     <name>Fluxcord API</name>
