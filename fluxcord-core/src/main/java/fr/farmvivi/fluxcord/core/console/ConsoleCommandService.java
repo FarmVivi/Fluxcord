@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -21,6 +22,7 @@ public class ConsoleCommandService {
     private static final Logger logger = LoggerFactory.getLogger(ConsoleCommandService.class);
 
     private final CommandService commandService;
+    private final InputStream input;
     private ExecutorService executorService;
     private volatile boolean running = false;
     private JDA jda;
@@ -31,7 +33,13 @@ public class ConsoleCommandService {
      * @param commandService the command service to use for processing commands
      */
     public ConsoleCommandService(CommandService commandService) {
+        this(commandService, System.in);
+    }
+
+    /** Reads commands from {@code input} instead of {@code System.in} (tests). */
+    public ConsoleCommandService(CommandService commandService, InputStream input) {
         this.commandService = commandService;
+        this.input = input;
     }
 
     /**
@@ -83,7 +91,7 @@ public class ConsoleCommandService {
      * Handles console input in a loop.
      */
     private void handleConsoleInput() {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(input))) {
             while (running) {
                 try {
                     String input = reader.readLine();

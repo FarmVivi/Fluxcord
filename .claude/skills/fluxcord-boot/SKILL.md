@@ -51,6 +51,8 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 - 2026-09-20 (B2): `FluxcordRuntime` replaces the static bootstrapper; `FluxcordRuntimeTest` boots a real engine (fixture plugin jar, FILE storage in a temp dir, mocked `DiscordAPI` + `JDA` with status `LOADING_SUBSYSTEMS` so `commandService.enable()` skips the slash sync, health server on port 0). `ConsoleCommandService.start()` reads `System.in` on a daemon thread — harmless under surefire.
 
+- 2026-09-20: `ConsoleCommandService(commandService, InputStream)` is the test seam for the stdin loop (`ConsoleCommandServiceTest`); `stop()` only flips the flag and shuts the executor down, the blocked `readLine` ends at EOF.
+
 ## Known issues / open questions
 - Hygiene: `YamlConfiguration.save()` (snakeyaml dump) drops every comment of `config.yml`; since B3 the core only calls it on config migration (`setPrefix` global is in-memory now). Characterized by `YamlConfigurationTest.saveDropsComments`.
 - Presence config keys and intent list are hardcoded in `JDADiscordAPI`; plugins needing extra intents must add them in `onPreEnable`.

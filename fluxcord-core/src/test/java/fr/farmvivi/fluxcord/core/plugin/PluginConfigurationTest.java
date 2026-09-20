@@ -218,4 +218,106 @@ class PluginConfigurationTest {
         assertTrue(pluginFolder.exists());
         assertTrue(pluginFolder.isDirectory());
     }
+
+    // ---- plugin-driven migration (config_version + ConfigurableMigrationPlugin) --------------------------------
+
+    /** A migrator that bumps a key; {@code fail} makes it throw, {@code invalid} makes validation fail. */
+    public static class Migrator implements fr.farmvivi.fluxcord.api.plugin.ConfigurableMigrationPlugin {
+        static int expected = 3;
+        static boolean fail, invalid;
+        static java.util.List<String> calls = new java.util.ArrayList<>();
+
+        @Override public int getExpectedConfigVersion() { return expected; }
+
+        @Override
+        public void migrateConfiguration(fr.farmvivi.fluxcord.api.config.Configuration config, int from, int to)
+                throws fr.farmvivi.fluxcord.api.config.ConfigurationException {
+            calls.add(from + "->" + to);
+            if (fail) throw new fr.farmvivi.fluxcord.api.config.ConfigurationException("boom");
+            config.set("migrated", true);
+        }
+
+        @Override
+        public void validateConfiguration(fr.farmvivi.fluxcord.api.config.Configuration config)
+                throws fr.farmvivi.fluxcord.api.config.ConfigurationException {
+            calls.add("validate");
+            if (invalid) throw new fr.farmvivi.fluxcord.api.config.ConfigurationException("invalid");
+        }
+    }
+
+    private fr.farmvivi.fluxcord.api.plugin.Plugin pluginWith(Class<? extends fr.farmvivi.fluxcord.api.plugin.ConfigurableMigrationPlugin> migration) {
+        fr.farmvivi.fluxcord.api.plugin.Plugin plugin = mock(fr.farmvivi.fluxcord.api.plugin.Plugin.class);
+        when(plugin.getId()).thenReturn(pluginName);
+        when(plugin.getName()).thenReturn(pluginName);
+        doReturn(migration).when(plugin).getMigrationClass();
+        return plugin;
+    }
+
+    private PluginConfiguration configWithVersion(int version) throws Exception {
+        pluginFolder.mkdirs();
+        java.nio.file.Files.writeString(configFile.toPath(), "config_version: " + version + "\nkeep: sure\n");
+        Migrator.calls.clear();
+        Migrator.fail = false;
+        Migrator.invalid = false;
+        Migrator.expected = 3;
+        return new PluginConfiguration(pluginName, mockClassLoader);
+    }
+
+    @Test
+    void migrationClassRunsWhenTheFileIsOlderAndBacksUpFirst() throws Exception {
+        PluginConfiguration config = configWithVersion(1);
+
+        config.initializeMigration(pluginWith(Migrator.class));
+
+        assertEquals(java.util.List.of("1->3", "validate"), Migrator.calls);
+        assertEquals(3, config.getInt("config_version"));
+        assertTrue(config.getBoolean("migrated"));
+        assertEquals("sure", config.getString("keep"), "other keys survive");
+        PluginConfiguration reloaded = new PluginConfiguration(pluginName, mockClassLoader);
+        assertEquals(3, reloaded.getInt("config_version"), "persisted");
+        assertTrue(java.util.Arrays.stream(pluginFolder.listFiles()).anyMatch(f -> f.getName().startsWith("config.yml.backup.")), "backup taken before migrating");
+    }
+
+    @Test
+    void upToDateOrNewerConfigOnlyGetsValidated() throws Exception {
+        PluginConfiguration config = configWithVersion(3);
+        config.initializeMigration(pluginWith(Migrator.class));
+        assertEquals(java.util.List.of("validate"), Migrator.calls);
+
+        PluginConfiguration newer = configWithVersion(9);
+        newer.initializeMigration(pluginWith(Migrator.class));
+        assertEquals(java.util.List.of("validate"), Migrator.calls, "newer than expected: warned, not touched");
+        assertEquals(9, newer.getInt("config_version"));
+    }
+
+    @Test
+    void aFailingMigrationOrValidationIsLoggedNotFatal() throws Exception {
+        PluginConfiguration config = configWithVersion(1);
+        Migrator.fail = true;
+        assertDoesNotThrow(() -> config.initializeMigration(pluginWith(Migrator.class)));
+        assertEquals(1, config.getInt("config_version"), "version untouched after a failed migration");
+
+        PluginConfiguration other = configWithVersion(1);
+        Migrator.invalid = true;
+        assertDoesNotThrow(() -> other.initializeMigration(pluginWith(Migrator.class)));
+        assertEquals(3, other.getInt("config_version"), "migration succeeded, only validation complained");
+    }
+
+    @Test
+    void thePluginItselfCanBeTheMigratorAndAnUninstantiableClassFallsBackToIt() throws Exception {
+        PluginConfiguration config = configWithVersion(2);
+        fr.farmvivi.fluxcord.api.plugin.Plugin migratingPlugin = mock(fr.farmvivi.fluxcord.api.plugin.Plugin.class,
+                withSettings().extraInterfaces(fr.farmvivi.fluxcord.api.plugin.ConfigurableMigrationPlugin.class));
+        when(migratingPlugin.getId()).thenReturn(pluginName);
+        when(migratingPlugin.getName()).thenReturn(pluginName);
+        when(((fr.farmvivi.fluxcord.api.plugin.ConfigurableMigrationPlugin) migratingPlugin).getExpectedConfigVersion()).thenReturn(5);
+
+        config.initializeMigration(migratingPlugin);
+
+        verify((fr.farmvivi.fluxcord.api.plugin.ConfigurableMigrationPlugin) migratingPlugin).migrateConfiguration(config, 2, 5);
+        assertEquals(5, config.getInt("config_version"));
+
+        fr.farmvivi.fluxcord.api.plugin.Plugin plain = pluginWith(null);
+        assertDoesNotThrow(() -> configWithVersion(1).initializeMigration(plain), "no migration support at all: nothing happens");
+    }
 }
