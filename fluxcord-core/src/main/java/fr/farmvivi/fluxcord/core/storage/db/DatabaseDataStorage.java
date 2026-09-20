@@ -30,6 +30,29 @@ public class DatabaseDataStorage extends AbstractDataStorage {
     private final SqlDialect dialect;
     private final String tableName;
     private final String indexName;
+    private final Statements sql;
+
+    /**
+     * Every statement, built once from the validated table name. The name cannot be a bound parameter (SQL
+     * identifiers are not values), so it is checked against {@code [A-Za-z0-9_]+} by {@link #sanitizeTablePrefix}
+     * and interpolated here and nowhere else.
+     */
+    record Statements(String createTable, String createIndex, String select, String upsert, String exists,
+                      String delete, String keys, String all, String clear) {
+        static Statements of(SqlDialect dialect, String table, String index) {
+            return new Statements(
+                    "CREATE TABLE IF NOT EXISTS " + table + " (scope VARCHAR(255) NOT NULL, key_name VARCHAR(255) NOT NULL, "
+                            + "value_data " + dialect.textColumnType() + ", PRIMARY KEY (scope, key_name))",
+                    "CREATE INDEX IF NOT EXISTS " + index + " ON " + table + " (scope)",
+                    "SELECT value_data FROM " + table + " WHERE scope = ? AND key_name = ?",
+                    dialect.upsertStatement(table),
+                    "SELECT 1 FROM " + table + " WHERE scope = ? AND key_name = ?",
+                    "DELETE FROM " + table + " WHERE scope = ? AND key_name = ?",
+                    "SELECT key_name FROM " + table + " WHERE scope = ?",
+                    "SELECT key_name, value_data FROM " + table + " WHERE scope = ?",
+                    "DELETE FROM " + table + " WHERE scope = ?");
+        }
+    }
 
     /**
      * Creates a new database data storage (HikariCP pool, schema created if missing).
@@ -46,6 +69,7 @@ public class DatabaseDataStorage extends AbstractDataStorage {
         // (e.g. prefix "bot1_" -> table "bot1_storage_data"). Empty by default.
         this.tableName = sanitizeTablePrefix(settings.tablePrefix()) + BASE_TABLE_NAME;
         this.indexName = "idx_" + tableName + "_scope";
+        this.sql = Statements.of(dialect, tableName, indexName);
         this.dataSource = initializeDataSource(settings);
         initializeSchema();
     }
@@ -60,6 +84,7 @@ public class DatabaseDataStorage extends AbstractDataStorage {
         this.dialect = dialect;
         this.tableName = sanitizeTablePrefix(tablePrefix) + BASE_TABLE_NAME;
         this.indexName = "idx_" + tableName + "_scope";
+        this.sql = Statements.of(dialect, tableName, indexName);
         initializeSchema();
     }
 
@@ -110,14 +135,8 @@ public class DatabaseDataStorage extends AbstractDataStorage {
              Statement stmt = conn.createStatement()) {
 
             // Create the data table (value column type depends on the SQL dialect)
-            stmt.execute("CREATE TABLE IF NOT EXISTS " + tableName + " ("
-                    + "scope VARCHAR(255) NOT NULL, "
-                    + "key_name VARCHAR(255) NOT NULL, "
-                    + "value_data " + dialect.textColumnType() + ", "
-                    + "PRIMARY KEY (scope, key_name))");
-
-            // Create index for faster scope-based queries
-            stmt.execute("CREATE INDEX IF NOT EXISTS " + indexName + " ON " + tableName + " (scope)");
+            stmt.execute(sql.createTable());
+            stmt.execute(sql.createIndex());
 
             logger.info("Database schema initialized successfully");
         } catch (SQLException e) {
@@ -135,7 +154,7 @@ public class DatabaseDataStorage extends AbstractDataStorage {
 
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT value_data FROM " + tableName + " WHERE scope = ? AND key_name = ?")) {
+                     sql.select())) {
 
             stmt.setString(1, scope);
             stmt.setString(2, keyName);
@@ -162,7 +181,7 @@ public class DatabaseDataStorage extends AbstractDataStorage {
         String json = gson.toJson(value);
 
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(dialect.upsertStatement(tableName))) {
+             PreparedStatement stmt = conn.prepareStatement(sql.upsert())) {
 
             stmt.setString(1, scope);
             stmt.setString(2, keyName);
@@ -184,7 +203,7 @@ public class DatabaseDataStorage extends AbstractDataStorage {
 
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT 1 FROM " + tableName + " WHERE scope = ? AND key_name = ?")) {
+                     sql.exists())) {
 
             stmt.setString(1, scope);
             stmt.setString(2, keyName);
@@ -206,7 +225,7 @@ public class DatabaseDataStorage extends AbstractDataStorage {
 
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
-                     "DELETE FROM " + tableName + " WHERE scope = ? AND key_name = ?")) {
+                     sql.delete())) {
 
             stmt.setString(1, scope);
             stmt.setString(2, keyName);
@@ -226,7 +245,7 @@ public class DatabaseDataStorage extends AbstractDataStorage {
 
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT key_name FROM " + tableName + " WHERE scope = ?")) {
+                     sql.keys())) {
 
             stmt.setString(1, scope);
 
@@ -248,7 +267,7 @@ public class DatabaseDataStorage extends AbstractDataStorage {
 
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
-                     "SELECT key_name, value_data FROM " + tableName + " WHERE scope = ?")) {
+                     sql.all())) {
 
             stmt.setString(1, scope);
 
@@ -271,7 +290,7 @@ public class DatabaseDataStorage extends AbstractDataStorage {
     protected boolean doClear(String scope) {
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(
-                     "DELETE FROM " + tableName + " WHERE scope = ?")) {
+                     sql.clear())) {
 
             stmt.setString(1, scope);
             stmt.executeUpdate();

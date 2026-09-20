@@ -94,4 +94,6 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 - [x] **SimpleCommandBuilder** (`SimpleCommandBuilderTest`, 5: every option type, constraints, metadata defaults, subcommand links, build rules). No bug.
 - [x] **PluginConfiguration** migration paths (`PluginConfigurationTest` +4: migration class, plugin as migrator, newer file, failing migration/validation, backup). No bug.
 - [x] **ConsoleCommandService** (`ConsoleCommandServiceTest`, 3, through an `InputStream` constructor seam). No bug.
-- [ ] Left uncovered on purpose: `JDADiscordAPI` (would need a fake `JDABuilder`; exercised by every smoke run), `CoreConfiguration` I/O-failure branches, `Fluxcord.main`.
+- [x] **CoreConfiguration** edge cases (`CoreConfigurationTest` +4: missing folder, newer file, legacy migration with backup, malformed YAML). Fix: a syntax error in `config.yml` escaped as a raw snakeyaml `ParserException`; `YamlConfiguration.reload` now wraps it in `ConfigurationException`.
+- [x] **DatabaseDataStorage** SQL hygiene (SonarCloud S2077 on every statement): the table name is interpolated once, in `Statements.of(dialect, table, index)`, and every execution site uses a precomputed constant. The identifier itself is still validated by `sanitizeTablePrefix` (`[A-Za-z0-9_]+`), which is what actually prevents injection — identifiers cannot be bound parameters.
+- [ ] Left uncovered on purpose: `JDADiscordAPI` (would need a fake `JDABuilder`; exercised by every smoke run), `Fluxcord.main`.

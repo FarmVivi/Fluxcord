@@ -225,6 +225,9 @@ public class YamlConfiguration implements Configuration {
             }
         } catch (IOException e) {
             throw new ConfigurationException("Failed to load configuration", e);
+        } catch (org.yaml.snakeyaml.error.YAMLException e) {
+            // a syntax error in the file is a configuration error, not an internal one
+            throw new ConfigurationException("Malformed configuration file " + configFile.getName() + ": " + e.getMessage(), e);
         }
     }
 

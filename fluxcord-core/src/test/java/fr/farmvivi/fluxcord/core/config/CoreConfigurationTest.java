@@ -148,4 +148,50 @@ class CoreConfigurationTest {
         assertEquals("test_value", reloadedConfig.getString("custom.setting"));
         assertEquals(1, reloadedConfig.getConfigVersion());
     }
+
+    // ---- I/O and versioning edge cases --------------------------------------------------------------------------
+
+    @Test
+    void defaultConfigCannotBeCreatedInAMissingFolder() {
+        java.io.File inMissingFolder = tempDir.resolve("does-not-exist").resolve("config.yml").toFile();
+        fr.farmvivi.fluxcord.api.config.ConfigurationException e = assertThrows(
+                fr.farmvivi.fluxcord.api.config.ConfigurationException.class, () -> new CoreConfiguration(inMissingFolder));
+        assertTrue(e.getMessage().contains("Failed to create default configuration"), e.getMessage());
+    }
+
+    @Test
+    void aNewerConfigIsLeftAloneWithAWarning() throws Exception {
+        java.io.File file = tempDir.resolve("config.yml").toFile();
+        java.nio.file.Files.writeString(file.toPath(), "config_version: 99\ndiscord:\n  token: t\n");
+
+        CoreConfiguration config = new CoreConfiguration(file);
+
+        assertEquals(99, config.getInt("config_version"));
+        assertEquals("t", config.getString("discord.token"));
+        assertTrue(java.util.Arrays.stream(tempDir.toFile().listFiles()).noneMatch(f -> f.getName().startsWith("config.yml.backup.")),
+                "no migration, no backup");
+    }
+
+    @Test
+    void legacyMigrationBacksUpFillsDefaultsAndKeepsExistingValues() throws Exception {
+        java.io.File file = tempDir.resolve("config.yml").toFile();
+        java.nio.file.Files.writeString(file.toPath(), "discord:\n  token: keep-me\ncommands:\n  default-prefix: '?'\n");
+
+        CoreConfiguration config = new CoreConfiguration(file);
+
+        assertEquals(1, config.getInt("config_version"));
+        assertEquals("keep-me", config.getString("discord.token"), "existing values win over defaults");
+        assertEquals("?", config.getString("commands.default-prefix"));
+        assertEquals("en-US", config.getString("language.default"), "missing sections get their defaults");
+        assertTrue(config.getBoolean("commands.system.help"));
+        assertTrue(java.util.Arrays.stream(tempDir.toFile().listFiles()).anyMatch(f -> f.getName().startsWith("config.yml.backup.")), "backup before migrating");
+        assertEquals(1, new CoreConfiguration(file).getInt("config_version"), "persisted");
+    }
+
+    @Test
+    void malformedYamlIsReportedOnLoad() throws Exception {
+        java.io.File file = tempDir.resolve("config.yml").toFile();
+        java.nio.file.Files.writeString(file.toPath(), "discord: [unclosed\n");
+        assertThrows(fr.farmvivi.fluxcord.api.config.ConfigurationException.class, () -> new CoreConfiguration(file));
+    }
 }
