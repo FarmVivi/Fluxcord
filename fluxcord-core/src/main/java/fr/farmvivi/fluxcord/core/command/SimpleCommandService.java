@@ -5,6 +5,7 @@ import fr.farmvivi.fluxcord.api.command.event.CommandExecuteEvent;
 import fr.farmvivi.fluxcord.api.command.event.CommandExecutedEvent;
 import fr.farmvivi.fluxcord.api.command.exception.CommandParseException;
 import fr.farmvivi.fluxcord.api.command.exception.CommandPermissionException;
+import fr.farmvivi.fluxcord.api.command.option.AutocompleteContext;
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
 import fr.farmvivi.fluxcord.api.command.option.OptionChoice;
 import fr.farmvivi.fluxcord.api.command.option.OptionType2;
@@ -31,6 +32,8 @@ import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.interactions.FileType;
 import net.dv8tion.jda.api.interactions.InteractionContextType;
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions;
+import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent;
+import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.*;
 import org.slf4j.Logger;
@@ -51,6 +54,7 @@ public class SimpleCommandService implements CommandService {
 
     private static final Logger logger = LoggerFactory.getLogger(SimpleCommandService.class);
     private static final long SYNC_DELAY_MS = 1000; // 1 second delay
+    private static final int MAX_AUTOCOMPLETE_CHOICES = 25; // Discord limit
     private final CommandRegistry registry;
     private final List<CommandParser> parsers = new ArrayList<>();
     private final EventManager eventManager;
@@ -764,6 +768,60 @@ public class SimpleCommandService implements CommandService {
         } catch (Exception e) {
             logger.error("Error during debounced command synchronization", e);
         }
+    }
+
+    /**
+     * Answers a Discord autocomplete request: finds the (sub)command and the focused option, asks its
+     * {@link AutocompleteProvider} and replies with at most 25 choices. Any failure answers an empty list
+     * (Discord shows nothing instead of "loading options failed").
+     *
+     * @param event the JDA autocomplete event
+     */
+    public void handleAutocomplete(CommandAutoCompleteInteractionEvent event) {
+        List<net.dv8tion.jda.api.interactions.commands.Command.Choice> choices;
+        try {
+            choices = suggest(event.getName(), event.getSubcommandName(), event.getFocusedOption().getName(),
+                    new AutocompleteContext(event.getFocusedOption().getValue(),
+                            event.getGuild() != null ? event.getGuild().getId() : null,
+                            event.getUser().getId(),
+                            event.getOptions().stream().collect(java.util.stream.Collectors.toMap(
+                                    OptionMapping::getName, OptionMapping::getAsString, (a, b) -> a))))
+                    .stream()
+                    .map(choice -> new net.dv8tion.jda.api.interactions.commands.Command.Choice(choice.name(), String.valueOf(choice.value())))
+                    .toList();
+        } catch (RuntimeException e) {
+            logger.warn("Autocomplete provider failed for /{} option {}", event.getName(), event.getFocusedOption().getName(), e);
+            choices = List.of();
+        }
+        event.replyChoices(choices).queue(null, t -> logger.debug("Autocomplete reply failed (interaction expired?)", t));
+    }
+
+    /**
+     * Suggestions for one option of a registered command, capped to Discord's limit of 25 choices.
+     * Package-private for tests; {@code subcommandName} may be null.
+     */
+    List<OptionChoice<?>> suggest(String commandName, String subcommandName, String optionName, AutocompleteContext context) {
+        Command command = registry.getCommand(commandName).orElse(null);
+        if (command != null && subcommandName != null) {
+            command = command.getSubcommands().stream()
+                    .filter(sub -> sub.getName().equalsIgnoreCase(subcommandName))
+                    .findFirst().orElse(null);
+        }
+        if (command == null) {
+            return List.of();
+        }
+        CommandOption<?> option = command.getOptions().stream()
+                .filter(o -> o.getName().equalsIgnoreCase(optionName))
+                .findFirst().orElse(null);
+        if (option == null || option.getAutocompleteProvider() == null) {
+            return List.of();
+        }
+        @SuppressWarnings("unchecked")
+        List<OptionChoice<?>> suggestions = (List<OptionChoice<?>>) (List<?>) option.getAutocompleteProvider().suggest(context);
+        if (suggestions == null) {
+            return List.of();
+        }
+        return suggestions.size() > MAX_AUTOCOMPLETE_CHOICES ? suggestions.subList(0, MAX_AUTOCOMPLETE_CHOICES) : suggestions;
     }
 
     /**

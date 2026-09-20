@@ -186,6 +186,24 @@ Command command = commandService.newCommand()
 )
 ```
 
+Le fournisseur reçoit un `AutocompleteContext` : le texte déjà tapé (`partial()`), le serveur (`guildId()`),
+l'utilisateur (`userId()`) et les autres options déjà saisies (`option("nom")`). Il est appelé sur un thread
+JDA à chaque frappe : restez en mémoire, pas d'appel réseau. Discord affiche 25 choix maximum (le core tronque).
+
+```java
+.stringOption("track", "Titre dans la file", true, ctx -> {
+    MusicQueue queue = queues.get(ctx.guildId());
+    return queue.tracks().stream()
+        .filter(t -> t.title().toLowerCase().contains(ctx.partial().toLowerCase()))
+        .map(t -> new OptionChoice<>(t.title(), t.id()))
+        .toList();
+})
+```
+
+L'ancienne forme `input -> List<OptionChoice<String>>` (texte seul) reste acceptée. Les options `userOption`,
+`channelOption`, `roleOption` bénéficient du sélecteur natif de Discord sans rien configurer ; en console,
+un utilisateur se donne par son ID.
+
 ## Sous-commandes
 
 Vous pouvez créer des sous-commandes :

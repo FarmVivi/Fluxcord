@@ -3,13 +3,17 @@ package fr.farmvivi.fluxcord.core.command.system;
 import fr.farmvivi.fluxcord.api.command.Command;
 import fr.farmvivi.fluxcord.api.command.CommandContext;
 import fr.farmvivi.fluxcord.api.command.CommandResult;
+import fr.farmvivi.fluxcord.api.command.option.AutocompleteContext;
 import fr.farmvivi.fluxcord.api.command.option.OptionChoice;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.api.permissions.Permission;
 import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
 import fr.farmvivi.fluxcord.core.command.SimpleCommandBuilder;
 
+import net.dv8tion.jda.api.entities.User;
+
 import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -41,8 +45,8 @@ public class PermCommand {
                 .stringOption("action", "set, unset, list or nodes", true,
                         new OptionChoice<>("set", "set"), new OptionChoice<>("unset", "unset"),
                         new OptionChoice<>("list", "list"), new OptionChoice<>("nodes", "nodes"))
-                .stringOption("permission", "Permission node (e.g. music-plugin.volume)", false)
-                .stringOption("user", "Discord user ID", false)
+                .stringOption("permission", "Permission node (e.g. music-plugin.volume)", false, this::suggestPermissions)
+                .userOption("user", "The user", false)
                 .booleanOption("value", "Grant (true) or deny (false)", false)
                 .stringOption("scope", "guild (default on Discord) or global", false,
                         new OptionChoice<>("guild", "guild"), new OptionChoice<>("global", "global"))
@@ -67,7 +71,7 @@ public class PermCommand {
 
         String action = context.getOption("action", "nodes");
         String permission = context.<String>getOption("permission").orElse(null);
-        String user = context.<String>getOption("user").orElse(null);
+        String user = context.<User>getOption("user").map(User::getId).orElse(null);
         Boolean value = context.<Boolean>getOption("value").orElse(null);
         String scope = context.getOption("scope", guildId != null ? "guild" : "global");
         boolean guildScope = "guild".equals(scope);
@@ -137,6 +141,17 @@ public class PermCommand {
                 return CommandResult.success();
             }
         }
+    }
+
+    /** Registered permission nodes matching what the user typed; the core applies Discord's 25-choice cap. */
+    private List<OptionChoice<String>> suggestPermissions(AutocompleteContext context) {
+        String typed = context.partial().toLowerCase(Locale.ROOT);
+        return permissionManager.getRegisteredPermissions().stream()
+                .map(Permission::getName)
+                .filter(name -> typed.isEmpty() || name.toLowerCase(Locale.ROOT).contains(typed))
+                .sorted()
+                .map(name -> new OptionChoice<>(name, name))
+                .toList();
     }
 
     private static boolean validUser(String user) {

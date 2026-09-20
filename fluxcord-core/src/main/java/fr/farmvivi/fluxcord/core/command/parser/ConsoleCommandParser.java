@@ -7,6 +7,8 @@ import fr.farmvivi.fluxcord.api.command.option.CommandOption;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.core.command.SimpleCommandContext;
 import fr.farmvivi.fluxcord.core.command.parser.event.ConsoleCommandEvent;
+import net.dv8tion.jda.api.JDA;
+import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.events.Event;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,7 +62,7 @@ public class ConsoleCommandParser implements CommandParser {
         }
 
         // Parse arguments for console (simplified - just string splitting)
-        Map<String, Object> options = parseOptions(argsStr, command);
+        Map<String, Object> options = parseOptions(argsStr, command, consoleEvent.getJDA());
 
         // Create console context with locale US since console has no user
         SimpleCommandContext context = new SimpleCommandContext(
@@ -103,7 +105,7 @@ public class ConsoleCommandParser implements CommandParser {
      * @return the parsed options
      * @throws CommandParseException if parsing fails
      */
-    private Map<String, Object> parseOptions(String argsStr, Command command) throws CommandParseException {
+    private Map<String, Object> parseOptions(String argsStr, Command command, JDA jda) throws CommandParseException {
         Map<String, Object> options = new HashMap<>();
         List<CommandOption<?>> commandOptions = command.getOptions();
 
@@ -121,7 +123,7 @@ public class ConsoleCommandParser implements CommandParser {
 
             CommandOption<?> option = commandOptions.get(optionIndex);
             try {
-                Object value = parseOptionValue(arg, option);
+                Object value = parseOptionValue(arg, option, jda);
                 options.put(option.getName(), value);
                 optionIndex++;
             } catch (CommandParseException e) {
@@ -194,14 +196,26 @@ public class ConsoleCommandParser implements CommandParser {
      * @return the parsed value
      * @throws CommandParseException if parsing fails
      */
-    private Object parseOptionValue(String arg, CommandOption<?> option) throws CommandParseException {
+    private Object parseOptionValue(String arg, CommandOption<?> option, JDA jda) throws CommandParseException {
         try {
             return switch (option.getType()) {
                 case STRING -> arg;
                 case INTEGER -> Integer.parseInt(arg);
                 case BOOLEAN -> parseBoolean(arg);
                 case NUMBER -> Double.parseDouble(arg);
-                case USER, CHANNEL, ROLE, MENTIONABLE, ATTACHMENT -> {
+                // Users can be given by ID (or <@id> mention) and are resolved through Discord
+                case USER -> {
+                    String id = arg.replaceAll("[^0-9]", "");
+                    if (id.isEmpty() || jda == null) {
+                        throw new CommandParseException("Expected a Discord user ID for option " + option.getName());
+                    }
+                    User user = jda.getUserById(id);
+                    if (user == null) {
+                        user = jda.retrieveUserById(id).complete();
+                    }
+                    yield user;
+                }
+                case CHANNEL, ROLE, MENTIONABLE, ATTACHMENT -> {
                     logger.warn("Option type {} not supported in console commands", option.getType());
                     throw new CommandParseException("Option type not supported in console");
                 }

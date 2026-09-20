@@ -1,6 +1,7 @@
 package fr.farmvivi.fluxcord.core.command.listener;
 
 import fr.farmvivi.fluxcord.core.command.SimpleCommandService;
+import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
@@ -31,6 +32,11 @@ public class CommandListener extends ListenerAdapter {
     public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
         // Pass the event to the command service
         commandService.processCommand(event);
+    }
+
+    @Override
+    public void onCommandAutoCompleteInteraction(@NotNull CommandAutoCompleteInteractionEvent event) {
+        commandService.handleAutocomplete(event);
     }
 
     @Override

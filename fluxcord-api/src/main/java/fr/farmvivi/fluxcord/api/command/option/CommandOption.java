@@ -1,7 +1,7 @@
 package fr.farmvivi.fluxcord.api.command.option;
 
 import java.util.List;
-import java.util.function.Function;
+
 import java.util.function.Predicate;
 
 /**
@@ -63,7 +63,7 @@ public interface CommandOption<T> {
      *
      * @return the autocomplete provider, or null if autocomplete is not supported
      */
-    Function<String, List<OptionChoice<T>>> getAutocompleteProvider();
+    AutocompleteProvider<T> getAutocompleteProvider();
 
     /**
      * Gets the minimum value for number-based options.

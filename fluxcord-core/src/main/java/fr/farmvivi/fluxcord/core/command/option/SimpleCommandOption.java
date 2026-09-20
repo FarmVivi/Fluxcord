@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.core.command.option;
 
+import fr.farmvivi.fluxcord.api.command.option.AutocompleteProvider;
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
 import fr.farmvivi.fluxcord.api.command.option.OptionChoice;
 import fr.farmvivi.fluxcord.api.command.option.OptionType2;
@@ -22,7 +23,7 @@ public record SimpleCommandOption<T>(
         boolean required,
         List<OptionChoice<T>> choices,
         Predicate<T> validator,
-        Function<String, List<OptionChoice<T>>> autocompleteProvider,
+        AutocompleteProvider<T> autocompleteProvider,
         Number minValue,
         Number maxValue,
         Integer minLength,
@@ -75,7 +76,7 @@ public record SimpleCommandOption<T>(
     }
 
     @Override
-    public Function<String, List<OptionChoice<T>>> getAutocompleteProvider() {
+    public AutocompleteProvider<T> getAutocompleteProvider() {
         return autocompleteProvider;
     }
 
@@ -117,7 +118,7 @@ public record SimpleCommandOption<T>(
         private OptionType2 type;
         private boolean required;
         private Predicate<T> validator;
-        private Function<String, List<OptionChoice<T>>> autocompleteProvider;
+        private AutocompleteProvider<T> autocompleteProvider;
         private Number minValue;
         private Number maxValue;
         private Integer minLength;
@@ -207,7 +208,7 @@ public record SimpleCommandOption<T>(
          * @param autocompleteProvider the autocomplete provider to set
          * @return this builder
          */
-        public Builder<T> autocompleteProvider(Function<String, List<OptionChoice<T>>> autocompleteProvider) {
+        public Builder<T> autocompleteProvider(AutocompleteProvider<T> autocompleteProvider) {
             this.autocompleteProvider = autocompleteProvider;
             return this;
         }

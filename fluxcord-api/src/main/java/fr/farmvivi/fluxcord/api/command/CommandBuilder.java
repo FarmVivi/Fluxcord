@@ -1,6 +1,7 @@
 package fr.farmvivi.fluxcord.api.command;
 
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
+import fr.farmvivi.fluxcord.api.command.option.AutocompleteProvider;
 import fr.farmvivi.fluxcord.api.command.option.OptionChoice;
 import fr.farmvivi.fluxcord.api.command.option.OptionType2;
 
@@ -158,16 +159,25 @@ public interface CommandBuilder {
     CommandBuilder stringOption(String name, String description, boolean required, Predicate<String> validator);
 
     /**
-     * Adds a string option to the command with autocomplete.
+     * Adds a string option to the command with autocomplete (typed text only; see the
+     * {@link AutocompleteProvider} overload for guild/user/other-options context).
+     */
+    default CommandBuilder stringOption(String name, String description, boolean required,
+                                        Function<String, List<OptionChoice<String>>> autocompleteProvider) {
+        return stringOption(name, description, required, AutocompleteProvider.fromPartial(autocompleteProvider));
+    }
+
+    /**
+     * Adds a string option whose suggestions are computed while the user types.
      *
      * @param name                 the option name
      * @param description          the option description
      * @param required             true if the option is required
-     * @param autocompleteProvider the autocomplete provider
+     * @param autocompleteProvider the suggestion provider (fast, in-memory)
      * @return this builder
      */
     CommandBuilder stringOption(String name, String description, boolean required,
-                                Function<String, List<OptionChoice<String>>> autocompleteProvider);
+                                AutocompleteProvider<String> autocompleteProvider);
 
     /**
      * Adds an integer option to the command.

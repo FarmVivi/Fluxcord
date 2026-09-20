@@ -22,7 +22,7 @@ One `Command` model serves three front-ends: Discord slash commands, prefixed te
 | `core/command/SimpleCommand.java`, `SimpleCommandBuilder.java`, `SimpleCommandContext.java`, `option/SimpleCommandOption.java` | implementations. |
 | `core/command/CommandMessageBuilder.java` (~610 lines) | builds/sends replies for the three front-ends (content, embeds, components, ephemeral, deferral). |
 | `core/command/parser/{Slash,Text,Console}CommandParser.java` + `CommandParser` | `canParse(event)` / `isCommandInvocation(event)` / `extractCommandName` / `parse(event, command)` → `CommandContext`. `ConsoleCommandParser` wraps a synthetic `parser/event/ConsoleCommandEvent`. |
-| `core/command/listener/CommandListener.java` | JDA `ListenerAdapter`: `onSlashCommandInteraction`, `onMessageReceived` → `service.processCommand(event)`. No autocomplete handler (see Known issues). |
+| `core/command/listener/CommandListener.java` | JDA `ListenerAdapter`: `onSlashCommandInteraction`, `onMessageReceived` → `service.processCommand(event)`; `onCommandAutoCompleteInteraction` → `service.handleAutocomplete(event)`. |
 | `core/command/system/{Help,Version,Shutdown}Command.java` | built-ins, toggled by `commands.system.*` in `config.yml`, registered once in `enable()`. |
 | `core/console/ConsoleCommandService.java` | single thread reading `System.in`, forwards lines to the command service. |
 
@@ -51,10 +51,10 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 ## Learnings
 - 2026-09-19: Initial audit; option-builder method list above is partial — read `CommandBuilder.java` for the full set before documenting an option type.
+- 2026-09-20: `SimpleCommandRegistryTest` (11): alias removal was not owner-checked (fixed). C3 done: `AutocompleteProvider<T>` / `AutocompleteContext` in api (`CommandOption.getAutocompleteProvider()` now returns the provider type; the `Function<String,…>` builder overload is a default method adapting it), `SimpleCommandService.suggest(...)` is package-private for tests, `handleAutocomplete` caps at 25 and answers empty on provider exceptions. Console parser resolves `USER` options from a numeric ID via `jda.getUserById` then `retrieveUserById().complete()`. System commands `perm` (operators only) and `shutdown` check `PermissionManager.isOperator` in their executor instead of `.permission(...)` (system commands have no plugin to register a permission with).
 
 ## Known issues / open questions
 - C1 (plan): `SimpleCommandService` mixes 5 concerns (registry façade, execution pipeline, JDA data mapping, sync/debounce, metrics/cooldown). Split.
 - C2: `processCommand` is a nested loop with try/catch per parser; a `CommandParseException` from the right parser makes it fall through to the next parser instead of reporting a usage error.
-- C3: rename `OptionType2` (API break — ask the user).
+- C3 (rename `OptionType2`): still open, API break — ask the user.
 - Global command namespace collision across plugins: warn only, or prefix with plugin id? Decide with the user.
-- **Autocomplete is wired only half-way**: `buildOptionData` calls `setAutoComplete(true)` when a provider exists, but nothing handles JDA `CommandAutoCompleteInteractionEvent` (grep `AutoComplete` in core → one hit). Discord shows "loading options failed".

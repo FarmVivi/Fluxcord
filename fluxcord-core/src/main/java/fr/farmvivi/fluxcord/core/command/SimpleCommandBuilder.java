@@ -5,6 +5,7 @@ import fr.farmvivi.fluxcord.api.command.CommandBuilder;
 import fr.farmvivi.fluxcord.api.command.CommandContext;
 import fr.farmvivi.fluxcord.api.command.CommandResult;
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
+import fr.farmvivi.fluxcord.api.command.option.AutocompleteProvider;
 import fr.farmvivi.fluxcord.api.command.option.OptionChoice;
 import fr.farmvivi.fluxcord.api.command.option.OptionType2;
 import fr.farmvivi.fluxcord.core.command.option.SimpleCommandOption;
@@ -130,7 +131,7 @@ public class SimpleCommandBuilder implements CommandBuilder {
     }
 
     @Override
-    public CommandBuilder stringOption(String name, String description, boolean required, Function<String, List<OptionChoice<String>>> autocompleteProvider) {
+    public CommandBuilder stringOption(String name, String description, boolean required, AutocompleteProvider<String> autocompleteProvider) {
         return option(new SimpleCommandOption.Builder<String>()
                 .name(name)
                 .description(description)
