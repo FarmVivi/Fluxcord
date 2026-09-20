@@ -117,9 +117,14 @@ class PluginManagerTest {
         boot();
         Plugin beta = manager.getPlugin("beta");
         permissions.registerPermission(new Perm("beta.x", PermissionDefault.TRUE), beta);
+        registry.register(new fr.farmvivi.fluxcord.core.command.SimpleCommand("bcmd", "d", null, null, null, null, null,
+                null, null, false, null, false, null, true, 0, (c, x) -> null), beta);
         PluginCalls.reset();
 
         manager.close();
+
+        assertNull(permissions.getPermission("beta.x"), "phased shutdown releases permissions (P1)");
+        assertTrue(registry.getCommand("bcmd").isEmpty(), "and commands");
 
         assertEquals(List.of("beta:onPreDisable", "alpha:onPreDisable", "beta:onDisable", "alpha:onDisable",
                 "beta:onPostDisable", "alpha:onPostDisable"), PluginCalls.all());

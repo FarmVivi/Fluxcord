@@ -324,18 +324,7 @@ public class PluginManager implements PluginLoader, Closeable {
             executeLifecyclePhase(plugin, PluginLifecycle.ENABLING, Plugin::onEnable);
             executeLifecyclePhase(plugin, PluginLifecycle.POST_ENABLING, Plugin::onPostEnable);
 
-            // Set to enabled
-            PluginLifecycle oldLifecycle = plugin.getLifecycle();
-            plugin.setLifecycle(PluginLifecycle.ENABLED);
-            fireLifecycleChangeEvent(plugin, oldLifecycle, PluginLifecycle.ENABLED);
-
-            // Fire the plugin enabled event
-            if (eventManager != null) {
-                PluginEnabledEvent enabledEvent = new PluginEnabledEvent(plugin);
-                eventManager.fireEvent(enabledEvent);
-            }
-
-            logger.info("Plugin enabled: {} ({}) v{}", plugin.getId(), plugin.getName(), plugin.getVersion());
+            markEnabled(plugin);
             return true;
         } catch (Exception e) {
             logger.error("Failed to enable plugin: {} ({})", plugin.getId(), plugin.getName(), e);
@@ -368,33 +357,8 @@ public class PluginManager implements PluginLoader, Closeable {
             executeLifecyclePhase(plugin, PluginLifecycle.DISABLING, Plugin::onDisable);
             executeLifecyclePhase(plugin, PluginLifecycle.POST_DISABLING, Plugin::onPostDisable);
 
-            // Cleanup
-            if (eventManager != null) {
-                eventManager.unregisterAll(plugin);
-            }
-            if (permissionManager != null) {
-                permissionManager.unregisterPermissions(plugin);
-            }
-            if (audioService != null) {
-                audioService.closeAllConnectionsForPlugin(plugin);
-            }
-            if (commandService != null) {
-                // Unregister all commands from this plugin
-                commandService.getRegistry().unregisterAll(plugin);
-            }
-
-            // Set to disabled
-            PluginLifecycle oldLifecycle = plugin.getLifecycle();
-            plugin.setLifecycle(PluginLifecycle.DISABLED);
-            fireLifecycleChangeEvent(plugin, oldLifecycle, PluginLifecycle.DISABLED);
-
-            // Fire the plugin disabled event
-            if (eventManager != null) {
-                PluginDisabledEvent disabledEvent = new PluginDisabledEvent(plugin);
-                eventManager.fireEvent(disabledEvent);
-            }
-
-            logger.info("Plugin disabled: {} ({})", plugin.getId(), plugin.getName());
+            releaseResources(plugin);
+            markDisabled(plugin);
             return true;
         } catch (Exception e) {
             logger.error("Failed to disable plugin: {} ({})", plugin.getId(), plugin.getName(), e);
@@ -505,18 +469,7 @@ public class PluginManager implements PluginLoader, Closeable {
             if (plugin.getLifecycle() == PluginLifecycle.ENABLING && !failedPlugins.contains(plugin.getId())) {
                 try {
                     executeLifecyclePhase(plugin, PluginLifecycle.POST_ENABLING, Plugin::onPostEnable);
-
-                    // Mark as fully enabled
-                    PluginLifecycle oldLifecycle = plugin.getLifecycle();
-                    plugin.setLifecycle(PluginLifecycle.ENABLED);
-                    fireLifecycleChangeEvent(plugin, oldLifecycle, PluginLifecycle.ENABLED);
-
-                    // Fire enabled event
-                    if (eventManager != null) {
-                        eventManager.fireEvent(new PluginEnabledEvent(plugin));
-                    }
-
-                    logger.info("Plugin fully enabled: {} ({}) v{}", plugin.getId(), plugin.getName(), plugin.getVersion());
+                    markEnabled(plugin);
                 } catch (Exception e) {
                     logger.error("Error post-enabling plugin: {} ({})", plugin.getId(), plugin.getName(), e);
                     failedPlugins.add(plugin.getId());
@@ -569,18 +522,8 @@ public class PluginManager implements PluginLoader, Closeable {
             if (plugin.getLifecycle() == PluginLifecycle.DISABLING) {
                 try {
                     executeLifecyclePhase(plugin, PluginLifecycle.POST_DISABLING, Plugin::onPostDisable);
-
-                    // Mark as fully disabled
-                    PluginLifecycle oldLifecycle = plugin.getLifecycle();
-                    plugin.setLifecycle(PluginLifecycle.DISABLED);
-                    fireLifecycleChangeEvent(plugin, oldLifecycle, PluginLifecycle.DISABLED);
-
-                    // Fire disabled event
-                    if (eventManager != null) {
-                        eventManager.fireEvent(new PluginDisabledEvent(plugin));
-                    }
-
-                    logger.info("Plugin fully disabled: {} ({})", plugin.getId(), plugin.getName());
+                    releaseResources(plugin);
+                    markDisabled(plugin);
                 } catch (Exception e) {
                     logger.error("Error post-disabling plugin: {} ({})", plugin.getId(), plugin.getName(), e);
                     // Continue anyway
@@ -870,6 +813,46 @@ public class PluginManager implements PluginLoader, Closeable {
      * @param newLifecycle the new lifecycle state
      * @param action       the action to perform
      */
+    /**
+     * Everything a plugin acquired from the shared services is released here, on both the phased shutdown
+     * path and the single-plugin disable/reload path (they used to differ: the phased path only unregistered
+     * event listeners, leaking permissions, commands and audio connections of the plugin).
+     */
+    private void releaseResources(Plugin plugin) {
+        if (eventManager != null) {
+            eventManager.unregisterAll(plugin);
+        }
+        if (permissionManager != null) {
+            permissionManager.unregisterPermissions(plugin);
+        }
+        if (audioService != null) {
+            audioService.closeAllConnectionsForPlugin(plugin);
+        }
+        if (commandService != null) {
+            commandService.getRegistry().unregisterAll(plugin);
+        }
+    }
+
+    private void markEnabled(Plugin plugin) {
+        PluginLifecycle oldLifecycle = plugin.getLifecycle();
+        plugin.setLifecycle(PluginLifecycle.ENABLED);
+        fireLifecycleChangeEvent(plugin, oldLifecycle, PluginLifecycle.ENABLED);
+        if (eventManager != null) {
+            eventManager.fireEvent(new PluginEnabledEvent(plugin));
+        }
+        logger.info("Plugin fully enabled: {} ({}) v{}", plugin.getId(), plugin.getName(), plugin.getVersion());
+    }
+
+    private void markDisabled(Plugin plugin) {
+        PluginLifecycle oldLifecycle = plugin.getLifecycle();
+        plugin.setLifecycle(PluginLifecycle.DISABLED);
+        fireLifecycleChangeEvent(plugin, oldLifecycle, PluginLifecycle.DISABLED);
+        if (eventManager != null) {
+            eventManager.fireEvent(new PluginDisabledEvent(plugin));
+        }
+        logger.info("Plugin fully disabled: {} ({})", plugin.getId(), plugin.getName());
+    }
+
     private void executeLifecyclePhase(Plugin plugin, PluginLifecycle newLifecycle, PluginAction action) {
         PluginLifecycle oldLifecycle = plugin.getLifecycle();
         plugin.setLifecycle(newLifecycle);
@@ -934,10 +917,10 @@ public class PluginManager implements PluginLoader, Closeable {
      * Cleans up resources when shutting down.
      */
     private void cleanupResources() {
-        // Unregister all event handlers
-        if (eventManager != null) {
-            for (Plugin plugin : plugins.values()) {
-                eventManager.unregisterAll(plugin);
+        // Plugins that never reached DISABLED (ERROR, or failed mid-shutdown) still hold registrations
+        for (Plugin plugin : plugins.values()) {
+            if (plugin.getLifecycle() != PluginLifecycle.DISABLED) {
+                releaseResources(plugin);
             }
         }
 

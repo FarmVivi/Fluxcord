@@ -12,8 +12,8 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 
 ## 1. Plugin lifecycle & identity (highest impact)
 
-- [ ] **P1 — One lifecycle state machine.** `PluginManager` has two parallel paths: phased `preEnablePlugins/enablePlugins/postEnablePlugins` (boot) and `enablePlugin/disablePlugin` (reload). They diverge in cleanup: the phased shutdown only unregisters event listeners, while `disablePlugin` also releases permissions, audio and commands. Target: a per-plugin `PluginLifecycleRunner` (or state machine) used by both, with an explicit "release everything acquired" step (events, commands, permissions, audio, JDA listeners, classloader). Split `PluginManager` (~960 lines) into scanner/loader (jar → descriptor → instance), lifecycle runner, and registry/reload orchestration.
-- [ ] **P2 — Identity = `id` everywhere.** `PluginManager.reloadPlugin` stores under `getName()`; `AudioServiceImpl.pluginGuilds` and log lines key by `getName()`; `SimplePermissionManager` logs by name. Grep `getName()` in core and switch keys to `getId()`. Decide with the user whether ids must be lowercase (language namespace lowercases, nothing else does).
+- [x] **P1 — One lifecycle path.** Done 2026-09-20: the phased boot/shutdown methods and `enablePlugin`/`disablePlugin` share `markEnabled`, `markDisabled` and `releaseResources` (events, permissions, audio, commands); the phased shutdown used to leak everything but event listeners. `cleanupResources` still releases plugins stuck in ERROR. Both paths remain (boot needs the pre-connect/post-connect split) but no longer diverge.
+- [x] **P2 — Identity = `id` everywhere.** Done 2026-09-20: `PluginManager.reloadPlugin`, `AudioServiceImpl.pluginGuilds` and `AudioPipeline` handler maps are keyed by `getId()`; remaining `getName()` uses are display only. Open: should ids be forced lowercase (only the language namespace lowercases)? Convention so far: lowercase ids in plugin.yml.
 - [x] **P3 — Classloader hardening.** (2026-09-20) `fr.farmvivi.fluxcord.api` added to `CORE_PACKAGES`; `getResourceAsStream` no longer uses the JarURLConnection cache (kept the jar locked on Windows after `close()`, blocking reload); template scope fixed. Left: fail fast in `loadPlugin` when a jar bundles api classes (now harmless: parent-first), and closing the classloader on every failure path (P1).
 - [ ] **P4 — Dependants of failed plugins.** `DependencyResolver` only handles *missing* deps; a plugin whose hard dependency failed to load/enable is still enabled. Propagate failure along hard deps.
 - [ ] **P5 — `PluginContext` exposes plugin-scoped adapters** (`getCommands()`, `getPermissions()`, `getLanguage()`, `getStorage()`) instead of only the shared managers, so namespacing can't be bypassed and `AbstractPlugin` stops building adapters itself. API addition; keep the old getters.
@@ -50,7 +50,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 
 ## 7. Audio
 
-- [ ] **A1 — Key by plugin id** (see P2).
+- [x] **A1 — Key by plugin id** (done with P2, 2026-09-20).
 - [x] **A2 — Extract the send strategy** (done 2026-09-20: `SendStrategy`, one-pass BE mixer, `AudioSettings` fade/ducking, frame event opt-in) (bypass vs mix, Opus rejection, priority fades) from `AudioPipeline` into a testable class; translate the French comments while there. Decided 2026-09-20: bypass now applies volume × fade in its existing LE→BE pass (no extra pass; Opus untouched).
 - [ ] **A3 — `ai-audio-plugin`** is a stub of TODOs; remove from the reactor or make it a real example — user decision.
 

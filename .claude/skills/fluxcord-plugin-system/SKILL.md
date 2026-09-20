@@ -30,7 +30,7 @@ Then, phase by phase over *all* plugins in dependency order: `preEnablePlugins()
 Shutdown: `close()` = `preDisablePlugins()` → `disablePlugins()` → `postDisablePlugins()` → `cleanupResources()` (unregister event listeners, close classloaders, clear maps).
 
 ## Gotchas / invariants
-- **Two parallel lifecycle paths**: the phased `*Plugins()` methods used at boot/shutdown, and the single-plugin `enablePlugin()` / `disablePlugin()` (from `PluginLoader`) used by `reloadPlugin`. They differ: `disablePlugin()` unregisters events, permissions, audio connections and commands; the phased shutdown path only unregisters event listeners in `cleanupResources()`. Keep both in sync until they are merged (plan item P1).
+- **Two lifecycle paths, one implementation** (P1 done 2026-09-20): the phased `*Plugins()` methods (boot/shutdown, needed for the pre-connect/post-connect split) and `enablePlugin()`/`disablePlugin()` (reload) both go through `executeLifecyclePhase`, `markEnabled`, `markDisabled` and `releaseResources` (events, permissions, audio, commands). Add new per-plugin cleanup to `releaseResources` only.
 - `reloadPlugins()` (all) disconnects and reconnects JDA; it relies on `DiscordAPI.connect()` being re-entrant.
 - Plugin classloader is closed on reload/shutdown; any thread or JDA listener the plugin left registered keeps the old classes alive (leak + `ClassCastException` on reload). JDA listeners added by plugins are **not** removed by the core — plugins must do it in `onDisable`.
 - `PluginContextImpl` gives the *shared* service instances; namespacing is done by the adapters in `AbstractPlugin`, not by the context. A plugin can bypass namespacing by calling `context.getCommandService()` directly.
@@ -52,6 +52,5 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 - 2026-09-20 (T1): `PluginManagerTest` confirmed and fixed: `reloadPlugin` stored the new instance under `getName()` (so `getPlugin(id)` was null after a reload and a second entry appeared), and `loadPlugin` left the class loader open when the main class failed to load (jar locked on Windows). Both fixed.
 
 ## Known issues / open questions
-- P1 (plan): merge the two lifecycle paths into one per-plugin state machine, and make disable release *everything* the plugin acquired.
 - P3 done except the fail-fast on bundled api classes (now harmless).
 - Should `failedPlugins` block dependants? Currently a dependant of a failed plugin is still enabled (only *missing* deps are handled by the resolver).

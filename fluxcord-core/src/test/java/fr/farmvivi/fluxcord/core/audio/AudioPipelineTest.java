@@ -64,6 +64,7 @@ class AudioPipelineTest {
     private static Plugin plugin(String name) {
         Plugin p = mock(Plugin.class);
         when(p.getName()).thenReturn(name);
+        when(p.getId()).thenReturn(name);
         return p;
     }
 

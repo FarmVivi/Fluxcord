@@ -39,6 +39,7 @@ public class AudioServiceImplTest {
         when(mockGuild.getName()).thenReturn("Test Guild");
         when(mockGuild.getAudioManager()).thenReturn(mockAudioManager);
         when(mockPlugin.getName()).thenReturn("TestPlugin");
+        when(mockPlugin.getId()).thenReturn("test-plugin");
 
         // Crée le service audio
         audioService = new AudioServiceImpl(mockEventManager);

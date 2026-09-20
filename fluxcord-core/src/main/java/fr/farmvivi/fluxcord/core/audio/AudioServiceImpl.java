@@ -64,7 +64,7 @@ public class AudioServiceImpl implements AudioService {
         pipeline.registerSendHandler(plugin, handler, initialVolume, priority);
 
         // Tracking des guildes par plugin
-        pluginGuilds.computeIfAbsent(plugin.getName(), k -> ConcurrentHashMap.newKeySet()).add(guildId);
+        pluginGuilds.computeIfAbsent(plugin.getId(), k -> ConcurrentHashMap.newKeySet()).add(guildId);
 
         // Émission de l'événement
         AudioSendHandlerRegisteredEvent event = new AudioSendHandlerRegisteredEvent(guild, plugin, handler, initialVolume, priority);
@@ -100,11 +100,11 @@ public class AudioServiceImpl implements AudioService {
         }
 
         // Mise à jour du tracking des guildes par plugin
-        Set<String> pluginGuildIds = pluginGuilds.get(plugin.getName());
+        Set<String> pluginGuildIds = pluginGuilds.get(plugin.getId());
         if (pluginGuildIds != null) {
             pluginGuildIds.remove(guildId);
             if (pluginGuildIds.isEmpty()) {
-                pluginGuilds.remove(plugin.getName());
+                pluginGuilds.remove(plugin.getId());
             }
         }
     }
@@ -138,7 +138,7 @@ public class AudioServiceImpl implements AudioService {
         pipeline.registerReceiveHandler(plugin, handler);
 
         // Tracking des guildes par plugin
-        pluginGuilds.computeIfAbsent(plugin.getName(), k -> ConcurrentHashMap.newKeySet()).add(guildId);
+        pluginGuilds.computeIfAbsent(plugin.getId(), k -> ConcurrentHashMap.newKeySet()).add(guildId);
 
         // Émission de l'événement
         AudioReceiveHandlerRegisteredEvent event = new AudioReceiveHandlerRegisteredEvent(guild, plugin, handler);
@@ -174,11 +174,11 @@ public class AudioServiceImpl implements AudioService {
         }
 
         // Mise à jour du tracking des guildes par plugin
-        Set<String> pluginGuildIds = pluginGuilds.get(plugin.getName());
+        Set<String> pluginGuildIds = pluginGuilds.get(plugin.getId());
         if (pluginGuildIds != null) {
             pluginGuildIds.remove(guildId);
             if (pluginGuildIds.isEmpty()) {
-                pluginGuilds.remove(plugin.getName());
+                pluginGuilds.remove(plugin.getId());
             }
         }
     }
@@ -247,7 +247,7 @@ public class AudioServiceImpl implements AudioService {
             return;
         }
 
-        Set<String> guildIds = pluginGuilds.remove(plugin.getName());
+        Set<String> guildIds = pluginGuilds.remove(plugin.getId());
         if (guildIds != null) {
             for (String guildId : guildIds) {
                 AudioPipeline pipeline = pipelines.get(guildId);

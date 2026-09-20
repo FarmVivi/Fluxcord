@@ -133,7 +133,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
      * @param priority la priorité (0-100)
      */
     public void registerSendHandler(Plugin plugin, AudioSendHandler handler, int volume, int priority) {
-        String pluginName = plugin.getName();
+        String pluginName = plugin.getId(); // keyed by id like the rest of the core (P2)
         SourceHandler sourceHandler = new SourceHandler(handler, volume, priority);
         sendHandlers.put(pluginName, sourceHandler);
 
@@ -146,7 +146,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
      * @param plugin le plugin
      */
     public void deregisterSendHandler(Plugin plugin) {
-        String pluginName = plugin.getName();
+        String pluginName = plugin.getId(); // keyed by id like the rest of the core (P2)
         sendHandlers.remove(pluginName);
 
         // Réinitialise l'état du dernier plugin actif si nécessaire
@@ -164,7 +164,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
      * @param handler le handler de réception audio
      */
     public void registerReceiveHandler(Plugin plugin, AudioReceiveHandler handler) {
-        String pluginName = plugin.getName();
+        String pluginName = plugin.getId(); // keyed by id like the rest of the core (P2)
         receiveHandlers.put(pluginName, handler);
         logger.debug("Registered receive handler for plugin {} in guild {}", pluginName, guild.getName());
     }
@@ -175,7 +175,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
      * @param plugin le plugin
      */
     public void deregisterReceiveHandler(Plugin plugin) {
-        String pluginName = plugin.getName();
+        String pluginName = plugin.getId(); // keyed by id like the rest of the core (P2)
         receiveHandlers.remove(pluginName);
         logger.debug("Deregistered receive handler for plugin {} in guild {}", pluginName, guild.getName());
     }
@@ -187,7 +187,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
      * @param volume le volume (0-100)
      */
     public void setVolume(Plugin plugin, int volume) {
-        String pluginName = plugin.getName();
+        String pluginName = plugin.getId(); // keyed by id like the rest of the core (P2)
         SourceHandler sourceHandler = sendHandlers.get(pluginName);
         if (sourceHandler != null) {
             int oldVolume = sourceHandler.getBaseVolume();
@@ -218,7 +218,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
      * @return true si le plugin a un handler d'envoi actif
      */
     public boolean hasSendHandler(Plugin plugin) {
-        return sendHandlers.containsKey(plugin.getName());
+        return sendHandlers.containsKey(plugin.getId());
     }
 
     /**
@@ -228,7 +228,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
      * @return true si le plugin a un handler de réception actif
      */
     public boolean hasReceiveHandler(Plugin plugin) {
-        return receiveHandlers.containsKey(plugin.getName());
+        return receiveHandlers.containsKey(plugin.getId());
     }
 
     /**
@@ -238,7 +238,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
      * @return le handler d'envoi audio, ou null s'il n'existe pas
      */
     public AudioSendHandler getSendHandler(Plugin plugin) {
-        SourceHandler handler = sendHandlers.get(plugin.getName());
+        SourceHandler handler = sendHandlers.get(plugin.getId());
         return handler != null ? handler.getHandler() : null;
     }
 
@@ -249,7 +249,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
      * @return le handler de réception audio, ou null s'il n'existe pas
      */
     public AudioReceiveHandler getReceiveHandler(Plugin plugin) {
-        return receiveHandlers.get(plugin.getName());
+        return receiveHandlers.get(plugin.getId());
     }
 
     /**
