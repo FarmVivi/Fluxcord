@@ -39,6 +39,7 @@ public class MusicPlugin extends AbstractPlugin {
     // Playback-state persistence settings (loaded from configuration)
     private boolean persistenceEnabled = true;
     private long persistenceTtlMillis = 3_600_000L; // 1 hour
+    private long autoLeaveTimeoutMs = 300_000L; // 5 minutes
 
     @Override
     public void onEnable() {
@@ -287,7 +288,8 @@ public class MusicPlugin extends AbstractPlugin {
         int maxTrackDurationMs = getConfiguration().getInt("music.max_track_duration", 600_000);
         boolean enableSpotify = getConfiguration().getBoolean("providers.spotify.enabled", true);
         boolean enableSoundcloud = getConfiguration().getBoolean("providers.soundcloud.enabled", true);
-        int autoLeaveTimeoutMs = getConfiguration().getInt("music.auto_leave_timeout", 300_000);
+        this.autoLeaveTimeoutMs = Math.max(0, getConfiguration().getInt("music.auto_leave_timeout", 300_000));
+        int autoLeaveTimeoutMs = (int) this.autoLeaveTimeoutMs;
 
         // Playback-state persistence (resume after restart, e.g. Kubernetes pod rescheduling)
         this.persistenceEnabled = getConfiguration().getBoolean("music.persistence.enabled", true);
@@ -312,6 +314,11 @@ public class MusicPlugin extends AbstractPlugin {
      */
     public long getPersistenceTtlMillis() {
         return persistenceTtlMillis;
+    }
+
+    /** How long the bot stays in the voice channel with nothing to play before leaving (`music.auto_leave_timeout`). */
+    public long getAutoLeaveTimeoutMs() {
+        return autoLeaveTimeoutMs;
     }
 
     // Getters

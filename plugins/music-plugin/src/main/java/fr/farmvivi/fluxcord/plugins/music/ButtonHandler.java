@@ -122,7 +122,7 @@ public class ButtonHandler {
                     return;
                 }
                 event.deferEdit().queue();
-                player.stopAndLeave();
+                player.stop(); // stay in the channel until the auto-leave timeout
                 break;
 
             case "clear":

@@ -32,7 +32,7 @@ public class StopCommand {
             return;
         }
 
-        player.stopAndLeave();
+        player.stop(); // stay in the channel until the auto-leave timeout
 
         ctx.replySuccess(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.stopped"));
     }

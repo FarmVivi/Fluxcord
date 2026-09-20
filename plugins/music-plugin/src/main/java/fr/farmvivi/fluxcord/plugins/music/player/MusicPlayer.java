@@ -27,7 +27,6 @@ import java.util.concurrent.TimeUnit;
  */
 public class MusicPlayer {
     public static final int DEFAULT_VOLUME = 100;
-    public static final int QUIT_TIMEOUT_SECONDS = 300; // 5 minutes
     /** Guild storage key under which the playback state is persisted. */
     public static final String STATE_KEY = "playback_state";
     private static final int STATE_SAVE_INTERVAL_SECONDS = 10;
@@ -120,7 +119,8 @@ public class MusicPlayer {
     }
 
     /**
-     * Stops playback and clears the queue.
+     * Stops playback and clears the queue but stays in the voice channel: the auto-leave timer
+     * ({@code music.auto_leave_timeout}) gives users a chance to start something else.
      */
     public void stop() {
         trackScheduler.clear();
@@ -211,11 +211,12 @@ public class MusicPlayer {
     private void scheduleQuit() {
         cancelQuitTask();
 
+        long timeoutMs = plugin.getAutoLeaveTimeoutMs(); // music.auto_leave_timeout
         ScheduledExecutorService scheduler = plugin.getScheduler();
         quitTask = scheduler.schedule(() -> {
             if (audioPlayer.getPlayingTrack() == null && trackScheduler.getQueueSize() == 0) {
                 logger.info("[{}] Auto-leaving voice channel after {} seconds of inactivity",
-                        guild.getName(), QUIT_TIMEOUT_SECONDS);
+                        guild.getName(), timeoutMs / 1000);
 
                 guild.getAudioManager().closeAudioConnection();
                 plugin.getContext().getAudioService().deregisterSendHandler(guild, plugin);
@@ -223,7 +224,7 @@ public class MusicPlayer {
                 clearState();
                 stopStateAutosave();
             }
-        }, QUIT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        }, timeoutMs, TimeUnit.MILLISECONDS);
     }
 
     /**
