@@ -69,3 +69,4 @@ Before ending a task where this skill was used: fix anything above that turned o
 ## Known issues / open questions
 - Confirm `mvn -q -pl fluxcord-core -am test` picks up api changes without a prior `install` (it should, same reactor).
 - 2026-09-20: `java.lang.Error: Unresolved compilation problem` in a surefire run means the IDE (ECJ) wrote stale classes into `target/test-classes`; `rm -rf fluxcord-core/target/test-classes` (or a `clean`) before `mvn test -pl fluxcord-core`.
+- 2026-09-20: `cannot access X / class file for X not found` while compiling core tests = the IDE (ECJ) overwrote `fluxcord-api/target/classes` or the `~/.m2` api jar is stale. Use `mvn -q test -pl fluxcord-core -am ...` (builds the api first) or `mvn -q install -pl fluxcord-api -DskipTests`. A running bot locks `fluxcord-core/target/*-shaded.jar`: stop it before `mvn clean`.

@@ -22,7 +22,7 @@ paths:
 
 ## Binary storage
 - Contract: `api/storage/binary/BinaryStorage` (+ `BinaryStorageKey`, events `FileUploadEvent`/`FileDownloadEvent`/`FileDeleteEvent`). `BinaryStorageManager` is an interface (impl `core/storage/binary/SimpleBinaryStorageManager`) returning `ScopedBinaryStorage` views; `PluginBinaryStorageAdapter` namespaces paths under `<pluginId>/` and `listFiles` strips it. Paths are normalised (`\` → `/`, leading `/` dropped) by `BinaryStorageKey.normalizePath` (package-private, shared with the view).
-- `core/storage/binary/AbstractBinaryStorage`, `file/FileBinaryStorage` (folder from `data.binary.storage.file.folder`), `s3/S3BinaryStorage` (~510 lines, AWS SDK v2: bucket/region/keys/endpoint/prefix/`path_style_access`). `BinaryStorageFactory` mirrors `StorageFactory` incl. `fallback`.
+- `core/storage/binary/AbstractBinaryStorage` (events `FileUploadEvent`/`FileDownloadEvent`/`FileDeleteEvent` may cancel; `saveFile(File)` fires the file event then the stream event), `file/FileBinaryStorage` (folder from `data.binary.storage.file.folder`; layout `<scope with ':'→'/'>/<path>`, e.g. `user/1/avatars/a.png`; legacy `user:1` folders are renamed once at startup), `s3/S3BinaryStorage` (AWS SDK v2: bucket/region/keys/endpoint/prefix/`path_style_access`; object key = `<rootPrefix/><scope>/<path>`; `getOutputStream` buffers and uploads on `close()` — S3 needs the content length — and a failed upload surfaces as `IOException`/`saveFile == false`; package-private `(name, S3Client, S3Presigner, bucket, prefix, events)` constructor for tests). `BinaryStorageFactory` mirrors `StorageFactory` incl. `fallback`.
 - The shaded jar keeps JDBC drivers SPI-registered via `ServicesResourceTransformer` in `fluxcord-core/pom.xml` — keep it when touching shading.
 
 ## Gotchas
@@ -31,7 +31,7 @@ paths:
 - Changing backend FILE → DB does **not** migrate existing data; there is no migration tool.
 
 ## Testing
-- Existing: `AbstractDataStorageTest` (fake backend, 13), `FileDataStorageTest` (9), `FileDataStorageColdStartTest`, `SqlDialectTest`, `ScopedStorageTest` (scope formats, plugin prefixing, binary paths — the on-disk layout contract), `StorageJsonTest`, `DatabaseDataStorageTest` (H2 `MODE=MySQL`, in-memory, a second instance on the same URL gives cold reads). Missing: fallback path of the factories, binary storages.
+- Existing: `AbstractDataStorageTest` (fake backend, 13), `FileDataStorageTest` (9), `FileDataStorageColdStartTest`, `SqlDialectTest`, `ScopedStorageTest` (scope formats, plugin prefixing, binary paths — the on-disk layout contract), `StorageJsonTest`, `DatabaseDataStorageTest` (H2 `MODE=MySQL`, in-memory, a second instance on the same URL gives cold reads). `FileBinaryStorageTest` (6), `S3BinaryStorageTest` (13, mocked SDK). Missing: fallback path of the factories.
 - H2 does **not** emulate PostgreSQL `INSERT ... ON CONFLICT DO UPDATE` (syntax error in `MODE=PostgreSQL`), so the PostgreSQL upsert is only pinned as text; verify against a real server via the dev bot when touching `SqlDialect`.
 - For file storage tests use `@TempDir` and a tiny `saveDebounceMs`.
 
@@ -50,5 +50,7 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 - 2026-09-20 (S3/S4): the number model changed from Gson's default (`Double` for every JSON number on untyped reads) to `LONG_OR_DOUBLE`; typed reads were never affected. `PlaybackState.fromMap` already used `instanceof Number`.
 
 - 2026-09-20: `FileDataStorage.doClear` now shuts down the scope's `Debouncer` first — a pending/in-flight debounced write raced the delete (`delete()` false on Windows while the writer holds the file, or the scope file reappearing after `clear`). Showed up as a flaky `FileDataStorageTest.clearDeletesTheScopeOnDiskAndInMemory`.
+
+- 2026-09-20 (coverage pass): S3 uploads had never worked (`RequestBody.fromInputStream(is, -1)` rejects the unknown length; the error was logged on a background thread and `saveFile` still returned true). Found only because the class was 0 % covered.
 
 ## Known issues / open questions

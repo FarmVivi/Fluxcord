@@ -5,6 +5,7 @@ import fr.farmvivi.fluxcord.api.command.CommandContext;
 import fr.farmvivi.fluxcord.api.command.CommandService;
 import fr.farmvivi.fluxcord.api.command.exception.CommandParseException;
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
+import fr.farmvivi.fluxcord.api.command.option.OptionType;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.core.command.SimpleCommandContext;
 import net.dv8tion.jda.api.entities.*;
@@ -182,12 +183,17 @@ public class TextCommandParser implements CommandParser {
         List<String> args = splitArguments(argsStr);
         int optionIndex = 0;
 
-        for (String arg : args) {
-            if (optionIndex >= commandOptions.size()) {
-                break;
+        for (int i = 0; i < args.size() && optionIndex < commandOptions.size(); i++) {
+            CommandOption<?> option = commandOptions.get(optionIndex);
+            String arg = args.get(i);
+            // A trailing STRING option takes everything that is left: "!play never gonna give you up" is one query,
+            // no quotes needed
+            boolean lastOption = optionIndex == commandOptions.size() - 1;
+            if (lastOption && option.getType() == OptionType.STRING && i < args.size() - 1) {
+                arg = String.join(" ", args.subList(i, args.size()));
+                i = args.size();
             }
 
-            CommandOption<?> option = commandOptions.get(optionIndex);
             try {
                 Object value = parseOptionValue(arg, option, event);
                 options.put(option.getName(), value);

@@ -53,10 +53,6 @@ public class S3BinaryStorage extends AbstractBinaryStorage {
     public S3BinaryStorage(String storageName, String bucketName, String rootPrefix,
                            String endpoint, String region, String accessKey, String secretKey,
                            boolean pathStyleAccess, EventManager eventManager) {
-        super(storageName, eventManager);
-        this.bucketName = bucketName;
-        this.rootPrefix = normalizePrefix(rootPrefix);
-
         // Build S3 client
         S3ClientBuilder clientBuilder = S3Client.builder();
         S3Presigner.Builder presignerBuilder = S3Presigner.builder();
@@ -90,10 +86,20 @@ public class S3BinaryStorage extends AbstractBinaryStorage {
             presignerBuilder.serviceConfiguration(serviceConfiguration);
         }
 
-        this.s3Client = clientBuilder.build();
-        this.s3Presigner = presignerBuilder.build();
+        this(storageName, clientBuilder.build(), presignerBuilder.build(), bucketName, rootPrefix, eventManager);
+    }
 
-        // Ensure bucket exists
+    /**
+     * Storage over existing clients (tests, or a caller that configures the SDK itself). Checks the bucket like
+     * the public constructor.
+     */
+    S3BinaryStorage(String storageName, S3Client s3Client, S3Presigner s3Presigner, String bucketName,
+                    String rootPrefix, EventManager eventManager) {
+        super(storageName, eventManager);
+        this.s3Client = s3Client;
+        this.s3Presigner = s3Presigner;
+        this.bucketName = bucketName;
+        this.rootPrefix = normalizePrefix(rootPrefix);
         ensureBucketExists();
     }
 
@@ -103,7 +109,7 @@ public class S3BinaryStorage extends AbstractBinaryStorage {
      * @param prefix the prefix to normalize
      * @return the normalized prefix
      */
-    private String normalizePrefix(String prefix) {
+    static String normalizePrefix(String prefix) {
         if (prefix == null || prefix.isEmpty()) {
             return "";
         }
@@ -162,52 +168,43 @@ public class S3BinaryStorage extends AbstractBinaryStorage {
         }
     }
 
+    /**
+     * The returned stream buffers the content and uploads it as one {@code PutObject} when closed: S3 needs the
+     * content length up front, and closing is where the caller learns about a failed upload ({@link IOException}).
+     * Callers are the bot's own small files (avatars, covers); nothing here is meant for gigabyte uploads.
+     */
     @Override
     public OutputStream getOutputStream(BinaryStorageKey key, boolean overwrite) {
-        String objectKey = getObjectKey(key);
-
         if (!overwrite && fileExists(key)) {
             logger.warn("[{}] File already exists at path {} and overwrite is false",
                     storageName, key.getFullPath());
             return null;
         }
+        String objectKey = getObjectKey(key);
+        String contentType = getContentType(key);
+        return new ByteArrayOutputStream() {
+            private boolean uploaded;
 
-        // Since S3 doesn't provide a direct output stream, use a pipe stream
-        PipedOutputStream outputStream = new PipedOutputStream();
-        try {
-            final PipedInputStream inputStream = new PipedInputStream(outputStream);
-            final String finalObjectKey = objectKey;
-
-            // Start a separate thread to handle the upload to S3
-            new Thread(() -> {
+            @Override
+            public void close() throws IOException {
+                if (uploaded) {
+                    return;
+                }
+                uploaded = true;
                 try {
-                    // Upload the content to S3
-                    PutObjectRequest putObjectRequest = PutObjectRequest.builder()
-                            .bucket(bucketName)
-                            .key(finalObjectKey)
-                            .contentType(getContentType(key))
-                            .build();
-
-                    s3Client.putObject(putObjectRequest, RequestBody.fromInputStream(inputStream, -1));
+                    s3Client.putObject(PutObjectRequest.builder()
+                                    .bucket(bucketName)
+                                    .key(objectKey)
+                                    .contentType(contentType)
+                                    .build(),
+                            RequestBody.fromBytes(toByteArray()));
                 } catch (Exception e) {
                     logger.error("[{}] Error uploading to S3 for path {}: {}",
                             storageName, key.getFullPath(), e.getMessage(), e);
-                } finally {
-                    try {
-                        inputStream.close();
-                    } catch (IOException e) {
-                        logger.error("[{}] Error closing input stream for path {}: {}",
-                                storageName, key.getFullPath(), e.getMessage());
-                    }
+                    throw new IOException("Upload to S3 failed for " + key.getFullPath(), e);
                 }
-            }).start();
-
-            return outputStream;
-        } catch (IOException e) {
-            logger.error("[{}] Error creating output stream for path {}: {}",
-                    storageName, key.getFullPath(), e.getMessage(), e);
-            return null;
-        }
+            }
+        };
     }
 
     @Override

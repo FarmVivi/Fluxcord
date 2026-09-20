@@ -80,3 +80,11 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 | 2026-09-20 | C4: command names stay global; collisions are refused loudly (error log naming both owners), no per-plugin prefixing. | user |
 | 2026-09-20 | P5 follow-up: plugins go through `PluginContext`/`AbstractPlugin` scoped views only; legacy getters and shared-manager accessors removed (API break, no stable v3 yet). | user |
 | 2026-09-20 | `OptionType2` renamed to `OptionType` (api break, plugins replace the import). `ai-audio-plugin` stays as the seed of a future voice-to-voice AI plugin. | user |
+
+## 8. Coverage pass (2026-09-20, driven by the JaCoCo report — same numbers as SonarCloud)
+
+- [x] **S3BinaryStorage** (0 % → tested with a mocked `S3Client`/`S3Presigner` through a package-private constructor). **Bug fixed**: uploads never worked — `RequestBody.fromInputStream(stream, -1)` throws "Content-length must not be negative" on a background thread while `saveFile` answered `true`. The output stream now buffers and uploads on `close()`, and a failed upload makes `saveFile` return `false`. `S3BinaryStorageTest` (13).
+- [x] **FileBinaryStorage / AbstractBinaryStorage** (`FileBinaryStorageTest`, 6: layout, overwrite, download, delete, listing, content types, event vetoes). Layout change: scope directories are `user/1` instead of `user:1` (a colon is not a valid file name on Windows); legacy folders are renamed once at startup.
+- [x] **TextCommandParser** (`TextCommandParserTest`, 9). Improvement: a trailing STRING option takes the rest of the line (`!play never gonna give you up` is one query; quotes no longer needed).
+- [x] `EventRegistryImpl` deleted (unused, 0 % coverage).
+- [ ] Next candidates from the report: `HelpCommand` (114 lines uncovered), `SimpleCommandContext`, `PermCommand`, `ConsoleCommandParser`, `JDADiscordAPI` (needs a JDA fake).

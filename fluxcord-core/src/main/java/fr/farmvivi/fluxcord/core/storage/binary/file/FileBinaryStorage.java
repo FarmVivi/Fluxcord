@@ -41,6 +41,7 @@ public class FileBinaryStorage extends AbstractBinaryStorage {
                         storageName, baseDirectory.getAbsolutePath());
             }
         }
+        migrateLegacyLayout();
     }
 
     @Override
@@ -135,24 +136,13 @@ public class FileBinaryStorage extends AbstractBinaryStorage {
             return new ArrayList<>();
         }
 
+        Path scopeRoot = new File(baseDirectory, scopeDirectory(key.scope())).toPath();
         try (Stream<Path> stream = Files.walk(dir.toPath(), 1)) {
             return stream
                     .skip(1) // Skip the directory itself
                     .filter(path -> !Files.isDirectory(path))
-                    .map(path -> {
-                        // Get path relative to the base directory
-                        Path relativePath = baseDirectory.toPath().relativize(path);
-
-                        // Remove the scope part from the path to get file name relative to the scope
-                        String pathStr = relativePath.toString().replace('\\', '/');
-                        String scope = key.scope();
-
-                        if (pathStr.startsWith(scope + "/")) {
-                            return pathStr.substring(scope.length() + 1);
-                        }
-
-                        return pathStr;
-                    })
+                    // path relative to the scope directory, with forward slashes
+                    .map(path -> scopeRoot.relativize(path).toString().replace('\\', '/'))
                     .collect(Collectors.toList());
         } catch (IOException e) {
             logger.error("[{}] Error listing files in directory {}: {}",
@@ -219,7 +209,35 @@ public class FileBinaryStorage extends AbstractBinaryStorage {
      * @param key the storage key
      * @return the resolved file
      */
+    /**
+     * {@code scope/path} with the scope's {@code :} turned into a directory separator ({@code user:1} →
+     * {@code user/1}), like the FILE data storage: a colon is not a valid file name character on Windows.
+     */
     private File resolveFile(BinaryStorageKey key) {
-        return new File(baseDirectory, key.getFullPath());
+        return new File(new File(baseDirectory, scopeDirectory(key.scope())), key.path());
+    }
+
+    private static String scopeDirectory(String scope) {
+        return scope.replace(':', '/');
+    }
+
+    /**
+     * Directories from the previous layout ({@code user:1/…}, only possible on Linux) are moved to the current one
+     * once, so existing data stays reachable.
+     */
+    private void migrateLegacyLayout() {
+        File[] legacy = baseDirectory.listFiles(f -> f.isDirectory() && f.getName().indexOf(':') >= 0);
+        if (legacy == null) {
+            return;
+        }
+        for (File dir : legacy) {
+            File target = new File(baseDirectory, scopeDirectory(dir.getName()));
+            File parent = target.getParentFile();
+            if (target.exists() || (!parent.isDirectory() && !parent.mkdirs()) || !dir.renameTo(target)) {
+                logger.warn("[{}] Could not migrate legacy binary folder {} to {}", storageName, dir, target);
+            } else {
+                logger.info("[{}] Migrated binary folder {} to {}", storageName, dir.getName(), scopeDirectory(dir.getName()));
+            }
+        }
     }
 }
