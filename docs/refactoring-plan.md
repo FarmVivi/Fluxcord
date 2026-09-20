@@ -7,7 +7,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 ## 0. Safety net first
 
 - [x] **T0 — CI runs the tests.** (2026-09-20) `.github/workflows/ci.yml`: `mvn -B -ntp verify` on push/PR to `develop`/`main` (Dependabot PRs included), Surefire reports uploaded on failure, JaCoCo 0.8.15 report-only in the root pom (core coverage at start: 9 %). First run surfaced a real race in `FileDataStorage.close()` vs the debounced background save (data loss at shutdown), fixed in the same batch.
-- [ ] **T1 — Test fixtures for the engine.** A `FakePlugin` (in-memory `Plugin` + `PluginDescriptor`) and a helper that builds a real plugin jar in a `@TempDir` (plugin.yml + compiled class) so `PluginManager` can be tested end-to-end. Unblocks P1/P2/E2.
+- [x] **T1 — Test fixtures for the engine.** Done 2026-09-20 (`core/testing/PluginJars` + `FixturePlugin` + `PluginCalls`, `PluginManagerTest` 11 tests; fixed reload id/name key and class-loader leak on failed load). A `FakePlugin` (in-memory `Plugin` + `PluginDescriptor`) and a helper that builds a real plugin jar in a `@TempDir` (plugin.yml + compiled class) so `PluginManager` can be tested end-to-end. Unblocks P1/P2/E2.
 - [x] **T2 — Characterization tests for the pure classes.** Done 2026-09-20 (low level): `Debouncer`, `YamlConfiguration`, `EnvAwareYamlConfiguration`, `PluginDescriptor`, `DependencyResolver`, `PluginClassLoader`, `HealthServer` (41 → 91 tests). Found and fixed: resolver returned the load order **reversed** (dependants before dependencies) and non-deterministic; `Debouncer.cancelAndAwait` did not actually wait for a running action (`FutureTask.cancel` reports success while running). `SimpleEventManager` (22), `SimpleCommandRegistry` (11, found: alias removal stole other commands' aliases), `SimpleLanguageManager` (16), `AbstractDataStorage`+`FileDataStorage` (22, found: cold-scope `set` wiped the rest of the scope on the next save, last-key removal never persisted, corrupt file crashed every access), `SimplePermissionManager` (12, found: cached defaults survived re-registration), `AudioPipeline` (13, found: fade one frame late) — all done 2026-09-20, 187 core tests. **T2 complete.**
 
 ## 1. Plugin lifecycle & identity (highest impact)
@@ -62,6 +62,9 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 - ~~`sonar-project.properties` says `sonar.java.source=17` while the build targets 25.~~ Fixed 2026-09-20; the Sonar workflow now also runs the tests so coverage reaches SonarCloud.
 - The `Deploy` webhook step in `.github/workflows/docker-image-ci.yml` (and the `DEPLOY_WEBHOOK_URL` secret) is a leftover of the v2 VPS setup; deployments are now handled outside this repo. Remove the step.
 - `docs/` describe intended behaviour; after each chantier update the relevant page.
+
+### Found in the field
+- [ ] **M1 — YouTube playback broken (2026-09-20 smoke)**: `youtube-source 1.18.2` (latest) fails on player script `4fd832e7` ("must find sig function", "Sign in to confirm you're not a bot", HTTP 400 on IOS/ANDROID_MUSIC). Upstream issue, not a Fluxcord regression. Options: wait for a youtube-source release, or configure OAuth refresh token / poToken for the YouTube clients (needs a config key in the music plugin). Decide with the user.
 
 ## Decisions log
 

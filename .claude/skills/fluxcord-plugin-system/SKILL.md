@@ -31,15 +31,15 @@ Shutdown: `close()` = `preDisablePlugins()` → `disablePlugins()` → `postDisa
 
 ## Gotchas / invariants
 - **Two parallel lifecycle paths**: the phased `*Plugins()` methods used at boot/shutdown, and the single-plugin `enablePlugin()` / `disablePlugin()` (from `PluginLoader`) used by `reloadPlugin`. They differ: `disablePlugin()` unregisters events, permissions, audio connections and commands; the phased shutdown path only unregisters event listeners in `cleanupResources()`. Keep both in sync until they are merged (plan item P1).
-- `reloadPlugin()` stores the new instance under `plugin.getName()` while everything else is keyed by `id` (`PluginManager.reloadPlugin`). Bug — use the id.
 - `reloadPlugins()` (all) disconnects and reconnects JDA; it relies on `DiscordAPI.connect()` being re-entrant.
 - Plugin classloader is closed on reload/shutdown; any thread or JDA listener the plugin left registered keeps the old classes alive (leak + `ClassCastException` on reload). JDA listeners added by plugins are **not** removed by the core — plugins must do it in `onDisable`.
 - `PluginContextImpl` gives the *shared* service instances; namespacing is done by the adapters in `AbstractPlugin`, not by the context. A plugin can bypass namespacing by calling `context.getCommandService()` directly.
 - Language namespace is registered twice defensively (`onLoad` via `PluginLanguageAdapter`, then `loadPlugin`). Harmless but a sign the responsibility is unclear.
+- `PluginConfiguration` ignores the manager'"'"'s `pluginsFolder`: it resolves `plugins/<id>/config.yml` from `-Dplugins.dir` / `DISCORD_PLUGINS_DIR` / cwd `plugins`, while `PluginContext.getDataFolder()` uses the manager'"'"'s folder. Same place only because `Fluxcord` passes `new File("plugins")`.
 - `System.exit` is never called here (only in `Fluxcord`); errors are logged and the plugin goes `ERROR`. Check the log line `Plugin loading complete: X loaded successfully, Y failed`.
 
 ## Testing
-- Covered: `PluginConfigurationTest`, `PluginDescriptorTest`, `DependencyResolverTest`, `PluginClassLoaderTest` (jar built on the fly, see Learnings). Not covered: `PluginManager` itself — reuse the jar-building helper of `PluginClassLoaderTest` with a `plugin.yml` + a compiled `Plugin` class from the test classpath (T1).
+- Covered: `PluginConfigurationTest`, `PluginDescriptorTest`, `DependencyResolverTest`, `PluginClassLoaderTest`, **`PluginManagerTest`** (11: boot phases, dependency order, missing dep, bad jars, phase failure → ERROR, lifecycle events, veto, reload, shutdown order). Fixtures in `core/testing`: `PluginJars.plugin(dir, id, extraYaml)` builds a real jar whose main is `com.example.fixture.FixturePlugin` (extends `AbstractPlugin`), and `PluginCalls` records phases — it lives in a **core** package so the child loader shares it (a fixture-package recorder would be a different class per loader). `-Dfixture.fail=id:phase` makes a phase throw. Tests must set `plugins.dir` (see gotcha below).
 - Smoke: `/verify --smoke` with the example plugins (`examples/plugins/*`) copied into `fluxcord-core/run/plugins/`.
 
 ## Improvement loop (mandatory — see /skill-maintenance)
@@ -49,10 +49,9 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 - 2026-09-19: Initial audit. Line numbers intentionally omitted (file will move a lot during the P1 chantier); grep method names instead.
 - 2026-09-20: `DependencyResolver` returned the load order reversed (post-order DFS already yields dependencies first; the `Collections.reverse` was wrong) and iterated a `HashMap` (non-deterministic). Fixed + `DependencyResolverTest`. Nothing noticed it because no shipped plugin declares a dependency.
 - 2026-09-20: `PluginClassLoaderTest` builds a real jar in a `@TempDir` by copying bytecode of classes from the test classpath (`com.example.fixture.SamplePluginClass`); fixture classes must live outside `fr.farmvivi.fluxcord.{api,core}` or they are parent-first by design. Reading resources through `url.openStream()` caches the `JarFile` and locks the jar on Windows even after `close()` — use `setUseCaches(false)`.
+- 2026-09-20 (T1): `PluginManagerTest` confirmed and fixed: `reloadPlugin` stored the new instance under `getName()` (so `getPlugin(id)` was null after a reload and a second entry appeared), and `loadPlugin` left the class loader open when the main class failed to load (jar locked on Windows). Both fixed.
 
 ## Known issues / open questions
 - P1 (plan): merge the two lifecycle paths into one per-plugin state machine, and make disable release *everything* the plugin acquired.
-- `reloadPlugin` id/name key mismatch (see gotchas).
-- `loadPlugin` catches `Exception` broadly and returns `null`; the classloader created before the failure is not closed on most paths.
 - P3 done except the fail-fast on bundled api classes (now harmless).
 - Should `failedPlugins` block dependants? Currently a dependant of a failed plugin is still enabled (only *missing* deps are handled by the resolver).

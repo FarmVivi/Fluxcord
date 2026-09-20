@@ -94,6 +94,7 @@ public class PluginManager implements PluginLoader, Closeable {
             return null;
         }
 
+        PluginClassLoader classLoader = null;
         try (JarFile jar = new JarFile(file)) {
             // Look for plugin.yml
             JarEntry entry = jar.getJarEntry("plugin.yml");
@@ -105,9 +106,10 @@ public class PluginManager implements PluginLoader, Closeable {
             // Parse plugin.yml
             PluginDescriptor descriptor = PluginDescriptor.fromYaml(jar.getInputStream(entry));
 
-            // Create the class loader
+            // Create the class loader (closed below if anything fails before it is registered, so the jar is not
+            // left locked on Windows and the failed plugin can be replaced)
             URL[] urls = {file.toURI().toURL()};
-            PluginClassLoader classLoader = new PluginClassLoader(urls, getClass().getClassLoader(), descriptor);
+            classLoader = new PluginClassLoader(urls, getClass().getClassLoader(), descriptor);
 
             // Load the main class
             Class<?> mainClass = classLoader.loadClass(descriptor.main());
@@ -192,7 +194,18 @@ public class PluginManager implements PluginLoader, Closeable {
             return plugin;
         } catch (Exception e) {
             logger.error("Failed to load plugin: {}", jarFile, e);
+            closeQuietly(classLoader);
             return null;
+        }
+    }
+
+    private static void closeQuietly(PluginClassLoader classLoader) {
+        if (classLoader != null) {
+            try {
+                classLoader.close();
+            } catch (IOException e) {
+                logger.warn("Error closing class loader of a plugin that failed to load", e);
+            }
         }
     }
 
@@ -636,7 +649,7 @@ public class PluginManager implements PluginLoader, Closeable {
         try {
             Plugin newPlugin = loadPlugin(jarPath);
             if (newPlugin != null) {
-                plugins.put(newPlugin.getName(), newPlugin);
+                plugins.put(newPlugin.getId(), newPlugin); // keyed by id like everywhere else
 
                 // Enable the plugin
                 if (!enablePlugin(newPlugin)) {
