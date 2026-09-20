@@ -39,18 +39,21 @@ public class DatabaseDataStorage extends AbstractDataStorage {
      */
     record Statements(String createTable, String createIndex, String select, String upsert, String exists,
                       String delete, String keys, String all, String clear) {
+        private static final String BY_SCOPE = " WHERE scope = ?";
+        private static final String BY_KEY = BY_SCOPE + " AND key_name = ?";
+
         static Statements of(SqlDialect dialect, String table, String index) {
             return new Statements(
                     "CREATE TABLE IF NOT EXISTS " + table + " (scope VARCHAR(255) NOT NULL, key_name VARCHAR(255) NOT NULL, "
                             + "value_data " + dialect.textColumnType() + ", PRIMARY KEY (scope, key_name))",
                     "CREATE INDEX IF NOT EXISTS " + index + " ON " + table + " (scope)",
-                    "SELECT value_data FROM " + table + " WHERE scope = ? AND key_name = ?",
+                    "SELECT value_data FROM " + table + BY_KEY,
                     dialect.upsertStatement(table),
-                    "SELECT 1 FROM " + table + " WHERE scope = ? AND key_name = ?",
-                    "DELETE FROM " + table + " WHERE scope = ? AND key_name = ?",
-                    "SELECT key_name FROM " + table + " WHERE scope = ?",
-                    "SELECT key_name, value_data FROM " + table + " WHERE scope = ?",
-                    "DELETE FROM " + table + " WHERE scope = ?");
+                    "SELECT 1 FROM " + table + BY_KEY,
+                    "DELETE FROM " + table + BY_KEY,
+                    "SELECT key_name FROM " + table + BY_SCOPE,
+                    "SELECT key_name, value_data FROM " + table + BY_SCOPE,
+                    "DELETE FROM " + table + BY_SCOPE);
         }
     }
 
@@ -102,7 +105,7 @@ public class DatabaseDataStorage extends AbstractDataStorage {
         if (prefix == null || prefix.isEmpty()) {
             return "";
         }
-        if (!prefix.matches("[A-Za-z0-9_]+")) {
+        if (!prefix.matches("\\w+")) {
             throw new IllegalArgumentException("Invalid data.storage.db.table_prefix '" + prefix
                     + "': only letters, digits and underscores are allowed");
         }

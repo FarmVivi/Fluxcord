@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,7 +39,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
     private final AudioMixer mixer;
     private final ReentrantLock strategyLock = new ReentrantLock();
     // Décision de la frame en cours (calculée dans canProvide, consommée par provide20MsAudio/isOpus)
-    private volatile SendStrategy.Decision decision = SendStrategy.Decision.SILENT;
+    private final AtomicReference<SendStrategy.Decision> decision = new AtomicReference<>(SendStrategy.Decision.SILENT);
     // Buffer BE réutilisable unique pour 20ms (simplifié)
     private final byte[] beFrameBuffer = new byte[FRAME_SIZE_BYTES];
     private int priorityThreshold = AudioService.DEFAULT_PRIORITY_THRESHOLD;
@@ -285,7 +286,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
         strategyLock.lock();
         try {
             if (sendHandlers.isEmpty()) {
-                decision = SendStrategy.Decision.SILENT;
+                decision.set(SendStrategy.Decision.SILENT);
                 return false;
             }
 
@@ -296,10 +297,10 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
                 AudioSendHandler handler = source.getHandler();
                 states.add(new SendStrategy.SourceState(entry.getKey(), handler.canProvide(), handler.isOpus(), source.getPriority()));
             }
-            decision = SendStrategy.decide(states, priorityThreshold);
+            decision.set(SendStrategy.decide(states, priorityThreshold));
 
             // Ducking : une source prioritaire active fait descendre les autres, sa disparition les fait remonter
-            String ducking = decision.duckingSource();
+            String ducking = decision.get().duckingSource();
             if (ducking != null) {
                 if (!ducking.equals(lastActivePluginName)) {
                     startFade(ducking);
@@ -309,7 +310,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
             }
             lastActivePluginName = ducking;
 
-            return decision.mode() != SendStrategy.Mode.SILENT;
+            return decision.get().mode() != SendStrategy.Mode.SILENT;
         } finally {
             strategyLock.unlock();
         }
@@ -319,7 +320,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
     public ByteBuffer provide20MsAudio() {
         strategyLock.lock();
         try {
-            SendStrategy.Decision frame = decision;
+            SendStrategy.Decision frame = decision.get();
             if (frame.mode() == SendStrategy.Mode.SILENT) {
                 return null;
             }
@@ -372,7 +373,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
     @Override
     public boolean isOpus() {
         // Format de sortie de la frame en cours, décidé dans canProvide()
-        return decision.opusOutput();
+        return decision.get().opusOutput();
     }
 
     @Override

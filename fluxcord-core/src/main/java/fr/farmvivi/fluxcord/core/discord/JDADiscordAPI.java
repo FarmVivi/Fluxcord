@@ -120,6 +120,10 @@ public class JDADiscordAPI implements DiscordAPI {
             jda = builder.build().awaitReady();
             logger.info("Connected to Discord as {}", jda.getSelfUser().getAsTag());
             future.complete(null);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.error("Interrupted while connecting to Discord", e);
+            future.completeExceptionally(e);
         } catch (Exception e) {
             logger.error("Failed to connect to Discord", e);
             future.completeExceptionally(e);
@@ -140,13 +144,6 @@ public class JDADiscordAPI implements DiscordAPI {
             // Set shutdown presence before disconnecting
             setShutdownPresence();
 
-            // Give a short delay for the presence to update
-//            try {
-//                Thread.sleep(500);
-//            } catch (InterruptedException e) {
-//                Thread.currentThread().interrupt();
-//            }
-
             jda.shutdown();
             // Allow at most 10 seconds for remaining requests to finish
             if (!jda.awaitShutdown(Duration.ofSeconds(10))) {
@@ -160,6 +157,10 @@ public class JDADiscordAPI implements DiscordAPI {
 
             logger.info("Disconnected from Discord");
             future.complete(null);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.error("Interrupted while disconnecting from Discord", e);
+            future.completeExceptionally(e);
         } catch (Exception e) {
             logger.error("Failed to disconnect from Discord", e);
             future.completeExceptionally(e);

@@ -6,6 +6,7 @@ import fr.farmvivi.fluxcord.api.command.CommandResult;
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 
 /**
@@ -143,14 +144,14 @@ public record SimpleCommand(
      * the link at the parent once it exists. Copies made by {@link #withEnabled(boolean)} share the link.
      */
     public static final class ParentLink {
-        private volatile Command command;
+        private final AtomicReference<Command> command = new AtomicReference<>();
 
         public Command get() {
-            return command;
+            return command.get();
         }
 
         void set(Command command) {
-            this.command = command;
+            this.command.set(command);
         }
     }
 

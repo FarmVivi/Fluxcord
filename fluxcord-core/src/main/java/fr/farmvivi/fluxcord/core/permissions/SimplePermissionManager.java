@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiPredicate;
 
@@ -34,7 +35,7 @@ public class SimplePermissionManager implements PermissionManager {
     private final EventManager eventManager;
     private final DataStorageManager dataStorageManager;
     private final Set<String> configuredOperators;
-    private volatile BiPredicate<String, String> guildOperatorResolver = (userId, guildId) -> false;
+    private final AtomicReference<BiPredicate<String, String>> guildOperatorResolver = new AtomicReference<>((userId, guildId) -> false);
 
     // Maps permission name to Permission object
     private final Map<String, Permission> registeredPermissions = new ConcurrentHashMap<>();
@@ -70,7 +71,7 @@ public class SimplePermissionManager implements PermissionManager {
      * this once Discord is connected; until then only global operators exist.
      */
     public void setGuildOperatorResolver(BiPredicate<String, String> resolver) {
-        this.guildOperatorResolver = resolver != null ? resolver : (userId, guildId) -> false;
+        this.guildOperatorResolver.set(resolver != null ? resolver : (userId, guildId) -> false);
     }
 
     // --- registry -------------------------------------------------------------------------------
@@ -332,7 +333,7 @@ public class SimplePermissionManager implements PermissionManager {
             return false;
         }
         try {
-            return guildOperatorResolver.test(userId, guildId);
+            return guildOperatorResolver.get().test(userId, guildId);
         } catch (RuntimeException e) {
             logger.warn("Guild operator resolver failed for user {} in guild {}", userId, guildId, e);
             return false;
