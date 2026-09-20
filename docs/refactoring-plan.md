@@ -87,4 +87,6 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 - [x] **FileBinaryStorage / AbstractBinaryStorage** (`FileBinaryStorageTest`, 6: layout, overwrite, download, delete, listing, content types, event vetoes). Layout change: scope directories are `user/1` instead of `user:1` (a colon is not a valid file name on Windows); legacy folders are renamed once at startup.
 - [x] **TextCommandParser** (`TextCommandParserTest`, 9). Improvement: a trailing STRING option takes the rest of the line (`!play never gonna give you up` is one query; quotes no longer needed).
 - [x] `EventRegistryImpl` deleted (unused, 0 % coverage).
-- [ ] Next candidates from the report: `HelpCommand` (114 lines uncovered), `SimpleCommandContext`, `PermCommand`, `ConsoleCommandParser`, `JDADiscordAPI` (needs a JDA fake).
+- [x] **HelpCommand** (`HelpCommandTest`, 6, through the real service on the console transport). Fixes: the general description was hardcoded English (now the `commands.help.general_description` key with the transport's prefix as `{0}`); `help Music` from text/console now gives the category help (positional options made the category unreachable); category names keep their spelling in autocomplete (`getCategories()` no longer lower-cases).
+- [x] **PermCommand** (`PermCommandTest`, 4). Fix: `perm list <userId>` from text/console put the id in the `permission` slot and always answered with the usage.
+- [ ] Next candidates from the report: `SimpleCommandContext`, `ConsoleCommandParser`, `JDADiscordAPI` (needs a JDA fake), `AudioServiceImpl`.

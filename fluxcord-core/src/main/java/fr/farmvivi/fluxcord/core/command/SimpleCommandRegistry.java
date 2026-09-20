@@ -220,11 +220,14 @@ public class SimpleCommandRegistry implements CommandRegistry {
 
     @Override
     public Collection<String> getCategories() {
-        return commands.values().stream()
-                .map(Command::getCategory)
-                .filter(Objects::nonNull)
-                .map(String::toLowerCase)
-                .collect(Collectors.toSet());
+        // Distinct ignoring case, first spelling wins (categories are displayed as the plugin wrote them)
+        Set<String> categories = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (Command command : commands.values()) {
+            if (command.getCategory() != null) {
+                categories.add(command.getCategory());
+            }
+        }
+        return categories;
     }
 
     @Override

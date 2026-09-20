@@ -34,7 +34,7 @@ commands:
     category_title: "Category: {0}"
     category_description: "Commands in this category:"
     general_title: "Available Commands"
-    general_description: "Type `/help <command>` or `/help <category>` for more details."
+    general_description: "Type `{0} <command>` or `{0} <category>` for more details."
     continued: "Available Commands (Continued)"
   version:
     title: "Bot Information"

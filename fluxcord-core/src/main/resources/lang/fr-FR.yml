@@ -34,7 +34,7 @@ commands:
     category_title: "Catégorie : {0}"
     category_description: "Commandes dans cette catégorie :"
     general_title: "Commandes disponibles"
-    general_description: "Tapez `/help <commande>` ou `/help <catégorie>` pour plus de détails."
+    general_description: "Tapez `{0} <commande>` ou `{0} <catégorie>` pour plus de détails."
     continued: "Commandes disponibles (Suite)"
   version:
     title: "Informations sur le bot"

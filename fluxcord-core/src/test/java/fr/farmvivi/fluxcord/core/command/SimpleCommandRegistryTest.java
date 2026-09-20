@@ -157,7 +157,7 @@ class SimpleCommandRegistryTest {
         registry.register(command("b", "music", true), plugin);
         registry.register(command("c", null, true), plugin);
 
-        assertEquals(Set.of("music", "general"), Set.copyOf(registry.getCategories()));
+        assertEquals(Set.of("Music", "General"), Set.copyOf(registry.getCategories()), "one entry per category, spelled as first registered");
         assertEquals(2, registry.getCommandsByCategory("MUSIC").size());
         assertEquals(1, registry.getCommandsByCategory("general").size());
         assertTrue(registry.getCommandsByCategory("nope").isEmpty());

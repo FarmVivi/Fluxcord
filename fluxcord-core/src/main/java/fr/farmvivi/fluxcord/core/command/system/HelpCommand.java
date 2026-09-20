@@ -86,6 +86,13 @@ public class HelpCommand {
         // Check if we're getting help for a specific command
         if (context.hasOption("command")) {
             String commandName = context.getOption("command", "");
+            // Text and console users type "help Music" as naturally as "help play": a name that is a category
+            // rather than a command gets the category help
+            boolean isCommand = commandService.getRegistry().getCommand(commandName).isPresent()
+                    || commandService.getRegistry().getCommandByAlias(commandName).isPresent();
+            if (!isCommand && !commandService.getRegistry().getCommandsByCategory(commandName).isEmpty()) {
+                return showCategoryHelp(context, commandName);
+            }
             return showCommandHelp(context, commandName);
         }
 
@@ -203,8 +210,9 @@ public class HelpCommand {
      * @param category the category
      * @return the command result
      */
-    private CommandResult showCategoryHelp(CommandContext context, String category) {
-        List<Command> commands = commandService.getRegistry().getCommandsByCategory(category);
+    private CommandResult showCategoryHelp(CommandContext context, String requestedCategory) {
+        List<Command> commands = commandService.getRegistry().getCommandsByCategory(requestedCategory);
+        String category = commands.isEmpty() ? requestedCategory : commands.get(0).getCategory();
 
         if (commands.isEmpty()) {
             context.replyError(languageManager.getString(context.getLocale(), "commands.help.category_not_found", category));
@@ -246,7 +254,7 @@ public class HelpCommand {
             helpPrefix = "help";
         }
 
-        String description = "Type `" + helpPrefix + " <command>` or `" + helpPrefix + " <category>` for more details.";
+        String description = languageManager.getString(context.getLocale(), "commands.help.general_description", helpPrefix);
 
         EmbedBuilder embed = new EmbedBuilder()
                 .setTitle(languageManager.getString(context.getLocale(), "commands.help.general_title"))

@@ -72,6 +72,12 @@ public class PermCommand {
         String action = context.getOption("action", "nodes");
         String permission = context.<String>getOption("permission").orElse(null);
         String user = context.<User>getOption("user").map(User::getId).orElse(null);
+        // Text/console options are positional (action, permission, user...): "perm list <userId>" lands the id in
+        // the permission slot, which is what the documented usage promises
+        if ("list".equals(action) && user == null && validUser(permission)) {
+            user = permission;
+            permission = null;
+        }
         Boolean value = context.<Boolean>getOption("value").orElse(null);
         String scope = context.getOption("scope", guildId != null ? "guild" : "global");
         boolean guildScope = "guild".equals(scope);
@@ -119,11 +125,12 @@ public class PermCommand {
                     Map<String, Boolean> guild = permissionManager.getUserGuildPermissions(user, guildId);
                     out.append('\n').append(languageManager.getString(locale, "commands.perm.list_guild", format(guild)));
                 }
+                String userId = user;
                 String effective = permissionManager.getRegisteredPermissions().stream()
                         .map(Permission::getName).sorted()
                         .map(name -> name + "=" + (guildId != null
-                                ? permissionManager.hasPermission(user, guildId, name)
-                                : permissionManager.hasPermission(user, name)))
+                                ? permissionManager.hasPermission(userId, guildId, name)
+                                : permissionManager.hasPermission(userId, name)))
                         .collect(Collectors.joining(", "));
                 out.append('\n').append(languageManager.getString(locale, "commands.perm.list_effective",
                         effective.isEmpty() ? "-" : effective));

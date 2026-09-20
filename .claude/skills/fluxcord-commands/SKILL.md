@@ -46,7 +46,7 @@ Prefix: default from `commands.default-prefix`; per-guild override stored via `D
 - api `OptionType` ↔ JDA `OptionType` conversion is `OptionType.getJdaType()` (used by `SlashCommandDataMapper`); attachment file types go through `toFileType`.
 
 ## Testing
-- `SimpleCommandRegistryTest`, `CommandAutocompleteTest`, `CommandExecutionTest` (gating, cooldowns, events, metrics, and the reply contract of `processCommand` with mocked `SlashCommandInteractionEvent`s — errors are embeds: capture `reply("").addEmbeds(...)`), `SlashCommandDataMapperTest`, `SubcommandRoutingTest`, `CommandMessageBuilderTest` (the three transports with mocked JDA actions; console captured through `System.setOut`). `TextCommandParserTest` (9: prefix per guild, quotes, trailing string option takes the rest of the line, users/channels/roles by mention/id/name, mentionable fallback, attachments). Missing: `ConsoleCommandParser`, `HelpCommand`.
+- `SimpleCommandRegistryTest`, `CommandAutocompleteTest`, `CommandExecutionTest` (gating, cooldowns, events, metrics, and the reply contract of `processCommand` with mocked `SlashCommandInteractionEvent`s — errors are embeds: capture `reply("").addEmbeds(...)`), `SlashCommandDataMapperTest`, `SubcommandRoutingTest`, `CommandMessageBuilderTest` (the three transports with mocked JDA actions; console captured through `System.setOut`). `TextCommandParserTest` (9: prefix per guild, quotes, trailing string option takes the rest of the line, users/channels/roles by mention/id/name, mentionable fallback, attachments). `HelpCommandTest` (6) and `PermCommandTest` (4) drive the system commands through the real service on the console transport (`System.setOut` capture, `SimpleLanguageManager` real strings). Missing: `ConsoleCommandParser` on its own.
 - Test setup: `jda.getStatus()` must **not** be `CONNECTED` in unit tests or `enable()` calls `jda.updateCommands()` (NPE on a plain mock); `LanguageManager.getString(locale, key, Object...)` is a varargs method — stub with `any(Object[].class)` and read `inv.getArguments()`.
 - Smoke: register a guild-scoped test command in an example plugin and check the sync log + Discord UI.
 
@@ -64,5 +64,7 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 - 2026-09-20 (C5): `MessageCreateBuilder.build()` throws on an empty message, so an empty reply travels as `null` to the target. `InteractionCommandContext` (a second, unused `CommandContext` for modals) was dead code — the music plugin has its own `ModalCommandContext`.
 
 - 2026-09-20: text commands — the last STRING option now absorbs the remaining words (`!play never gonna give you up`); before, only the first word was taken unless quoted.
+
+- 2026-09-20 (coverage): text/console options are positional, so a command whose first option is not the one users type first breaks (`perm list <id>`, `help <category>`); both commands now reinterpret the first slot. `SimpleCommandRegistry.getCategories()` keeps the plugin's spelling (case-insensitive set).
 
 ## Known issues / open questions
