@@ -99,14 +99,7 @@ public class AudioServiceImpl implements AudioService {
             cleanupPipeline(guild, pipeline);
         }
 
-        // Mise à jour du tracking des guildes par plugin
-        Set<String> pluginGuildIds = pluginGuilds.get(plugin.getId());
-        if (pluginGuildIds != null) {
-            pluginGuildIds.remove(guildId);
-            if (pluginGuildIds.isEmpty()) {
-                pluginGuilds.remove(plugin.getId());
-            }
-        }
+        untrackIfIdle(guild, plugin);
     }
 
     @Override
@@ -173,14 +166,7 @@ public class AudioServiceImpl implements AudioService {
             cleanupPipeline(guild, pipeline);
         }
 
-        // Mise à jour du tracking des guildes par plugin
-        Set<String> pluginGuildIds = pluginGuilds.get(plugin.getId());
-        if (pluginGuildIds != null) {
-            pluginGuildIds.remove(guildId);
-            if (pluginGuildIds.isEmpty()) {
-                pluginGuilds.remove(plugin.getId());
-            }
-        }
+        untrackIfIdle(guild, plugin);
     }
 
     @Override
@@ -273,6 +259,24 @@ public class AudioServiceImpl implements AudioService {
      * @param guild la guilde
      * @return le pipeline audio
      */
+    /**
+     * Forgets the guild for this plugin once it has neither a send nor a receive handler there — deregistering
+     * one kind must not hide the other from {@link #closeAllConnectionsForPlugin}.
+     */
+    private void untrackIfIdle(Guild guild, Plugin plugin) {
+        AudioPipeline pipeline = pipelines.get(guild.getId());
+        if (pipeline != null && (pipeline.hasSendHandler(plugin) || pipeline.hasReceiveHandler(plugin))) {
+            return;
+        }
+        Set<String> pluginGuildIds = pluginGuilds.get(plugin.getId());
+        if (pluginGuildIds != null) {
+            pluginGuildIds.remove(guild.getId());
+            if (pluginGuildIds.isEmpty()) {
+                pluginGuilds.remove(plugin.getId());
+            }
+        }
+    }
+
     private AudioPipeline getOrCreatePipeline(Guild guild) {
         return pipelines.computeIfAbsent(guild.getId(), k -> new AudioPipeline(guild, eventManager, settings));
     }

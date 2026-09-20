@@ -146,4 +146,55 @@ public class AudioServiceImplTest {
         assertFalse(audioService.hasActiveSendHandler(mockGuild, mockPlugin));
         assertFalse(audioService.hasActiveSendHandler(mockGuild2, mockPlugin));
     }
+
+    @Test
+    public void receiveHandlersFollowTheSameLifecycle() {
+        net.dv8tion.jda.api.audio.AudioReceiveHandler receive = Mockito.mock(net.dv8tion.jda.api.audio.AudioReceiveHandler.class);
+        assertFalse(audioService.hasActiveReceiveHandler(mockGuild, mockPlugin));
+
+        audioService.registerReceiveHandler(mockGuild, mockPlugin, receive);
+        assertTrue(audioService.hasActiveReceiveHandler(mockGuild, mockPlugin));
+        verify(mockEventManager).fireEvent(any(fr.farmvivi.fluxcord.api.audio.events.AudioReceiveHandlerRegisteredEvent.class));
+
+        audioService.deregisterReceiveHandler(mockGuild, mockPlugin);
+        assertFalse(audioService.hasActiveReceiveHandler(mockGuild, mockPlugin));
+        verify(mockEventManager).fireEvent(any(fr.farmvivi.fluxcord.api.audio.events.AudioReceiveHandlerRemovedEvent.class));
+        audioService.deregisterReceiveHandler(mockGuild, mockPlugin); // idempotent
+        assertThrows(IllegalArgumentException.class, () -> audioService.registerReceiveHandler(mockGuild, mockPlugin, null));
+    }
+
+    @Test
+    public void deregisteringOneKindOfHandlerKeepsTheOtherTracked() {
+        net.dv8tion.jda.api.audio.AudioReceiveHandler receive = Mockito.mock(net.dv8tion.jda.api.audio.AudioReceiveHandler.class);
+        audioService.registerSendHandler(mockGuild, mockPlugin, mockSendHandler, 80, 50);
+        audioService.registerReceiveHandler(mockGuild, mockPlugin, receive);
+
+        audioService.deregisterSendHandler(mockGuild, mockPlugin);
+        assertTrue(audioService.hasActiveReceiveHandler(mockGuild, mockPlugin));
+
+        audioService.closeAllConnectionsForPlugin(mockPlugin);
+        assertFalse(audioService.hasActiveReceiveHandler(mockGuild, mockPlugin),
+                "the receive handler was still tracked for the plugin (it used to be forgotten with the send handler)");
+    }
+
+    @Test
+    public void closingAGuildDropsEveryHandlerAndNullsAreIgnored() {
+        audioService.registerSendHandler(mockGuild, mockPlugin, mockSendHandler, 80, 50);
+        audioService.setPriorityThreshold(mockGuild, 60);
+        assertThrows(IllegalArgumentException.class, () -> audioService.setPriorityThreshold(mockGuild, 500));
+
+        audioService.closeAudioConnection(mockGuild);
+        assertFalse(audioService.hasActiveSendHandler(mockGuild, mockPlugin));
+        audioService.closeAudioConnection(mockGuild); // nothing left, no error
+
+        audioService.deregisterSendHandler(null, mockPlugin);
+        audioService.setVolume(null, mockPlugin, 50);
+        audioService.setPriorityThreshold(null, 10);
+        audioService.closeAudioConnection(null);
+        audioService.closeAllConnectionsForPlugin(null);
+        assertFalse(audioService.hasActiveSendHandler(null, mockPlugin));
+        assertFalse(audioService.hasActiveReceiveHandler(mockGuild, null));
+        assertThrows(IllegalArgumentException.class, () -> audioService.registerSendHandler(mockGuild, null, mockSendHandler, 50, 50));
+        assertThrows(IllegalArgumentException.class, () -> audioService.setVolume(mockGuild, mockPlugin, 300));
+    }
 }
