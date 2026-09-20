@@ -22,7 +22,8 @@ One `Command` model serves three front-ends: Discord slash commands, prefixed te
 | `core/command/SlashCommandDataMapper.java` | command model → JDA `CommandData` (lower-cased names, bounds/choices/autocomplete/file types on top-level **and** subcommand options, `DefaultMemberPermissions.DISABLED` when the command has a permission, contexts from `guildOnly`). |
 | `core/command/SimpleCommandRegistry.java` | flat maps name→command, alias→command, plugin→commands. Global namespace: a second `play` (or a name equal to an existing alias) is refused with an ERROR naming both owners and `register` returns false; an alias collision only skips the alias (warn). |
 | `core/command/SimpleCommand.java`, `SimpleCommandBuilder.java`, `SimpleCommandContext.java`, `option/SimpleCommandOption.java` | implementations. |
-| `core/command/CommandMessageBuilder.java` (~610 lines) | builds/sends replies for the three front-ends (content, embeds, components, ephemeral, deferral). |
+| `core/command/CommandMessageBuilder.java` (~180 lines) | composes a reply (content, `info/success/warning/error` embeds with translated titles, components) within Discord's limits; `replyNow()` hands `build()` (null when empty) to the `ReplyTarget` of the event. |
+| `core/command/reply/{ReplyTarget,InteractionReplyTarget,MessageReplyTarget,ConsoleReplyTarget}.java` | one transport each (C5): interaction = initial reply / `deferReply` when `deferred` / `editOriginal` once acknowledged / zero-width placeholder deleted when empty; text = `message.reply`, ephemeral emulated by deleting the reply (+ the trigger if MESSAGE_MANAGE) after 1 min; console = `[CONSOLE]` lines (`ConsoleReplyTarget.render`). |
 | `core/command/parser/{Slash,Text,Console}CommandParser.java` + `CommandParser` | `canParse(event)` / `isCommandInvocation(event)` / `extractCommandName` / `parse(event, command)` → `CommandContext`. `ConsoleCommandParser` wraps a synthetic `parser/event/ConsoleCommandEvent`. |
 | `core/command/listener/CommandListener.java` | JDA `ListenerAdapter`: `onSlashCommandInteraction`, `onMessageReceived` → `service.processCommand(event)`; `onCommandAutoCompleteInteraction` → `service.handleAutocomplete(event)`. |
 | `core/command/system/{Help,Version,Shutdown}Command.java` | built-ins, toggled by `commands.system.*` in `config.yml`, registered once in `enable()`. |
@@ -45,7 +46,7 @@ Prefix: default from `commands.default-prefix`; per-guild override stored via `D
 - `OptionType2` ↔ JDA `OptionType` conversion happens in `SimpleCommandService.convertOptionType`; attachment options go through `toFileType`.
 
 ## Testing
-- `SimpleCommandRegistryTest`, `CommandAutocompleteTest`, `CommandExecutionTest` (gating, cooldowns, events, metrics, and the reply contract of `processCommand` with mocked `SlashCommandInteractionEvent`s — errors are embeds: capture `reply("").addEmbeds(...)`), `SlashCommandDataMapperTest`. Missing: `TextCommandParser` (mention/role/channel parsing), `ConsoleCommandParser`, `CommandMessageBuilder`.
+- `SimpleCommandRegistryTest`, `CommandAutocompleteTest`, `CommandExecutionTest` (gating, cooldowns, events, metrics, and the reply contract of `processCommand` with mocked `SlashCommandInteractionEvent`s — errors are embeds: capture `reply("").addEmbeds(...)`), `SlashCommandDataMapperTest`, `SubcommandRoutingTest`, `CommandMessageBuilderTest` (the three transports with mocked JDA actions; console captured through `System.setOut`). Missing: `TextCommandParser` (mention/role/channel parsing), `ConsoleCommandParser`, `CommandMessageBuilder`.
 - Test setup: `jda.getStatus()` must **not** be `CONNECTED` in unit tests or `enable()` calls `jda.updateCommands()` (NPE on a plain mock); `LanguageManager.getString(locale, key, Object...)` is a varargs method — stub with `any(Object[].class)` and read `inv.getArguments()`.
 - Smoke: register a guild-scoped test command in an example plugin and check the sync log + Discord UI.
 
@@ -59,6 +60,8 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 - 2026-09-20 (C1/C2): `CommandExecutor` + `SlashCommandDataMapper` extracted; `dispatch` replaces the nested parser loop. Two real bugs fixed: a slash command refused by permission/cooldown/guild-only got no reply at all (only deferred failures were answered), and subcommand options were synced as bare `OptionData` (no choices/bounds/autocomplete).
 
 - 2026-09-20 (C6): subcommands are routed inside `parse` (`CommandParser.selectSubcommand`), so `context.getCommand()` is the subcommand and `dispatch` executes that. `SimpleCommand` is a record: the parent↔child cycle goes through the mutable `SimpleCommand.ParentLink`, set by `SimpleCommandBuilder.linkParents` after the parent is built (a `withEnabled` copy of the parent leaves children pointing at the original — equal data, fine). Permission/guild-only inherit from ancestors (`CommandExecutor.effectivePermission/isGuildOnly`); cooldowns keyed by `getFullName()`.
+
+- 2026-09-20 (C5): `MessageCreateBuilder.build()` throws on an empty message, so an empty reply travels as `null` to the target. `InteractionCommandContext` (a second, unused `CommandContext` for modals) was dead code — the music plugin has its own `ModalCommandContext`.
 
 ## Known issues / open questions
 - C3 (rename `OptionType2`): still open, API break — ask the user.
