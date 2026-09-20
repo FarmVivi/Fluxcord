@@ -92,7 +92,9 @@ public abstract class AbstractDataStorage implements DataStorage {
 
             if (event.getValue() != result.get()) {
                 T newValue = type.cast(event.getValue());
-                scopeCache.put(keyName, newValue);
+                if (newValue != null) {
+                    cache.computeIfAbsent(scope, k -> new ConcurrentHashMap<>()).put(keyName, newValue);
+                }
                 return Optional.ofNullable(newValue);
             }
         }
@@ -115,14 +117,14 @@ public abstract class AbstractDataStorage implements DataStorage {
             value = (T) event.getValue();
         }
 
-        // Update cache
-        String scope = key.getScope();
-        String keyName = key.getKey();
-        Map<String, Object> scopeCache = cache.computeIfAbsent(scope, k -> new ConcurrentHashMap<>());
-        scopeCache.put(keyName, value);
-
-        // Update backend
-        return doSet(key, value);
+        // Backend first: a lazy backend (FileDataStorage) populates the scope cache from disk in doSet,
+        // and creating an empty scope entry here beforehand would make it skip that load and later
+        // persist only this key, wiping the rest of the scope. Cache only what the backend accepted.
+        if (!doSet(key, value)) {
+            return false;
+        }
+        cache.computeIfAbsent(key.getScope(), k -> new ConcurrentHashMap<>()).put(key.getKey(), value);
+        return true;
     }
 
     @Override

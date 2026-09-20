@@ -223,17 +223,27 @@ public class FileDataStorage extends AbstractDataStorage {
         File scopeDir = getScopeDirectory(scope);
         File dataFile = new File(scopeDir, DATA_FILENAME);
 
-        Map<String, Object> data = new HashMap<>();
+        // Concurrent: this map is mutated by callers while the debounced save serializes it.
+        // Null values are not storable (ConcurrentHashMap) — use remove() instead of set(null).
+        Map<String, Object> data = new ConcurrentHashMap<>();
 
         if (dataFile.exists()) {
             try (FileReader reader = new FileReader(dataFile)) {
                 Map<String, Object> loadedData = gson.fromJson(reader, MAP_TYPE);
                 if (loadedData != null) {
-                    data.putAll(loadedData);
+                    loadedData.forEach((k, v) -> {
+                        if (v != null) {
+                            data.put(k, v);
+                        }
+                    });
                 }
-            } catch (IOException e) {
-                logger.error("[{}] Error loading data for scope {}: {}",
-                        storageType, scope, e.getMessage());
+            } catch (IOException | RuntimeException e) {
+                // Unreadable or malformed JSON (JsonParseException is unchecked): keep a copy aside
+                // and start the scope empty rather than crashing every access to it.
+                File backup = new File(scopeDir, DATA_FILENAME + ".corrupt");
+                boolean kept = dataFile.renameTo(backup);
+                logger.error("[{}] Error loading data for scope {} ({}); {}", storageType, scope, e.getMessage(),
+                        kept ? "file moved to " + backup.getName() : "file will be overwritten on next save");
             }
         }
 
@@ -251,12 +261,17 @@ public class FileDataStorage extends AbstractDataStorage {
      */
     private boolean saveScopeData(String scope) {
         Map<String, Object> scopeData = cache.get(scope);
-        if (scopeData == null || scopeData.isEmpty()) {
-            return true; // Nothing to save
+        if (scopeData == null) {
+            return true; // Scope never loaded (or cleared): nothing to save
         }
-
         File scopeDir = getScopeDirectory(scope);
         File dataFile = new File(scopeDir, DATA_FILENAME);
+        // An empty map is still written when a file exists: it may be the result of removing the
+        // last key, and the previous content must not come back on the next start. Scopes that were
+        // only read (never had a file) are not materialised.
+        if (scopeData.isEmpty() && !dataFile.exists()) {
+            return true;
+        }
 
         try (FileWriter writer = new FileWriter(dataFile)) {
             gson.toJson(scopeData, writer);
