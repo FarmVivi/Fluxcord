@@ -42,7 +42,7 @@ public class AudioMixerTest {
         // Mixe et vérifie le résultat
         ByteBuffer result = mixer.mix();
         assertNotNull(result, "Le résultat ne devrait pas être null");
-        result.order(ByteOrder.LITTLE_ENDIAN);
+        result.order(ByteOrder.BIG_ENDIAN); // the mixer outputs JDA-ready big-endian PCM
 
         // Vérifie que les valeurs sont correctes
         assertEquals(1000, result.getShort(), "Le premier échantillon devrait être 1000");
@@ -70,7 +70,7 @@ public class AudioMixerTest {
         // Mixe et vérifie le résultat
         ByteBuffer result = mixer.mix();
         assertNotNull(result, "Le résultat ne devrait pas être null");
-        result.order(ByteOrder.LITTLE_ENDIAN);
+        result.order(ByteOrder.BIG_ENDIAN); // the mixer outputs JDA-ready big-endian PCM
 
         // Vérifie que les valeurs sont correctes (somme des échantillons)
         assertEquals(1500, result.getShort(), "Le premier échantillon devrait être 1500");
@@ -92,7 +92,7 @@ public class AudioMixerTest {
         // Mixe et vérifie le résultat
         ByteBuffer result = mixer.mix();
         assertNotNull(result, "Le résultat ne devrait pas être null");
-        result.order(ByteOrder.LITTLE_ENDIAN);
+        result.order(ByteOrder.BIG_ENDIAN); // the mixer outputs JDA-ready big-endian PCM
 
         // Vérifie que les valeurs sont ajustées correctement
         assertEquals(500, result.getShort(), "Le premier échantillon devrait être 500");
@@ -120,7 +120,7 @@ public class AudioMixerTest {
         // Mixe et vérifie le résultat
         ByteBuffer result = mixer.mix();
         assertNotNull(result, "Le résultat ne devrait pas être null");
-        result.order(ByteOrder.LITTLE_ENDIAN);
+        result.order(ByteOrder.BIG_ENDIAN); // the mixer outputs JDA-ready big-endian PCM
 
         // Vérifie que la valeur est limitée à la valeur maximale (hard clipping)
         assertEquals(maxValue, result.getShort(), "La valeur devrait être limitée à Short.MAX_VALUE");
@@ -147,7 +147,7 @@ public class AudioMixerTest {
         // Mixe et vérifie le résultat
         ByteBuffer result = mixer.mix();
         assertNotNull(result, "Le résultat ne devrait pas être null");
-        result.order(ByteOrder.LITTLE_ENDIAN);
+        result.order(ByteOrder.BIG_ENDIAN); // the mixer outputs JDA-ready big-endian PCM
 
         // Vérifie que la valeur est limitée à la valeur minimale (hard clipping)
         assertEquals(minValue, result.getShort(), "La valeur devrait être limitée à Short.MIN_VALUE");

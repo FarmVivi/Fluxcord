@@ -69,16 +69,6 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
     }
 
     /**
-     * Convertit une trame PCM little-endian en BigEndian 20ms (3840 octets) dans un buffer réutilisable.
-     * - Swap par échantillon 16-bit (LE -> BE)
-     * - Tronque/Pad pour assurer exactement 3840 octets
-     * - Retourne un ByteBuffer array-backed pointant sur le buffer interne réutilisé
-     */
-    private ByteBuffer ensureBigEndianFrame(ByteBuffer le) {
-        return ensureBigEndianFrame(le, 1.0f);
-    }
-
-    /**
      * Convertit une trame PCM little-endian en big-endian (attente JDA) dans le buffer réutilisable, en
      * appliquant {@code gain} pendant la même passe (volume × fade d'une source relayée seule). Avec un gain de
      * 1 la boucle se réduit à l'échange d'octets.
@@ -366,10 +356,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
                         activeSourceCount++;
                     }
                 }
-                audio = mixer.mix();
-                if (audio != null) {
-                    audio = ensureBigEndianFrame(audio);
-                }
+                audio = mixer.mix(); // déjà big-endian : aucune passe supplémentaire
             }
 
             // Un événement par frame (50/s par guilde) : construit et dispatché seulement si quelqu'un écoute

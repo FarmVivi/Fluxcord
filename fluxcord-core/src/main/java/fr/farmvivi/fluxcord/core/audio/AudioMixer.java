@@ -21,9 +21,8 @@ public class AudioMixer {
     private static final int MAX_VALUE = Short.MAX_VALUE;
     private static final int MIN_VALUE = Short.MIN_VALUE;
 
-    // Buffer de sortie
-    private final short[] mixBuffer = new short[FRAME_SIZE / BYTES_PER_SAMPLE];
-    private final ByteBuffer outputBuffer = ByteBuffer.allocate(FRAME_SIZE).order(ByteOrder.LITTLE_ENDIAN);
+    // Buffer de sortie, écrit directement en big-endian (format attendu par JDA) : une seule passe
+    private final byte[] output = new byte[FRAME_SIZE];
 
     // Liste des sources pour ce frame
     private final List<SourceFrame> sources = new ArrayList<>();
@@ -33,10 +32,6 @@ public class AudioMixer {
      */
     public void reset() {
         sources.clear();
-        for (int i = 0; i < mixBuffer.length; i++) {
-            mixBuffer[i] = 0;
-        }
-        outputBuffer.clear();
     }
 
     /**
@@ -63,45 +58,28 @@ public class AudioMixer {
             return null;
         }
 
-        // Réinitialise les positions des buffers
         for (SourceFrame source : sources) {
             source.getBuffer().rewind();
         }
 
-        // Mixe toutes les sources
-        for (int i = 0; i < mixBuffer.length; i++) {
-            // Additionne les échantillons de chaque source
+        // Somme des échantillons de chaque source (volume appliqué), clipping, écriture big-endian
+        int sampleCount = FRAME_SIZE / BYTES_PER_SAMPLE;
+        for (int i = 0, out = 0; i < sampleCount; i++, out += 2) {
             int sum = 0;
             for (SourceFrame source : sources) {
                 ByteBuffer buffer = source.getBuffer();
                 if (buffer.remaining() >= BYTES_PER_SAMPLE) {
-                    short sample = buffer.getShort();
-                    // Applique le volume
-                    float scaled = sample * source.getVolume();
-                    sum += (int) scaled;
+                    sum += (int) (buffer.getShort() * source.getVolume());
                 }
             }
-
-            // Hard clipping
             if (sum > MAX_VALUE) sum = MAX_VALUE;
             if (sum < MIN_VALUE) sum = MIN_VALUE;
-
-            // Stocke l'échantillon dans le buffer de mixage
-            mixBuffer[i] = (short) sum;
+            output[out] = (byte) (sum >> 8);
+            output[out + 1] = (byte) sum;
         }
 
-        // Remplit le buffer de sortie
-        outputBuffer.clear();
-        for (short sample : mixBuffer) {
-            // Écrit explicitement en little-endian
-            outputBuffer.put((byte) (sample & 0xFF));
-            outputBuffer.put((byte) ((sample >> 8) & 0xFF));
-        }
-
-        // Prépare le buffer pour la lecture
-        outputBuffer.flip();
-        // Retourne une vue en lecture seule pour éviter toute mutation externe
-        return outputBuffer.asReadOnlyBuffer();
+        // Vue en lecture seule sur le buffer interne (réutilisé à la frame suivante)
+        return ByteBuffer.wrap(output).asReadOnlyBuffer();
     }
 
     /**
@@ -119,7 +97,7 @@ public class AudioMixer {
          */
         public SourceFrame(ByteBuffer buffer, float volume) {
             // Crée une copie du buffer pour pouvoir le modifier sans affecter l'original
-            // Standardise en PCM little-endian (conforme attentes JDA)
+            // Les sources fournissent du PCM little-endian (convention interne) ; la sortie est big-endian
             this.buffer = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN);
             this.volume = volume;
         }
