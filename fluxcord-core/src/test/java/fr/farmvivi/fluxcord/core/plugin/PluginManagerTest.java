@@ -129,6 +129,21 @@ class PluginManagerTest {
     }
 
     @Test
+    void pluginStringsAreReachableThroughTheContextWhateverTheIdCase() throws Exception {
+        String yml = "id: MixedCase\nname: m\nversion: 1.0\nmain: " + com.example.fixture.FixturePlugin.class.getName() + "\n";
+        PluginJars.build(pluginsFolder.toPath(), "mixed.jar", List.of(com.example.fixture.FixturePlugin.class),
+                java.util.Map.of("plugin.yml", yml, "lang/en-US.yml", "greet: Hello\n"));
+        Files.createDirectories(pluginsFolder.toPath().resolve("MixedCase").resolve("lang"));
+        Files.writeString(pluginsFolder.toPath().resolve("MixedCase").resolve("lang").resolve("fr-FR.yml"), "greet: Bonjour\n");
+
+        boot();
+
+        AbstractPlugin plugin = (AbstractPlugin) manager.getPlugin("MixedCase");
+        assertEquals("Hello", plugin.getLanguage().getString("greet"), "jar strings, namespace = plugin id");
+        assertEquals("Bonjour", plugin.getLanguage().getString(java.util.Locale.FRANCE, "greet"), "plugins/<id>/lang override");
+    }
+
+    @Test
     void shutdownDisablesInReverseOrderAndReleasesEverything() throws Exception {
         PluginJars.plugin(pluginsFolder.toPath(), "alpha");
         PluginJars.plugin(pluginsFolder.toPath(), "beta", "dependencies: [alpha]\n");

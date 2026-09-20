@@ -12,7 +12,7 @@ import fr.farmvivi.fluxcord.core.config.CoreSettings;
 import fr.farmvivi.fluxcord.core.console.ConsoleCommandService;
 import fr.farmvivi.fluxcord.core.event.SimpleEventManager;
 import fr.farmvivi.fluxcord.core.health.HealthServer;
-import fr.farmvivi.fluxcord.core.language.LanguageFileLoader;
+import fr.farmvivi.fluxcord.core.language.LanguageFiles;
 import fr.farmvivi.fluxcord.core.language.SimpleLanguageManager;
 import fr.farmvivi.fluxcord.core.permissions.SimplePermissionManager;
 import fr.farmvivi.fluxcord.core.plugin.PluginManager;
@@ -79,7 +79,7 @@ public final class FluxcordRuntime {
 
         this.eventManager = new SimpleEventManager();
         this.languageManager = new SimpleLanguageManager(settings.defaultLocale(), eventManager);
-        new LanguageFileLoader(languageManager, new File(baseDir, "lang")).loadLanguageFiles();
+        LanguageFiles.loadFolder(languageManager, SimpleLanguageManager.CORE_NAMESPACE, new File(baseDir, "lang"));
 
         this.dataStorageManager = StorageFactory.createStorageManager(settings.dataStorage(), eventManager);
         this.binaryStorageManager = BinaryStorageFactory.createBinaryStorageManager(settings.binaryStorage(), eventManager);

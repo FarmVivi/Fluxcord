@@ -14,24 +14,23 @@ User-facing text (replies, embeds, permission descriptions, help) goes through `
 
 ## Map
 - `api/language/LanguageManager` — `getString(key)`, `getString(key, args...)`, `getString(locale, key)`, `getString(locale, key, args...)`, `registerNamespace(ns)`, `loadLanguage(ns, locale, Map<String,String>)`, `getDefaultLocale()`, `getAvailableLocales()`.
-- `api/language/PluginLanguageAdapter` — created in `AbstractPlugin.onLoad`; namespace = `plugin.getId()`; prefixes keys with `<id>:` so plugins call `getLanguage().getString("player.now_playing", title)`.
-- `core/language/SimpleLanguageManager` (~600 lines) — two maps `translations` (runtime `lang/` folder overrides) and `defaultTranslations` (from classpath / jar resources), both `namespace → locale → flatKey → string`. Nested YAML is flattened to dotted keys (`commands.messages.cooldown`).
-- `core/language/LanguageFileLoader` — loads the **core** runtime folder `./lang/*.yml` at boot (`Fluxcord.createLanguageServices`). Plugin languages are loaded by `PluginManager.loadPlugin` (jar `lang/*.yml` then `plugins/<id>/lang/*.yml`), namespace `id.toLowerCase()`.
+- `api/language/PluginLanguageAdapter` — built by `PluginManager` for the `PluginContext` (`getLanguage()`); namespace = plugin id; prefixes keys with `<id>:` so plugins call `getLanguage().getString("player.now_playing", title)`. Also `getDefaultLocale()` and the escape hatch `getLanguageManager()`.
+- `core/language/SimpleLanguageManager` (~200 lines, L1 done 2026-09-20) — one map `namespace → locale → flatKey → string`; namespaces are **lower-cased** on register/load/lookup (plugin ids may have upper-case letters). Everything arrives through `loadLanguage` in load order and later loads override earlier ones key by key: core bundled `en-US`/`fr-FR` (constructor) → `./lang/*.yml` (`FluxcordRuntime`); plugin jar `lang/*.yml` → `plugins/<id>/lang/*.yml` (`PluginManager.loadPlugin`).
+- `core/language/LanguageFiles` — the single YAML loader: `parse(Reader)` (nested → dotted keys, leaves `String.valueOf`, null leaves skipped), `localeOf("fr_FR.yml")`, `loadResource/loadFolder/loadJar(manager, namespace, …)`; a broken file is logged and skipped.
 - Resources: `fluxcord-core/src/main/resources/lang/{en-US,fr-FR}.yml` (core namespace), `plugins/music-plugin/src/main/resources/lang/*.yml`.
 
-## Lookup cascade (`SimpleLanguageManager.getString(locale, key)`)
-Key `ns:actual` (default ns `core`). Unregistered namespace → warning + returns the raw key. Then: 1 runtime[locale] → 2 resources[locale] → 2b same-language variant (`fr` → `fr-FR`, `fr-FR` → `fr-CA`, first found) → 3/4 the configured default locale (runtime, resources; skipped when equal) → 5/6 en-US (runtime, resources; skipped when the locale is already English) → raw key. Decision 2026-09-20: the configured default comes **before** en-US (a German user of a `fr-FR` bot gets French; en-US remains the final net). `resources` only ever holds the core `en-US`/`fr-FR` bundled files; plugin jar strings and every runtime file go through `loadLanguage` into `runtime` (merged with `putAll`, so `plugins/<id>/lang` overrides jar keys one by one). Each hit fires `StringRetrievalEvent` (listeners may `override` the value). The `args` overload calls the plain one, fires the event **again** with args, then `MessageFormat.format` (`{0}`, `{1}` — beware MessageFormat quirks: single quotes must be doubled `''`, and `{` in literal text must be quoted).
+## Lookup cascade (`SimpleLanguageManager.lookup`)
+Key `ns:actual` (default ns `core`). Unregistered namespace → warning + returns the raw key. Candidates, without repeats: requested locale → a same-language locale that has the key (the configured default locale first if it shares the language, else the first found) → configured default locale → `en-US`. First hit wins; otherwise the raw key. One `StringRetrievalEvent` per lookup (hit or miss, with the args when given and the locale that answered), listeners may `setValue` to override. The args overload then applies `MessageFormat` (`{0}` — single quotes must be doubled `''`, `{` in literal text must be quoted).
 
 `getString` returning exactly the key is the "missing" signal (used by the args overload and by callers) — so a translation whose value equals its key is indistinguishable from a miss.
 
 ## Gotchas
-- Locale of a command reply comes from `CommandContext.getLocale()` (user's Discord locale for slash, guild locale for text, default for console) — check `SimpleCommandContext` before assuming.
+- Locale of a command reply comes from `CommandContext.getLocale()` (user's Discord locale for slash, default for text/console).
 - Adding a key: add it to **both** `en-US.yml` and `fr-FR.yml` of the right namespace; en-US is the ultimate fallback so it must be complete.
 - Runtime overrides live outside the jar: `./lang/` (core) and `plugins/<id>/lang/` (plugin) — useful for hosters, but a stale override silently shadows a fixed default.
-- Namespace registration happens in two places (adapter in `onLoad`, and `PluginManager.loadPlugin` "defensively").
 
 ## Testing
-`SimpleLanguageManagerTest` (16 tests): bundled resources, cascade order (variant, en-US, default locale), missing-key contract, `loadLanguage` merge, MessageFormat quirks (`'` swallows placeholders, `{0,number,#}` avoids grouping), event override and double firing. Safety net for L1.
+`SimpleLanguageManagerTest` (17: bundled resources, cascade order, missing-key contract, `loadLanguage` merge, case-insensitive namespaces, MessageFormat quirks, event override, single firing), `LanguageFilesTest` (4), `PluginManagerTest.pluginStringsAreReachableThroughTheContextWhateverTheIdCase`.
 
 ## Improvement loop (mandatory — see /skill-maintenance)
 Verify what you used against the code, fix or delete wrong lines, add dated **Learnings**, prune resolved **Known issues**. Keep < 300 lines.
@@ -40,7 +39,7 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 - 2026-09-19: Initial audit.
 - 2026-09-20: Characterized without finding bugs. The cascade has 6 steps, not 4 (default locale after en-US). Non-string YAML leaves become `String.valueOf` (`true`, `12`), sections are not strings (`getString("permissions")` misses).
 
+- 2026-09-20 (L1): real bug found — namespace case mismatch between `PluginLanguageAdapter` (id verbatim) and `PluginManager` (`id.toLowerCase()`); harmless today because every first-party id is lower-case. The old "resources vs runtime" split was just two layers of the same map; a single map with load-order override is equivalent and testable.
+
 ## Known issues / open questions
-- L1: `getString(locale, key)` is ~300 lines of copy-pasted cascade steps (each with its own debug log + event firing). Collapse into an ordered list of lookup sources + one loop; fire `StringRetrievalEvent` once.
 - Missing-key signalling by string equality; consider `Optional<String> find(...)` in the api (API addition, backwards compatible).
-- Consider `PluginContext` exposing the plugin's adapter directly so plugins never see unprefixed namespaces.

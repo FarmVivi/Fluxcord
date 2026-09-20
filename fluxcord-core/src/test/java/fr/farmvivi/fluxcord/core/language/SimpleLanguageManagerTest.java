@@ -199,7 +199,16 @@ class SimpleLanguageManagerTest {
     }
 
     @Test
-    void retrievalEventIsFiredTwiceWhenArgumentsAreGiven() {
+    void namespacesAreCaseInsensitive() {
+        assertTrue(manager.registerNamespace("MyPlugin"));
+        assertFalse(manager.registerNamespace("myplugin"), "same namespace");
+        manager.loadLanguage("MYPLUGIN", EN_US, Map.of("hello", "Hi"));
+        assertEquals("Hi", manager.getString("myplugin:hello"));
+        assertEquals("Hi", manager.getString("MyPlugin:hello"), "the plugin id as typed by the plugin");
+    }
+
+    @Test
+    void retrievalEventIsFiredOnceWithTheArguments() {
         SimpleEventManager events = new SimpleEventManager();
         Recorder recorder = new Recorder();
         events.registerListener(recorder, new StubPlugin());
@@ -209,11 +218,11 @@ class SimpleLanguageManagerTest {
             assertEquals(2, recorder.loads.size(), "en-US and fr-FR bundled resources");
 
             withEvents.getString("commands.messages.cooldown", 3);
-            assertEquals(2, recorder.retrievals.size());
-            assertNull(recorder.retrievals.get(0).getArgs());
-            assertArrayEquals(new Object[]{3}, recorder.retrievals.get(1).getArgs());
-            assertEquals("commands.messages.cooldown", recorder.retrievals.get(1).getKey());
-            assertEquals("core", recorder.retrievals.get(1).getNamespace());
+            assertEquals(1, recorder.retrievals.size(), "one lookup, one event (was fired twice before L1)");
+            assertArrayEquals(new Object[]{3}, recorder.retrievals.get(0).getArgs());
+            assertEquals("commands.messages.cooldown", recorder.retrievals.get(0).getKey());
+            assertEquals("core", recorder.retrievals.get(0).getNamespace());
+            assertTrue(recorder.retrievals.get(0).getValue().contains("{0}"), "listeners see the raw pattern");
 
             recorder.retrievals.clear();
             withEvents.getString(DE_DE, "commands.messages.disabled");

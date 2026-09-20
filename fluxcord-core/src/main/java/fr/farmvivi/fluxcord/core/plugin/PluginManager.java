@@ -17,13 +17,13 @@ import fr.farmvivi.fluxcord.api.permissions.PluginPermissionAdapter;
 import fr.farmvivi.fluxcord.api.language.PluginLanguageAdapter;
 import fr.farmvivi.fluxcord.api.storage.PluginDataStorageAdapter;
 import fr.farmvivi.fluxcord.api.storage.binary.PluginBinaryStorageAdapter;
+import fr.farmvivi.fluxcord.core.language.LanguageFiles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -164,26 +164,11 @@ public class PluginManager implements PluginLoader, Closeable {
             // Initialize configuration migration after plugin is loaded
             pluginConfig.initializeMigration(plugin);
 
-            // Load plugin language resources: defaults from JAR then runtime overrides
-            try {
-                String namespace = descriptor.id().toLowerCase();
-                // Register namespace defensively (no-op if already registered in onLoad)
-                languageManager.registerNamespace(namespace);
-
-                int totalLoaded = 0;
-                totalLoaded += loadPluginLanguagesFromJar(jar, namespace);
-
-                File runtimeLang = new File(new File(pluginsFolder, descriptor.id()), "lang");
-                totalLoaded += loadPluginLanguagesFromFolder(runtimeLang, namespace);
-
-                if (totalLoaded > 0) {
-                    logger.info("Loaded {} language entries for plugin namespace '{}'", totalLoaded, namespace);
-                } else {
-                    logger.debug("No language entries found for plugin namespace '{}' (JAR/resources or runtime)", namespace);
-                }
-            } catch (Exception e) {
-                logger.error("Failed to load language resources for plugin {} ({})", descriptor.id(), descriptor.name(), e);
-            }
+            // Plugin strings: jar lang/*.yml first, then plugins/<id>/lang/*.yml overrides (namespace registered by
+            // the PluginLanguageAdapter of the context)
+            int loadedStrings = LanguageFiles.loadJar(languageManager, descriptor.id(), jar)
+                    + LanguageFiles.loadFolder(languageManager, descriptor.id(), new File(new File(pluginsFolder, descriptor.id()), "lang"));
+            logger.debug("Loaded {} language entries for plugin '{}'", loadedStrings, descriptor.id());
 
             // Store the classloader using plugin ID
             classLoaders.put(descriptor.id(), classLoader);
@@ -213,97 +198,6 @@ public class PluginManager implements PluginLoader, Closeable {
                 logger.warn("Error closing class loader of a plugin that failed to load", e);
             }
         }
-    }
-
-    /**
-     * Load language files from plugin JAR under lang/*.yml.
-     * These act as default strings for the plugin (will be overridden by runtime files if present).
-     */
-    private int loadPluginLanguagesFromJar(JarFile jar, String namespace) {
-        int loaded = 0;
-        try {
-            Enumeration<JarEntry> entries = jar.entries();
-            while (entries.hasMoreElements()) {
-                JarEntry e = entries.nextElement();
-                if (e.isDirectory()) continue;
-                String name = e.getName();
-                if (!name.startsWith("lang/") || !name.endsWith(".yml")) continue;
-
-                String localeCode = name.substring("lang/".length(), name.length() - 4).replace('_', '-');
-                Locale locale = Locale.forLanguageTag(localeCode);
-                try (InputStream is = jar.getInputStream(e); InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
-                    Yaml yaml = new Yaml();
-                    Object data = yaml.load(reader);
-                    if (data instanceof Map<?, ?> map) {
-                        Map<String, String> flat = flattenMap(map, "");
-                        if (!flat.isEmpty()) {
-                            int c = languageManager.loadLanguage(namespace, locale, flat);
-                            loaded += c;
-                            if (logger.isDebugEnabled()) {
-                                logger.debug("Loaded {} strings from JAR for namespace='{}', locale='{}' (file='{}')", c, namespace, locale.toLanguageTag(), name);
-                            }
-                        }
-                    }
-                } catch (Exception ex) {
-                    logger.warn("Failed to parse language YAML '{}' for namespace '{}' from plugin JAR", name, namespace, ex);
-                }
-            }
-        } catch (Exception ex) {
-            logger.error("Failed scanning plugin JAR for lang files (namespace='{}')", namespace, ex);
-        }
-        return loaded;
-    }
-
-    /**
-     * Load runtime override files from plugins/<PluginName>/lang/*.yml
-     */
-    private int loadPluginLanguagesFromFolder(File langFolder, String namespace) {
-        if (!langFolder.exists()) {
-            return 0;
-        }
-        File[] files = langFolder.listFiles((dir, n) -> n.endsWith(".yml"));
-        if (files == null || files.length == 0) {
-            return 0;
-        }
-        int loaded = 0;
-        for (File f : files) {
-            String localeCode = f.getName().substring(0, f.getName().length() - 4).replace('_', '-');
-            Locale locale = Locale.forLanguageTag(localeCode);
-            try (var reader = Files.newBufferedReader(Path.of(f.toURI()), StandardCharsets.UTF_8)) {
-                Yaml yaml = new Yaml();
-                Object data = yaml.load(reader);
-                if (data instanceof Map<?, ?> map) {
-                    Map<String, String> flat = flattenMap(map, "");
-                    if (!flat.isEmpty()) {
-                        int c = languageManager.loadLanguage(namespace, locale, flat);
-                        loaded += c;
-                        if (logger.isDebugEnabled()) {
-                            logger.debug("Loaded {} strings from folder for namespace='{}', locale='{}' (file='{}')", c, namespace, locale.toLanguageTag(), f.getName());
-                        }
-                    }
-                }
-            } catch (Exception ex) {
-                logger.warn("Failed to load runtime language file '{}' for namespace '{}'", f.getAbsolutePath(), namespace, ex);
-            }
-        }
-        return loaded;
-    }
-
-    /**
-     * Flatten nested YAML map into dotted path -> string value.
-     */
-    private Map<String, String> flattenMap(Map<?, ?> map, String prefix) {
-        Map<String, String> out = new HashMap<>();
-        for (Map.Entry<?, ?> entry : map.entrySet()) {
-            String key = prefix.isEmpty() ? String.valueOf(entry.getKey()) : prefix + "." + entry.getKey();
-            Object val = entry.getValue();
-            if (val instanceof Map<?, ?> sub) {
-                out.putAll(flattenMap(sub, key));
-            } else {
-                out.put(key, String.valueOf(val));
-            }
-        }
-        return out;
     }
 
     @Override

@@ -47,7 +47,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 
 ## 6. i18n
 
-- [ ] **L1 — Collapse the lookup cascade** in `SimpleLanguageManager.getString(locale, key)` (~300 lines of repeated steps) into an ordered list of sources; fire `StringRetrievalEvent` once; add `Optional<String> find(...)` to the api so "missing" isn't signalled by returning the key.
+- [x] **L1 — Collapse the lookup cascade.** Done 2026-09-20: `SimpleLanguageManager` is 200 lines with one map (`namespace → locale → key`), one `candidates()` list (requested → same-language variant, the configured default first → default → en-US) and one `StringRetrievalEvent` per lookup (was fired twice with args). `LanguageFiles` is the single YAML loader (bundled resources, `lang/` folders, plugin jars) — three copies of the flattener are gone, `LanguageFileLoader` deleted. Namespaces are case-insensitive: the adapter used the plugin id verbatim while `PluginManager` lower-cased it, so a plugin with an upper-case id could never find its own strings. `LanguageFilesTest` (4), `SimpleLanguageManagerTest` 17, `PluginManagerTest` +1.
 
 ## 7. Audio
 
