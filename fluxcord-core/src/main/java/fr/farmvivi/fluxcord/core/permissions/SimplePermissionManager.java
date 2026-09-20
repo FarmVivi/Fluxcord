@@ -95,12 +95,13 @@ public class SimplePermissionManager implements PermissionManager {
             return false;
         }
 
-        // Fire event to allow interception
-        PermissionCheckEvent event = new PermissionCheckEvent(userId, null, permission, false);
-        eventManager.fireEvent(event);
-
-        if (event.isCancelled()) {
-            return event.getResult();
+        // Fire event to allow interception (one per command: skip the allocation when nobody listens)
+        if (eventManager.hasListeners(PermissionCheckEvent.class)) {
+            PermissionCheckEvent event = new PermissionCheckEvent(userId, null, permission, false);
+            eventManager.fireEvent(event);
+            if (event.isCancelled()) {
+                return event.getResult();
+            }
         }
 
         // Check cache first
@@ -140,12 +141,13 @@ public class SimplePermissionManager implements PermissionManager {
             return false;
         }
 
-        // Fire event to allow interception
-        PermissionCheckEvent event = new PermissionCheckEvent(userId, guildId, permission, false);
-        eventManager.fireEvent(event);
-
-        if (event.isCancelled()) {
-            return event.getResult();
+        // Fire event to allow interception (one per command: skip the allocation when nobody listens)
+        if (eventManager.hasListeners(PermissionCheckEvent.class)) {
+            PermissionCheckEvent event = new PermissionCheckEvent(userId, guildId, permission, false);
+            eventManager.fireEvent(event);
+            if (event.isCancelled()) {
+                return event.getResult();
+            }
         }
 
         // Check guild-specific permission first

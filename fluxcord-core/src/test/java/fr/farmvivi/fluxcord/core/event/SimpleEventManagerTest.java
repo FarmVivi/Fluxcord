@@ -386,6 +386,23 @@ class SimpleEventManagerTest {
         assertEquals(List.of("registrar", "late-same", "late-next"), calls.subList(0, 3));
     }
 
+    @Test
+    void hasListenersFollowsTheHierarchyAndRegistrations() {
+        assertFalse(manager.hasListeners(ChildEvent.class));
+        assertFalse(manager.hasListeners(null));
+
+        class OnBase { @EventHandler public void on(BaseEvent e) { } }
+        OnBase listener = new OnBase();
+        manager.registerListener(listener, plugin);
+
+        assertTrue(manager.hasListeners(ChildEvent.class), "a supertype handler counts");
+        assertTrue(manager.hasListeners(BaseEvent.class));
+        assertFalse(manager.hasListeners(OtherEvent.class));
+
+        manager.unregisterListener(listener);
+        assertFalse(manager.hasListeners(ChildEvent.class));
+    }
+
     // --- event type registry --------------------------------------------------------------------
 
     @Test

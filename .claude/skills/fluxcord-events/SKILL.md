@@ -48,6 +48,7 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 ## Learnings
 - 2026-09-19: Initial audit.
 - 2026-09-20: E1 done with the user: polymorphic dispatch + Bukkit `ignoreCancelled`. Handler storage was `EnumMap`+`ArrayList` mutated by `registerListener` while `fireEvent` copied it from other threads → now `ConcurrentHashMap`+`CopyOnWriteArrayList`. Walking a class hierarchy: `getSuperclass()` is `null` for interfaces and `ArrayDeque` rejects `null`.
+- 2026-09-20: `EventManager.hasListeners(Class)` (api default `true`, real answer in `SimpleEventManager`, hierarchy-aware). `fireEvent` already returns fast with no handler; the guard only saves *building* the event, so it is used on hot paths: audio frame (50/s), storage get/set/remove, `StringRetrievalEvent`, `PermissionCheckEvent`. Don't sprinkle it on rare events.
 
 ## Known issues / open questions
 - E2: fix stale docs/template showing `@EventHandler` on JDA events; consider a small `DiscordAPI.addListener(plugin, ListenerAdapter)` helper that also removes listeners on disable (would remove the biggest reload footgun).

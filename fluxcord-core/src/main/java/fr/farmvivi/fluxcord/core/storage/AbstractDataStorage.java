@@ -38,7 +38,7 @@ public abstract class AbstractDataStorage implements DataStorage {
     @Override
     public <T> Optional<T> get(StorageKey key, Class<T> type) {
         // Fire pre-get event
-        if (eventManager != null) {
+        if (eventManager != null && eventManager.hasListeners(StorageGetEvent.class)) {
             StorageGetEvent event = new StorageGetEvent(key, type, null);
             eventManager.fireEvent(event);
 
@@ -65,7 +65,7 @@ public abstract class AbstractDataStorage implements DataStorage {
                 T value = type.cast(cached);
 
                 // Fire post-get event
-                if (eventManager != null) {
+                if (eventManager != null && eventManager.hasListeners(StorageGetEvent.class)) {
                     StorageGetEvent event = new StorageGetEvent(key, type, value);
                     eventManager.fireEvent(event);
 
@@ -86,7 +86,7 @@ public abstract class AbstractDataStorage implements DataStorage {
                 cache.computeIfAbsent(scope, k -> new ConcurrentHashMap<>()).put(keyName, value));
 
         // Fire post-get event
-        if (eventManager != null && result.isPresent()) {
+        if (eventManager != null && result.isPresent() && eventManager.hasListeners(StorageGetEvent.class)) {
             StorageGetEvent event = new StorageGetEvent(key, type, result.get());
             eventManager.fireEvent(event);
 
@@ -105,7 +105,7 @@ public abstract class AbstractDataStorage implements DataStorage {
     @Override
     public <T> boolean set(StorageKey key, T value) {
         // Fire pre-set event
-        if (eventManager != null) {
+        if (eventManager != null && eventManager.hasListeners(StorageSetEvent.class)) {
             StorageSetEvent event = new StorageSetEvent(key, value);
             eventManager.fireEvent(event);
 
@@ -145,7 +145,7 @@ public abstract class AbstractDataStorage implements DataStorage {
     @Override
     public boolean remove(StorageKey key) {
         // Fire pre-remove event
-        if (eventManager != null) {
+        if (eventManager != null && eventManager.hasListeners(StorageRemoveEvent.class)) {
             StorageRemoveEvent event = new StorageRemoveEvent(key);
             eventManager.fireEvent(event);
 

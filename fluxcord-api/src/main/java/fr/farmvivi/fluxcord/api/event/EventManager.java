@@ -76,4 +76,16 @@ public interface EventManager extends EventRegistry {
      * @return true if the listener is registered, false otherwise
      */
     boolean isListenerRegistered(Object listener);
+
+    /**
+     * Whether firing an event of this class would reach at least one handler (registered for the class
+     * itself or one of its supertypes). Lets hot paths skip building high-frequency events (e.g. one per
+     * audio frame) when nobody listens.
+     *
+     * @param eventType the concrete event class
+     * @return true if at least one handler would receive it; implementations that cannot tell return true
+     */
+    default boolean hasListeners(Class<? extends Event> eventType) {
+        return true;
+    }
 }

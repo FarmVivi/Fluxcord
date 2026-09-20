@@ -390,6 +390,20 @@ public class SimpleEventManager implements EventManager {
         return event;
     }
 
+    @Override
+    public boolean hasListeners(Class<? extends Event> eventType) {
+        if (eventType == null) {
+            return false;
+        }
+        for (Class<? extends Event> type : eventHierarchy(eventType)) {
+            Map<EventPriority, List<RegisteredListener>> priorityMap = eventTypeMap.get(type);
+            if (priorityMap != null && !priorityMap.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * The concrete event class followed by every superclass and interface that extends {@link Event},
      * nearest first, without duplicates. Computed once per concrete class.

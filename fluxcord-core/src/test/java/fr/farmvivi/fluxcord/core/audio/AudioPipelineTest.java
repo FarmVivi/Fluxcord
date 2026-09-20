@@ -74,7 +74,18 @@ class AudioPipelineTest {
     void setUp() {
         when(guild.getName()).thenReturn("g");
         when(guild.getAudioManager()).thenReturn(audioManager);
+        when(events.hasListeners(any())).thenReturn(true); // frame events are opt-in
         pipeline = new AudioPipeline(guild, events);
+    }
+
+    @Test
+    void frameEventIsNotBuiltWhenNobodyListens() {
+        when(events.hasListeners(AudioFrameMixedEvent.class)).thenReturn(false);
+        pipeline.registerSendHandler(music, new FakeSource(false, (short) 1), 100, 50);
+
+        frame();
+
+        verify(events, never()).fireEvent(any(AudioFrameMixedEvent.class));
     }
 
     /** First sample of the frame as JDA will read it (big-endian). */

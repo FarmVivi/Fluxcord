@@ -43,7 +43,6 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
     private final Map<String, Boolean> frameCanProvide = new ConcurrentHashMap<>();
     // Buffer BE réutilisable unique pour 20ms (simplifié)
     private final byte[] beFrameBuffer = new byte[FRAME_SIZE_BYTES];
-    private Strategy currentStrategy = Strategy.DIRECT_BYPASS;
     private int priorityThreshold = AudioService.DEFAULT_PRIORITY_THRESHOLD;
     // État cache
     private String lastActivePluginName = null;
@@ -150,9 +149,6 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
         SourceHandler sourceHandler = new SourceHandler(handler, volume, priority);
         sendHandlers.put(pluginName, sourceHandler);
 
-        // Met à jour la stratégie si nécessaire
-        updateStrategy();
-
         logger.debug("Registered send handler for plugin {} in guild {}", pluginName, guild.getName());
     }
 
@@ -169,9 +165,6 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
         if (pluginName.equals(lastActivePluginName)) {
             lastActivePluginName = null;
         }
-
-        // Met à jour la stratégie si nécessaire
-        updateStrategy();
 
         logger.debug("Deregistered send handler for plugin {} in guild {}", pluginName, guild.getName());
     }
@@ -299,24 +292,6 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
     //
     // Implémentation de AudioSendHandler
     //
-
-    /**
-     * Met à jour la stratégie de traitement audio en fonction du nombre de sources.
-     */
-    private void updateStrategy() {
-        strategyLock.lock();
-        try {
-            Strategy newStrategy = sendHandlers.size() <= 1 ? Strategy.DIRECT_BYPASS : Strategy.MIXING;
-            if (newStrategy != currentStrategy) {
-                currentStrategy = newStrategy;
-                logger.debug("Switched to {} strategy for guild {}",
-                        currentStrategy == Strategy.DIRECT_BYPASS ? "direct bypass" : "mixing",
-                        guild.getName());
-            }
-        } finally {
-            strategyLock.unlock();
-        }
-    }
 
     @Override
     public boolean canProvide() {
@@ -491,10 +466,10 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
                 sendOpus = false; // mixage -> PCM
             }
 
-            // Émet un événement de mixage
-            boolean containsAudio = audio != null;
-            AudioFrameMixedEvent event = new AudioFrameMixedEvent(guild, activeSourceCount, bypassMode, containsAudio);
-            eventManager.fireEvent(event);
+            // Un événement par frame (50/s par guilde) : construit et dispatché seulement si quelqu'un écoute
+            if (eventManager.hasListeners(AudioFrameMixedEvent.class)) {
+                eventManager.fireEvent(new AudioFrameMixedEvent(guild, activeSourceCount, bypassMode, audio != null));
+            }
 
             // Met à jour l'état (aucun autre état persistant requis ici)
 
@@ -623,11 +598,5 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
         float baseVolume = sourceHandler.getBaseVolume() / 100.0f;
         float fadeMultiplier = priorityManager.getFadeMultiplier(pluginName);
         return baseVolume * fadeMultiplier;
-    }
-
-    // Stratégies de traitement audio
-    private enum Strategy {
-        DIRECT_BYPASS,  // Une seule source, transmission directe
-        MIXING          // Plusieurs sources, mixage
     }
 }

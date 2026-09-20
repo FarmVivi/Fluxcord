@@ -220,7 +220,7 @@ public class SimpleLanguageManager implements LanguageManager {
                 logger.debug("Translation hit (runtime) for [{}:{}] in locale {}", namespace, actualKey, locale.toLanguageTag());
             }
             // If we have an event manager, fire a string retrieval event
-            if (eventManager != null) {
+            if (eventManager != null && eventManager.hasListeners(StringRetrievalEvent.class)) {
                 StringRetrievalEvent event = new StringRetrievalEvent(
                         namespace, locale, actualKey, null, translation);
                 eventManager.fireEvent(event);
@@ -243,7 +243,7 @@ public class SimpleLanguageManager implements LanguageManager {
                 logger.debug("Translation hit (resources) for [{}:{}] in locale {}", namespace, actualKey, locale.toLanguageTag());
             }
             // If we have an event manager, fire a string retrieval event
-            if (eventManager != null) {
+            if (eventManager != null && eventManager.hasListeners(StringRetrievalEvent.class)) {
                 StringRetrievalEvent event = new StringRetrievalEvent(
                         namespace, locale, actualKey, null, translation);
                 eventManager.fireEvent(event);
@@ -269,7 +269,7 @@ public class SimpleLanguageManager implements LanguageManager {
                     logger.debug("Translation hit (runtime) for [{}:{}] using same-language variant {} -> {}",
                             namespace, actualKey, locale.toLanguageTag(), sameLanguageVariant.toLanguageTag());
                 }
-                if (eventManager != null) {
+                if (eventManager != null && eventManager.hasListeners(StringRetrievalEvent.class)) {
                     StringRetrievalEvent event = new StringRetrievalEvent(
                             namespace, sameLanguageVariant, actualKey, null, translation);
                     eventManager.fireEvent(event);
@@ -287,7 +287,7 @@ public class SimpleLanguageManager implements LanguageManager {
                     logger.debug("Translation hit (resources) for [{}:{}] using same-language variant {} -> {}",
                             namespace, actualKey, locale.toLanguageTag(), sameLanguageVariant.toLanguageTag());
                 }
-                if (eventManager != null) {
+                if (eventManager != null && eventManager.hasListeners(StringRetrievalEvent.class)) {
                     StringRetrievalEvent event = new StringRetrievalEvent(
                             namespace, sameLanguageVariant, actualKey, null, translation);
                     eventManager.fireEvent(event);
@@ -308,7 +308,7 @@ public class SimpleLanguageManager implements LanguageManager {
                     logger.debug("Translation hit (runtime) for [{}:{}] in default locale {}", namespace, actualKey, defaultLocale.toLanguageTag());
                 }
                 // If we have an event manager, fire a string retrieval event
-                if (eventManager != null) {
+                if (eventManager != null && eventManager.hasListeners(StringRetrievalEvent.class)) {
                     StringRetrievalEvent event = new StringRetrievalEvent(
                             namespace, defaultLocale, actualKey, null, translation);
                     eventManager.fireEvent(event);
@@ -331,7 +331,7 @@ public class SimpleLanguageManager implements LanguageManager {
                     logger.debug("Translation hit (resources) for [{}:{}] in default locale {}", namespace, actualKey, defaultLocale.toLanguageTag());
                 }
                 // If we have an event manager, fire a string retrieval event
-                if (eventManager != null) {
+                if (eventManager != null && eventManager.hasListeners(StringRetrievalEvent.class)) {
                     StringRetrievalEvent event = new StringRetrievalEvent(
                             namespace, defaultLocale, actualKey, null, translation);
                     eventManager.fireEvent(event);
@@ -357,7 +357,7 @@ public class SimpleLanguageManager implements LanguageManager {
                     logger.debug("Translation hit (runtime) for [{}:{}] in fallback en-US", namespace, actualKey);
                 }
                 // If we have an event manager, fire a string retrieval event
-                if (eventManager != null) {
+                if (eventManager != null && eventManager.hasListeners(StringRetrievalEvent.class)) {
                     StringRetrievalEvent event = new StringRetrievalEvent(
                             namespace, englishLocale, actualKey, null, translation);
                     eventManager.fireEvent(event);
@@ -380,7 +380,7 @@ public class SimpleLanguageManager implements LanguageManager {
                     logger.debug("Translation hit (resources) for [{}:{}] in fallback en-US", namespace, actualKey);
                 }
                 // If we have an event manager, fire a string retrieval event
-                if (eventManager != null) {
+                if (eventManager != null && eventManager.hasListeners(StringRetrievalEvent.class)) {
                     StringRetrievalEvent event = new StringRetrievalEvent(
                             namespace, englishLocale, actualKey, null, translation);
                     eventManager.fireEvent(event);
@@ -404,7 +404,7 @@ public class SimpleLanguageManager implements LanguageManager {
         }
 
         // If we have an event manager, fire a string retrieval event - maybe someone can provide the string
-        if (eventManager != null) {
+        if (eventManager != null && eventManager.hasListeners(StringRetrievalEvent.class)) {
             StringRetrievalEvent event = new StringRetrievalEvent(
                     namespace, locale, actualKey, null, key);
             eventManager.fireEvent(event);
@@ -500,7 +500,7 @@ public class SimpleLanguageManager implements LanguageManager {
         }
 
         // If we have an event manager, fire a string retrieval event with the args
-        if (eventManager != null) {
+        if (eventManager != null && eventManager.hasListeners(StringRetrievalEvent.class)) {
             String namespace = "core";
             String actualKey = key;
 
