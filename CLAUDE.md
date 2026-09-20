@@ -82,9 +82,9 @@ Versions of all dependencies are pinned in the root `pom.xml` `<dependencyManage
 
 ### Boot sequence (`Fluxcord.main` → `FluxcordRuntime`)
 
-`Fluxcord.main` is a thin entry point: it loads `config.yml` (`CoreConfiguration`), checks the token, builds a `FluxcordRuntime(baseDir, config, new JDADiscordAPI(token))`, starts the health server, calls `runtime.start()`, then parks on `awaitShutdownRequest()` and runs `runtime.stop()` from the main thread. `System.exit` only happens in `main`; `FluxcordRuntime` throws. `FluxcordRuntimeTest` boots the whole engine on a temp dir with a mocked `DiscordAPI`.
+`Fluxcord.main` is a thin entry point: it loads `config.yml` (`CoreConfiguration`) into the validated `CoreSettings` records (`core/config`, the only place that knows the config keys), builds a `FluxcordRuntime(baseDir, settings, new JDADiscordAPI(settings.token()))`, starts the health server, calls `runtime.start()`, then parks on `awaitShutdownRequest()` and runs `runtime.stop()` from the main thread. `System.exit` only happens in `main`; `FluxcordRuntime` throws. `FluxcordRuntimeTest` boots the whole engine on a temp dir with a mocked `DiscordAPI`.
 
-`FluxcordRuntime` constructor wires every service from the config: `SimpleEventManager` → `SimpleLanguageManager` (+ `lang/`) → storage managers (`StorageFactory`, `BinaryStorageFactory`) → `SimplePermissionManager`, `AudioServiceImpl` → `SimpleCommandService` (+ shutdown handler), `ConsoleCommandService` → `PluginManager` (receives every service). `start()` order matters:
+`FluxcordRuntime` constructor wires every service from the settings: `SimpleEventManager` → `SimpleLanguageManager` (+ `lang/`) → storage managers (`StorageFactory`, `BinaryStorageFactory`) → `SimplePermissionManager`, `AudioServiceImpl` → `SimpleCommandService` (+ shutdown handler), `ConsoleCommandService` → `PluginManager` (receives every service). `start()` order matters:
 
 1. `pluginManager.loadPlugins()` + `preEnablePlugins()` **before** JDA connects — plugins can still mutate `DiscordAPI.getBuilder()` (intents, listeners) at this point.
 2. `discordAPI.connect().join()`, then `commandService.setJDA(...)`, console `setJDA`, guild-operator resolver.

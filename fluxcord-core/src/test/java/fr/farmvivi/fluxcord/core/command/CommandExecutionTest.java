@@ -6,13 +6,13 @@ import fr.farmvivi.fluxcord.api.command.CommandContext;
 import fr.farmvivi.fluxcord.api.command.CommandResult;
 import fr.farmvivi.fluxcord.api.command.event.CommandExecuteEvent;
 import fr.farmvivi.fluxcord.api.command.event.CommandExecutedEvent;
-import fr.farmvivi.fluxcord.api.config.Configuration;
 import fr.farmvivi.fluxcord.api.event.EventHandler;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
 import fr.farmvivi.fluxcord.api.plugin.Plugin;
 import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
 import fr.farmvivi.fluxcord.core.command.parser.event.ConsoleCommandEvent;
+import fr.farmvivi.fluxcord.core.config.CoreSettings;
 import fr.farmvivi.fluxcord.core.event.SimpleEventManager;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
@@ -69,8 +69,7 @@ class CommandExecutionTest {
         when(permissions.hasPermission(anyString(), any(), anyString())).thenReturn(true);
         when(jda.getStatus()).thenReturn(JDA.Status.LOADING_SUBSYSTEMS); // not CONNECTED: enable() skips the slash sync
 
-        service = new SimpleCommandService(events, lang, permissions, mock(Configuration.class),
-                mock(DataStorageManager.class), "!");
+        service = new SimpleCommandService(events, lang, permissions, commands("!"), mock(DataStorageManager.class));
         service.setJDA(jda);
         service.enable();
     }
@@ -287,5 +286,9 @@ class CommandExecutionTest {
         ReplyCallbackAction reply = mock(ReplyCallbackAction.class, RETURNS_SELF);
         when(event.reply(anyString())).thenReturn(reply);
         return event;
+    }
+
+    private static CoreSettings.Commands commands(String prefix) {
+        return new CoreSettings.Commands(prefix, false, false, false, false);
     }
 }

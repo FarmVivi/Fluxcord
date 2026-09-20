@@ -5,10 +5,10 @@ import fr.farmvivi.fluxcord.api.command.CommandResult;
 import fr.farmvivi.fluxcord.api.command.option.AutocompleteContext;
 import fr.farmvivi.fluxcord.api.command.option.AutocompleteProvider;
 import fr.farmvivi.fluxcord.api.command.option.OptionChoice;
-import fr.farmvivi.fluxcord.api.config.Configuration;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
 import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
+import fr.farmvivi.fluxcord.core.config.CoreSettings;
 import fr.farmvivi.fluxcord.core.event.SimpleEventManager;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.User;
@@ -36,7 +36,7 @@ class CommandAutocompleteTest {
 
     private final SimpleEventManager events = new SimpleEventManager();
     private final SimpleCommandService service = new SimpleCommandService(events, mock(LanguageManager.class),
-            mock(PermissionManager.class), mock(Configuration.class), mock(DataStorageManager.class), "!");
+            mock(PermissionManager.class), commands("!"), mock(DataStorageManager.class));
 
     @AfterEach
     void shutdown() {
@@ -138,5 +138,9 @@ class CommandAutocompleteTest {
         verify(event, times(2)).replyChoices(captor.capture());
         assertTrue(captor.getValue().isEmpty(), "a failing provider answers an empty list");
         verify(action, times(2)).queue(any(), any());
+    }
+
+    private static CoreSettings.Commands commands(String prefix) {
+        return new CoreSettings.Commands(prefix, false, false, false, false);
     }
 }

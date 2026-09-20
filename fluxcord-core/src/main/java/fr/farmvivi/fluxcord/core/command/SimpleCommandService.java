@@ -5,8 +5,6 @@ import fr.farmvivi.fluxcord.api.command.exception.CommandParseException;
 import fr.farmvivi.fluxcord.api.command.option.AutocompleteContext;
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
 import fr.farmvivi.fluxcord.api.command.option.OptionChoice;
-import fr.farmvivi.fluxcord.api.config.Configuration;
-import fr.farmvivi.fluxcord.api.config.ConfigurationException;
 import fr.farmvivi.fluxcord.api.event.EventManager;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
@@ -14,6 +12,7 @@ import fr.farmvivi.fluxcord.api.plugin.Plugin;
 import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
 import fr.farmvivi.fluxcord.api.storage.ScopedStorage;
 import fr.farmvivi.fluxcord.core.command.listener.CommandListener;
+import fr.farmvivi.fluxcord.core.config.CoreSettings;
 import fr.farmvivi.fluxcord.core.command.parser.CommandParser;
 import fr.farmvivi.fluxcord.core.command.parser.ConsoleCommandParser;
 import fr.farmvivi.fluxcord.core.command.parser.SlashCommandParser;
@@ -50,7 +49,7 @@ public class SimpleCommandService implements CommandService {
     private final EventManager eventManager;
     private final LanguageManager languageManager;
     private final PermissionManager permissionManager;
-    private final Configuration configuration;
+    private final CoreSettings.Commands settings;
     private final DataStorageManager storageManager;
     // Statistics
     private final CommandExecutor executor;
@@ -80,16 +79,15 @@ public class SimpleCommandService implements CommandService {
             EventManager eventManager,
             LanguageManager languageManager,
             PermissionManager permissionManager,
-            Configuration configuration,
-            DataStorageManager storageManager,
-            String defaultPrefix
+            CoreSettings.Commands settings,
+            DataStorageManager storageManager
     ) {
         this.eventManager = eventManager;
         this.languageManager = languageManager;
         this.permissionManager = permissionManager;
-        this.configuration = configuration;
+        this.settings = settings;
         this.storageManager = storageManager;
-        this.defaultPrefix = defaultPrefix;
+        this.defaultPrefix = settings.defaultPrefix();
 
         this.registry = new SimpleCommandRegistry();
         this.executor = new CommandExecutor(eventManager, languageManager, permissionManager, this::isEnabled);
@@ -125,21 +123,17 @@ public class SimpleCommandService implements CommandService {
         return defaultPrefix;
     }
 
+    /**
+     * Changes the global prefix for this run only: {@code config.yml} is never rewritten by the bot (it would lose
+     * its comments), edit {@code commands.default-prefix} to make it permanent.
+     */
     @Override
     public void setPrefix(String prefix) {
         if (prefix == null || prefix.isEmpty()) {
             throw new IllegalArgumentException("Prefix cannot be null or empty");
         }
-
         this.defaultPrefix = prefix;
-
-        // Update configuration
-        configuration.set("commands.default-prefix", prefix);
-        try {
-            configuration.save();
-        } catch (ConfigurationException e) {
-            logger.error("Failed to save command prefix to configuration", e);
-        }
+        logger.warn("Global prefix set to '{}' for this run; set commands.default-prefix in config.yml to persist it", prefix);
     }
 
     @Override
@@ -415,22 +409,22 @@ public class SimpleCommandService implements CommandService {
      */
     private void registerSystemCommands() {
         // Register help command if enabled
-        if (configuration.getBoolean("commands.system.help", true)) {
+        if (settings.help()) {
             registerCommand(new HelpCommand(this, languageManager).getCommand());
         }
 
         // Register version command if enabled
-        if (configuration.getBoolean("commands.system.version", true)) {
+        if (settings.version()) {
             registerCommand(new VersionCommand(languageManager).getCommand());
         }
 
         // Register shutdown command if enabled
-        if (configuration.getBoolean("commands.system.shutdown", true)) {
+        if (settings.shutdown()) {
             registerCommand(new ShutdownCommand(languageManager, permissionManager, () -> shutdownHandler.run()).getCommand());
         }
 
         // Register perm command if enabled
-        if (configuration.getBoolean("commands.system.perm", true)) {
+        if (settings.perm()) {
             registerCommand(new PermCommand(languageManager, permissionManager).getCommand());
         }
     }

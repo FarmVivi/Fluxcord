@@ -3,10 +3,9 @@ package fr.farmvivi.fluxcord.core.storage.db;
 import com.google.gson.Gson;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import fr.farmvivi.fluxcord.api.config.Configuration;
-import fr.farmvivi.fluxcord.api.config.ConfigurationException;
 import fr.farmvivi.fluxcord.api.event.EventManager;
 import fr.farmvivi.fluxcord.api.storage.StorageKey;
+import fr.farmvivi.fluxcord.core.config.CoreSettings;
 import fr.farmvivi.fluxcord.core.storage.AbstractDataStorage;
 import fr.farmvivi.fluxcord.core.storage.StorageJson;
 import org.slf4j.Logger;
@@ -33,27 +32,21 @@ public class DatabaseDataStorage extends AbstractDataStorage {
     private final String indexName;
 
     /**
-     * Creates a new database data storage.
+     * Creates a new database data storage (HikariCP pool, schema created if missing).
      *
-     * @param configuration the configuration for database connection
-     * @param eventManager  the event manager
+     * @param settings     validated {@code data.storage.db.*} settings
+     * @param eventManager the event manager
+     * @throws RuntimeException when the pool or the schema cannot be initialised
      */
-    public DatabaseDataStorage(Configuration configuration, EventManager eventManager) {
+    public DatabaseDataStorage(CoreSettings.Database settings, EventManager eventManager) {
         super("database", eventManager);
-        try {
-            // The JDBC URL determines both the connection and the SQL dialect
-            String jdbcUrl = configuration.getString("data.storage.db.url");
-            this.dialect = SqlDialect.fromJdbcUrl(jdbcUrl);
-            // Optional table prefix so several bots can share the same database/schema
-            // (e.g. prefix "bot1_" -> table "bot1_storage_data"). Empty by default.
-            String tablePrefix = configuration.getString("data.storage.db.table_prefix", "");
-            this.tableName = sanitizeTablePrefix(tablePrefix) + BASE_TABLE_NAME;
-            this.indexName = "idx_" + tableName + "_scope";
-            this.dataSource = initializeDataSource(configuration, jdbcUrl);
-        } catch (ConfigurationException e) {
-            logger.error("Missing required database configuration", e);
-            throw new RuntimeException("Failed to initialize database connection", e);
-        }
+        // The JDBC URL determines both the connection and the SQL dialect
+        this.dialect = SqlDialect.fromJdbcUrl(settings.url());
+        // Optional table prefix so several bots can share the same database/schema
+        // (e.g. prefix "bot1_" -> table "bot1_storage_data"). Empty by default.
+        this.tableName = sanitizeTablePrefix(settings.tablePrefix()) + BASE_TABLE_NAME;
+        this.indexName = "idx_" + tableName + "_scope";
+        this.dataSource = initializeDataSource(settings);
         initializeSchema();
     }
 
@@ -91,49 +84,21 @@ public class DatabaseDataStorage extends AbstractDataStorage {
         return prefix;
     }
 
-    /**
-     * Initializes the database connection using HikariCP.
-     *
-     * @param config  the configuration
-     * @param jdbcUrl the JDBC connection URL
-     * @return the HikariCP data source
-     * @throws ConfigurationException if a required setting is missing
-     */
-    private HikariDataSource initializeDataSource(Configuration config, String jdbcUrl) throws ConfigurationException {
-        // Required settings
-        String username = config.getString("data.storage.db.username");
-        String password = config.getString("data.storage.db.password");
-
-        // Create and configure HikariCP
+    /** Initializes the HikariCP pool from the settings; unset optional values keep sensible defaults. */
+    private HikariDataSource initializeDataSource(CoreSettings.Database settings) {
         HikariConfig hikariConfig = new HikariConfig();
-        hikariConfig.setJdbcUrl(jdbcUrl);
-        hikariConfig.setUsername(username);
-        hikariConfig.setPassword(password);
+        hikariConfig.setJdbcUrl(settings.url());
+        hikariConfig.setUsername(settings.username());
+        hikariConfig.setPassword(settings.password());
 
-        // Set optimal default values
-        hikariConfig.setMaximumPoolSize(10);
+        hikariConfig.setMaximumPoolSize(settings.maxPoolSize() != null ? settings.maxPoolSize() : 10);
         hikariConfig.setMinimumIdle(2);
         hikariConfig.setIdleTimeout(30000);
         hikariConfig.setMaxLifetime(1800000);
         hikariConfig.setConnectionTimeout(30000);
-        hikariConfig.setAutoCommit(true);
+        hikariConfig.setAutoCommit(settings.autoCommit() == null || settings.autoCommit());
 
-        // Additional optional configuration
-        try {
-            int maxPoolSize = config.getInt("data.storage.db.max_pool_size");
-            hikariConfig.setMaximumPoolSize(maxPoolSize);
-        } catch (ConfigurationException ignored) {
-            // Use default
-        }
-
-        try {
-            boolean autoCommit = config.getBoolean("data.storage.db.auto_commit");
-            hikariConfig.setAutoCommit(autoCommit);
-        } catch (ConfigurationException ignored) {
-            // Use default
-        }
-
-        logger.info("Initializing {} database connection pool to {}", dialect, jdbcUrl);
+        logger.info("Initializing {} database connection pool to {}", dialect, settings.url());
         return new HikariDataSource(hikariConfig);
     }
 

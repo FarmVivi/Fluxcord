@@ -1,6 +1,7 @@
 package fr.farmvivi.fluxcord.core;
 
 import fr.farmvivi.fluxcord.core.config.CoreConfiguration;
+import fr.farmvivi.fluxcord.core.config.CoreSettings;
 import fr.farmvivi.fluxcord.core.discord.JDADiscordAPI;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,7 +12,8 @@ import java.io.InputStream;
 import java.util.Properties;
 
 /**
- * Entry point: reads {@code config.yml} from the working directory, builds a {@link FluxcordRuntime} on the real
+ * Entry point: reads {@code config.yml} from the working directory into {@link CoreSettings}, builds a
+ * {@link FluxcordRuntime} on the real
  * Discord connection, starts it, then parks until a shutdown is requested (shutdown command, console, SIGTERM)
  * and stops it from the main thread. Every failure before the bot is up ends the JVM with exit code 1.
  */
@@ -51,13 +53,8 @@ public final class Fluxcord {
         try {
             File baseDir = new File(".").getAbsoluteFile().getParentFile();
             CoreConfiguration config = new CoreConfiguration(new File(baseDir, "config.yml"));
-            String token = config.getString("discord.token");
-            if (token == null || token.isBlank() || token.equals("YOUR_BOT_TOKEN")) {
-                logger.error("Please set your bot token in config.yml");
-                System.exit(1);
-                return;
-            }
-            runtime = new FluxcordRuntime(baseDir, config, new JDADiscordAPI(token));
+            CoreSettings settings = CoreSettings.from(config, baseDir);
+            runtime = new FluxcordRuntime(baseDir, settings, new JDADiscordAPI(settings.token()));
         } catch (Exception e) {
             logger.error("Failed to initialise: {}", e.getMessage(), e);
             System.exit(1);

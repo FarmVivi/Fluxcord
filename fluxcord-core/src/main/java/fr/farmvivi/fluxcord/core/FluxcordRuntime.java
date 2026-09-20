@@ -2,14 +2,13 @@ package fr.farmvivi.fluxcord.core;
 
 import fr.farmvivi.fluxcord.api.audio.AudioService;
 import fr.farmvivi.fluxcord.api.command.CommandService;
-import fr.farmvivi.fluxcord.api.config.Configuration;
 import fr.farmvivi.fluxcord.api.discord.DiscordAPI;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
 import fr.farmvivi.fluxcord.api.storage.binary.BinaryStorageManager;
 import fr.farmvivi.fluxcord.core.audio.AudioServiceImpl;
-import fr.farmvivi.fluxcord.core.audio.AudioSettings;
 import fr.farmvivi.fluxcord.core.command.SimpleCommandService;
+import fr.farmvivi.fluxcord.core.config.CoreSettings;
 import fr.farmvivi.fluxcord.core.console.ConsoleCommandService;
 import fr.farmvivi.fluxcord.core.event.SimpleEventManager;
 import fr.farmvivi.fluxcord.core.health.HealthServer;
@@ -27,25 +26,23 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * One running instance of the engine: every service wired from a {@link Configuration} and a {@link DiscordAPI},
+ * One running instance of the engine: every service wired from {@link CoreSettings} and a {@link DiscordAPI},
  * with the start and stop sequences. {@link Fluxcord#main} builds one from {@code config.yml} and the real
  * {@code JDADiscordAPI}; tests build one from a temporary directory and a fake Discord.
  * <p>
  * Directory layout, relative to {@code baseDir}: {@code plugins/} (plugin jars and their data), {@code lang/}
- * (language overrides); storage folders come from the configuration.
+ * (language overrides); storage folders come from the settings (already resolved against the base directory).
  */
 public final class FluxcordRuntime {
     private static final Logger logger = LoggerFactory.getLogger(FluxcordRuntime.class);
 
     private final File baseDir;
-    private final Configuration config;
+    private final CoreSettings settings;
     private final DiscordAPI discordAPI;
     private final SimpleEventManager eventManager;
     private final SimpleLanguageManager languageManager;
@@ -66,13 +63,13 @@ public final class FluxcordRuntime {
      * Wires every service. Nothing touches Discord or the plugins yet: see {@link #start()}.
      *
      * @param baseDir    the working directory ({@code plugins/}, {@code lang/} live there)
-     * @param config     the loaded core configuration
+     * @param settings   the validated core settings ({@link CoreSettings#from})
      * @param discordAPI the Discord connection to use (real JDA in production)
      * @throws RuntimeException when a storage backend cannot be initialised (see {@link StorageFactory})
      */
-    public FluxcordRuntime(File baseDir, Configuration config, DiscordAPI discordAPI) {
+    public FluxcordRuntime(File baseDir, CoreSettings settings, DiscordAPI discordAPI) {
         this.baseDir = Objects.requireNonNull(baseDir, "baseDir");
-        this.config = Objects.requireNonNull(config, "config");
+        this.settings = Objects.requireNonNull(settings, "settings");
         this.discordAPI = Objects.requireNonNull(discordAPI, "discordAPI");
 
         File pluginsFolder = new File(baseDir, "plugins");
@@ -81,32 +78,21 @@ public final class FluxcordRuntime {
         }
 
         this.eventManager = new SimpleEventManager();
-        this.languageManager = new SimpleLanguageManager(defaultLocale(config), eventManager);
+        this.languageManager = new SimpleLanguageManager(settings.defaultLocale(), eventManager);
         new LanguageFileLoader(languageManager, new File(baseDir, "lang")).loadLanguageFiles();
 
-        this.dataStorageManager = StorageFactory.createStorageManager(config, eventManager);
-        this.binaryStorageManager = BinaryStorageFactory.createBinaryStorageManager(config, eventManager);
-        this.permissionManager = new SimplePermissionManager(eventManager, dataStorageManager,
-                config.getStringList("permissions.operators", List.of()));
-        this.audioService = new AudioServiceImpl(eventManager, AudioSettings.fromConfig(config));
+        this.dataStorageManager = StorageFactory.createStorageManager(settings.dataStorage(), eventManager);
+        this.binaryStorageManager = BinaryStorageFactory.createBinaryStorageManager(settings.binaryStorage(), eventManager);
+        this.permissionManager = new SimplePermissionManager(eventManager, dataStorageManager, settings.operators());
+        this.audioService = new AudioServiceImpl(eventManager, settings.audio());
 
-        this.commandService = new SimpleCommandService(eventManager, languageManager, permissionManager, config,
-                dataStorageManager, config.getString("commands.default-prefix", "!"));
+        this.commandService = new SimpleCommandService(eventManager, languageManager, permissionManager,
+                settings.commands(), dataStorageManager);
         this.commandService.setShutdownHandler(this::requestShutdown);
         this.consoleCommandService = new ConsoleCommandService(commandService);
 
         this.pluginManager = new PluginManager(pluginsFolder, eventManager, discordAPI, languageManager,
                 dataStorageManager, binaryStorageManager, permissionManager, audioService, commandService);
-    }
-
-    static Locale defaultLocale(Configuration config) {
-        String tag = config.getString("language.default", "en-US");
-        Locale locale = Locale.forLanguageTag(tag);
-        if (locale.getLanguage().isEmpty()) {
-            logger.warn("Invalid default language '{}', falling back to en-US", tag);
-            return Locale.US;
-        }
-        return locale;
     }
 
     /**
@@ -230,8 +216,8 @@ public final class FluxcordRuntime {
         return baseDir;
     }
 
-    public Configuration getConfig() {
-        return config;
+    public CoreSettings getSettings() {
+        return settings;
     }
 
     public DiscordAPI getDiscordAPI() {

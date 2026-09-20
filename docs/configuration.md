@@ -68,11 +68,17 @@ data:
 
 ## Required Core Keys
 
-Startup validation currently requires:
+The whole core configuration is read **once at startup** into `CoreSettings` (`fluxcord-core`, `core/config`).
+Startup fails with a clear message when:
 
-- `discord.token` (must not be `YOUR_BOT_TOKEN`)
-- `language.default`
-- `commands.default-prefix`
+- `discord.token` is missing, blank or still `YOUR_BOT_TOKEN`
+- `data.storage.type` / `data.binary.storage.type` is not one of the documented values (case-insensitive)
+- `data.storage.type: DB` without a `jdbc:` URL, or `data.binary.storage.type: S3` with a missing bucket, region,
+  access key or secret key (every missing key is listed)
+
+An invalid `language.default` falls back to `en-US` with a warning. Relative storage folders are resolved against
+the working directory. The bot never rewrites `config.yml` (a runtime change of the global prefix lasts until
+restart; edit `commands.default-prefix` to make it permanent).
 
 ## Storage Configuration
 

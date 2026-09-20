@@ -3,6 +3,7 @@ package fr.farmvivi.fluxcord.core;
 import fr.farmvivi.fluxcord.api.discord.DiscordAPI;
 import fr.farmvivi.fluxcord.api.storage.StorageKey;
 import fr.farmvivi.fluxcord.core.config.CoreConfiguration;
+import fr.farmvivi.fluxcord.core.config.CoreSettings;
 import fr.farmvivi.fluxcord.core.testing.PluginCalls;
 import fr.farmvivi.fluxcord.core.testing.PluginJars;
 import net.dv8tion.jda.api.JDA;
@@ -33,6 +34,7 @@ class FluxcordRuntimeTest {
 
     @TempDir Path root;
     private CoreConfiguration config;
+    private CoreSettings settings;
     private DiscordAPI discord;
     private JDA jda;
     private String previousPluginsDir;
@@ -47,6 +49,7 @@ class FluxcordRuntimeTest {
         config.set("permissions.operators", List.of("42"));
         config.set("commands.default-prefix", "?");
         config.set("language.default", "fr-FR");
+        settings = CoreSettings.from(config, root.toFile());
 
         jda = mock(JDA.class);
         when(jda.getStatus()).thenReturn(JDA.Status.LOADING_SUBSYSTEMS); // never CONNECTED: no slash sync in tests
@@ -76,7 +79,7 @@ class FluxcordRuntimeTest {
 
     @Test
     void wiresServicesFromTheConfiguration() {
-        runtime = new FluxcordRuntime(root.toFile(), config, discord);
+        runtime = new FluxcordRuntime(root.toFile(), settings, discord);
 
         assertEquals(Locale.FRANCE, runtime.getLanguageManager().getDefaultLocale());
         assertEquals("?", runtime.getCommandService().getPrefix());
@@ -90,7 +93,7 @@ class FluxcordRuntimeTest {
     @Test
     void startRunsTheBootSequenceInOrderAndStopReversesIt() throws Exception {
         PluginJars.plugin(root.resolve("plugins"), "alpha");
-        runtime = new FluxcordRuntime(root.toFile(), config, discord);
+        runtime = new FluxcordRuntime(root.toFile(), settings, discord);
         runtime.startHealthServer(0);
         int port = runtime.getHealthServer().getPort();
         assertEquals(503, status(port, "/readyz"), "not ready before start()");
@@ -130,7 +133,7 @@ class FluxcordRuntimeTest {
     void aFailedConnectionPropagatesAndStopStillCleansUp() throws Exception {
         PluginJars.plugin(root.resolve("plugins"), "alpha");
         when(discord.connect()).thenReturn(CompletableFuture.failedFuture(new IllegalStateException("bad token")));
-        runtime = new FluxcordRuntime(root.toFile(), config, discord);
+        runtime = new FluxcordRuntime(root.toFile(), settings, discord);
 
         RuntimeException failure = assertThrows(RuntimeException.class, runtime::start);
         assertTrue(failure.getCause() instanceof IllegalStateException, String.valueOf(failure.getCause()));
@@ -144,7 +147,7 @@ class FluxcordRuntimeTest {
 
     @Test
     void shutdownRequestReleasesTheWaiter() throws Exception {
-        runtime = new FluxcordRuntime(root.toFile(), config, discord);
+        runtime = new FluxcordRuntime(root.toFile(), settings, discord);
         Thread waiter = new Thread(() -> {
             try {
                 runtime.awaitShutdownRequest();
@@ -179,21 +182,13 @@ class FluxcordRuntimeTest {
     }
 
     @Test
-    void invalidDefaultLanguageFallsBackToEnglish() {
-        config.set("language.default", "");
-        assertEquals(Locale.US, FluxcordRuntime.defaultLocale(config));
-        config.set("language.default", "de");
-        assertEquals(Locale.GERMAN, FluxcordRuntime.defaultLocale(config));
-    }
-
-    @Test
     void storedGuildPrefixSurvivesARestart() throws Exception {
-        runtime = new FluxcordRuntime(root.toFile(), config, discord);
+        runtime = new FluxcordRuntime(root.toFile(), settings, discord);
         runtime.start();
         runtime.getCommandService().setPrefix("g1", "$");
         runtime.stop();
 
-        runtime = new FluxcordRuntime(root.toFile(), config, discord);
+        runtime = new FluxcordRuntime(root.toFile(), settings, discord);
         assertEquals("$", runtime.getCommandService().getPrefix("g1"));
         assertEquals("$", runtime.getDataStorageManager().getGuildStorage("g1").get("commands.prefix", String.class).orElseThrow());
         assertEquals("?", runtime.getCommandService().getPrefix("g2"));

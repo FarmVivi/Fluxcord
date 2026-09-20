@@ -2,11 +2,11 @@ package fr.farmvivi.fluxcord.core.command;
 
 import fr.farmvivi.fluxcord.api.command.Command;
 import fr.farmvivi.fluxcord.api.command.CommandResult;
-import fr.farmvivi.fluxcord.api.config.Configuration;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
 import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
 import fr.farmvivi.fluxcord.core.command.parser.event.ConsoleCommandEvent;
+import fr.farmvivi.fluxcord.core.config.CoreSettings;
 import fr.farmvivi.fluxcord.core.event.SimpleEventManager;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Message;
@@ -51,7 +51,7 @@ class SubcommandRoutingTest {
         when(lang.getDefaultLocale()).thenReturn(Locale.US);
         when(permissions.hasPermission(anyString(), any(), anyString())).thenReturn(true);
         when(jda.getStatus()).thenReturn(JDA.Status.LOADING_SUBSYSTEMS);
-        service = new SimpleCommandService(events, lang, permissions, mock(Configuration.class), mock(DataStorageManager.class), "!");
+        service = new SimpleCommandService(events, lang, permissions, commands("!"), mock(DataStorageManager.class));
         service.setJDA(jda);
         service.enable();
 
@@ -163,5 +163,9 @@ class SubcommandRoutingTest {
         when(event.getChannel()).thenReturn(channel);
         when(message.reply(any(MessageCreateData.class))).thenReturn(mock(MessageCreateAction.class, RETURNS_SELF));
         return event;
+    }
+
+    private static CoreSettings.Commands commands(String prefix) {
+        return new CoreSettings.Commands(prefix, false, false, false, false);
     }
 }
