@@ -133,7 +133,7 @@ class PermCommandTest {
     @Test
     void usageErrorsAndGuildScopeNeedAGuild() {
         assertTrue(run("perm set").contains("Usage"), "missing everything");
-        assertTrue(run("perm set music.volume notanid true").contains("Usage"), "user must be a Discord id");
+        assertTrue(run("perm set music.volume notanid true").toLowerCase().contains("usage"), "user must be a Discord id (the token slides to the scope choice and fails validation)");
         assertTrue(run("perm unset music.volume").contains("Usage"));
         assertTrue(run("perm list").contains("Usage"));
         assertTrue(run("perm set music.volume 123456789012345678 true guild").toLowerCase().contains("server"), "console has no guild");

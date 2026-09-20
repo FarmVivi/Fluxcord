@@ -81,11 +81,20 @@ public class SimpleLanguageManager implements LanguageManager {
             return key;
         }
         try {
-            return MessageFormat.format(value, args);
+            return MessageFormat.format(escapeApostrophes(value), args);
         } catch (Exception e) {
             logger.warn("Failed to format '{}' with {} argument(s): {}", value, args == null ? 0 : args.length, e.getMessage());
             return value;
         }
+    }
+
+    /**
+     * A lone apostrophe is MessageFormat's quoting character and would swallow the placeholders that follow
+     * ({@code "l'utilisateur {1}"} → {@code "lutilisateur {1}"}); translators write natural text, so lone
+     * apostrophes are doubled here. An already doubled one is left alone.
+     */
+    static String escapeApostrophes(String pattern) {
+        return pattern.indexOf('\'') < 0 ? pattern : pattern.replaceAll("(?<!')'(?!')", "''");
     }
 
     private String lookup(Locale locale, String key, Object[] args) {

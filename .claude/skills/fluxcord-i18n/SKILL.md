@@ -20,7 +20,7 @@ User-facing text (replies, embeds, permission descriptions, help) goes through `
 - Resources: `fluxcord-core/src/main/resources/lang/{en-US,fr-FR}.yml` (core namespace), `plugins/music-plugin/src/main/resources/lang/*.yml`.
 
 ## Lookup cascade (`SimpleLanguageManager.lookup`)
-Key `ns:actual` (default ns `core`). Unregistered namespace → warning + returns the raw key. Candidates, without repeats: requested locale → a same-language locale that has the key (the configured default locale first if it shares the language, else the first found) → configured default locale → `en-US`. First hit wins; otherwise the raw key. One `StringRetrievalEvent` per lookup (hit or miss, with the args when given and the locale that answered), listeners may `setValue` to override. The args overload then applies `MessageFormat` (`{0}` — single quotes must be doubled `''`, `{` in literal text must be quoted).
+Key `ns:actual` (default ns `core`). Unregistered namespace → warning + returns the raw key. Candidates, without repeats: requested locale → a same-language locale that has the key (the configured default locale first if it shares the language, else the first found) → configured default locale → `en-US`. First hit wins; otherwise the raw key. One `StringRetrievalEvent` per lookup (hit or miss, with the args when given and the locale that answered), listeners may `setValue` to override. The args overload then applies `MessageFormat` (`{0}`); lone apostrophes are doubled automatically by `escapeApostrophes` (since 2026-09-20 — `l'utilisateur {1}` used to lose its placeholders), `{` in literal text must still be quoted.
 
 `getString` returning exactly the key is the "missing" signal (used by the args overload and by callers) — so a translation whose value equals its key is indistinguishable from a miss.
 
@@ -40,6 +40,8 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 - 2026-09-20: Characterized without finding bugs. The cascade has 6 steps, not 4 (default locale after en-US). Non-string YAML leaves become `String.valueOf` (`true`, `12`), sections are not strings (`getString("permissions")` misses).
 
 - 2026-09-20 (L1): real bug found — namespace case mismatch between `PluginLanguageAdapter` (id verbatim) and `PluginManager` (`id.toLowerCase()`); harmless today because every first-party id is lower-case. The old "resources vs runtime" split was just two layers of the same map; a single map with load-order override is equivalent and testable.
+
+- 2026-09-20: every French string with an apostrophe before a placeholder (`de l'utilisateur {1}`) rendered `{1}` literally — MessageFormat quoting. Fixed at the formatting layer rather than in each YAML file.
 
 ## Known issues / open questions
 - Missing-key signalling by string equality; consider `Optional<String> find(...)` in the api (API addition, backwards compatible).

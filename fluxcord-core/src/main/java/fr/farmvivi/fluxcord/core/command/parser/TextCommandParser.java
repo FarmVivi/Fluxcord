@@ -5,7 +5,6 @@ import fr.farmvivi.fluxcord.api.command.CommandContext;
 import fr.farmvivi.fluxcord.api.command.CommandService;
 import fr.farmvivi.fluxcord.api.command.exception.CommandParseException;
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
-import fr.farmvivi.fluxcord.api.command.option.OptionType;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.core.command.SimpleCommandContext;
 import net.dv8tion.jda.api.entities.*;
@@ -104,7 +103,8 @@ public class TextCommandParser implements CommandParser {
         }
 
         // Parse arguments
-        Map<String, Object> options = parseOptions(argsStr, command, messageEvent);
+        Map<String, Object> options = PositionalArguments.assign(argsStr, command.getOptions(),
+                (token, option) -> parseOptionValue(token, option, messageEvent));
 
         // Create and validate context
         SimpleCommandContext context = new SimpleCommandContext(
@@ -160,104 +160,6 @@ public class TextCommandParser implements CommandParser {
         }
 
         return isCommand;
-    }
-
-    /**
-     * Parses command options from a string.
-     *
-     * @param argsStr the arguments string
-     * @param command the command
-     * @param event   the message event
-     * @return the parsed options
-     * @throws CommandParseException if parsing fails
-     */
-    private Map<String, Object> parseOptions(String argsStr, Command command, MessageReceivedEvent event)
-            throws CommandParseException {
-        Map<String, Object> options = new HashMap<>();
-        List<CommandOption<?>> commandOptions = command.getOptions();
-
-        if (commandOptions.isEmpty() || argsStr.isEmpty()) {
-            return options;
-        }
-
-        List<String> args = splitArguments(argsStr);
-        int optionIndex = 0;
-
-        for (int i = 0; i < args.size() && optionIndex < commandOptions.size(); i++) {
-            CommandOption<?> option = commandOptions.get(optionIndex);
-            String arg = args.get(i);
-            // A trailing STRING option takes everything that is left: "!play never gonna give you up" is one query,
-            // no quotes needed
-            boolean lastOption = optionIndex == commandOptions.size() - 1;
-            if (lastOption && option.getType() == OptionType.STRING && i < args.size() - 1) {
-                arg = String.join(" ", args.subList(i, args.size()));
-                i = args.size();
-            }
-
-            try {
-                Object value = parseOptionValue(arg, option, event);
-                options.put(option.getName(), value);
-                optionIndex++;
-            } catch (CommandParseException e) {
-                logger.warn("Failed to parse option '{}': {}", option.getName(), e.getMessage());
-                if (option.isRequired()) {
-                    throw new CommandParseException("Required option '" + option.getName() +
-                            "' could not be parsed: " + e.getMessage(), option.getName());
-                }
-                // Skip optional argument that failed to parse
-            }
-        }
-
-        return options;
-    }
-
-    /**
-     * Splits a string into command arguments, respecting quotes.
-     *
-     * @param argsStr the arguments string
-     * @return the list of arguments
-     */
-    private List<String> splitArguments(String argsStr) {
-        List<String> args = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        boolean inQuotes = false;
-        char quoteChar = '"';
-
-        for (int i = 0; i < argsStr.length(); i++) {
-            char c = argsStr.charAt(i);
-
-            if (c == '"' || c == '\'') {
-                if (inQuotes) {
-                    if (c == quoteChar) {
-                        inQuotes = false;
-                    } else {
-                        current.append(c);
-                    }
-                } else {
-                    inQuotes = true;
-                    quoteChar = c;
-
-                    // If there's content before the quote, add it as a separate arg
-                    if (current.length() > 0) {
-                        args.add(current.toString().trim());
-                        current = new StringBuilder();
-                    }
-                }
-            } else if (Character.isWhitespace(c) && !inQuotes) {
-                if (current.length() > 0) {
-                    args.add(current.toString().trim());
-                    current = new StringBuilder();
-                }
-            } else {
-                current.append(c);
-            }
-        }
-
-        if (current.length() > 0) {
-            args.add(current.toString().trim());
-        }
-
-        return args;
     }
 
     /**

@@ -69,7 +69,8 @@ public class ConsoleCommandParser implements CommandParser {
         }
 
         // Parse arguments for console (simplified - just string splitting)
-        Map<String, Object> options = parseOptions(argsStr, command, consoleEvent.getJDA());
+        Map<String, Object> options = PositionalArguments.assign(argsStr, command.getOptions(),
+                (token, option) -> parseOptionValue(token, option, consoleEvent.getJDA()));
 
         // Create console context with locale US since console has no user
         SimpleCommandContext context = new SimpleCommandContext(
@@ -102,97 +103,6 @@ public class ConsoleCommandParser implements CommandParser {
 
         // Any non-empty input is considered a command attempt from console
         return !input.isEmpty();
-    }
-
-    /**
-     * Parses command options from a string for console commands.
-     *
-     * @param argsStr the arguments string
-     * @param command the command
-     * @return the parsed options
-     * @throws CommandParseException if parsing fails
-     */
-    private Map<String, Object> parseOptions(String argsStr, Command command, JDA jda) throws CommandParseException {
-        Map<String, Object> options = new HashMap<>();
-        List<CommandOption<?>> commandOptions = command.getOptions();
-
-        if (commandOptions.isEmpty() || argsStr.isEmpty()) {
-            return options;
-        }
-
-        List<String> args = splitArguments(argsStr);
-        int optionIndex = 0;
-
-        for (String arg : args) {
-            if (optionIndex >= commandOptions.size()) {
-                break;
-            }
-
-            CommandOption<?> option = commandOptions.get(optionIndex);
-            try {
-                Object value = parseOptionValue(arg, option, jda);
-                options.put(option.getName(), value);
-                optionIndex++;
-            } catch (CommandParseException e) {
-                logger.warn("Failed to parse console option '{}': {}", option.getName(), e.getMessage());
-                if (option.isRequired()) {
-                    throw new CommandParseException("Required option '" + option.getName() +
-                            "' could not be parsed: " + e.getMessage(), option.getName());
-                }
-                // Skip optional argument that failed to parse
-            }
-        }
-
-        return options;
-    }
-
-    /**
-     * Splits a string into command arguments, respecting quotes.
-     *
-     * @param argsStr the arguments string
-     * @return the list of arguments
-     */
-    private List<String> splitArguments(String argsStr) {
-        List<String> args = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        boolean inQuotes = false;
-        char quoteChar = '"';
-
-        for (int i = 0; i < argsStr.length(); i++) {
-            char c = argsStr.charAt(i);
-
-            if (c == '"' || c == '\'') {
-                if (inQuotes) {
-                    if (c == quoteChar) {
-                        inQuotes = false;
-                    } else {
-                        current.append(c);
-                    }
-                } else {
-                    inQuotes = true;
-                    quoteChar = c;
-
-                    // If there's content before the quote, add it as a separate arg
-                    if (current.length() > 0) {
-                        args.add(current.toString().trim());
-                        current = new StringBuilder();
-                    }
-                }
-            } else if (Character.isWhitespace(c) && !inQuotes) {
-                if (current.length() > 0) {
-                    args.add(current.toString().trim());
-                    current = new StringBuilder();
-                }
-            } else {
-                current.append(c);
-            }
-        }
-
-        if (current.length() > 0) {
-            args.add(current.toString().trim());
-        }
-
-        return args;
     }
 
     /**

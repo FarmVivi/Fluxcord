@@ -4,11 +4,16 @@ import fr.farmvivi.fluxcord.api.command.Command;
 import fr.farmvivi.fluxcord.api.command.CommandContext;
 import fr.farmvivi.fluxcord.api.command.exception.CommandParseException;
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
+import fr.farmvivi.fluxcord.api.command.option.OptionType;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.components.MessageTopLevelComponent;
 import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.IMentionable;
+import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.Role;
+import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.events.Event;
@@ -241,7 +246,7 @@ public class SimpleCommandContext implements CommandContext {
 
     @Override
     public void deferReply() {
-        deferReply(false);
+        deferReply(ephemeral);
     }
 
     @Override
@@ -325,9 +330,27 @@ public class SimpleCommandContext implements CommandContext {
      * @param value  the value to check
      * @return true if the value has the correct type
      */
+    /** The Java type each option type accepts (the parsers produce exactly these). */
+    static boolean matchesType(OptionType type, Object value) {
+        return switch (type) {
+            case STRING -> value instanceof String;
+            case INTEGER -> value instanceof Integer || value instanceof Long;
+            case NUMBER -> value instanceof Number;
+            case BOOLEAN -> value instanceof Boolean;
+            case USER -> value instanceof User;
+            case CHANNEL -> value instanceof Channel;
+            case ROLE -> value instanceof Role;
+            case MENTIONABLE -> value instanceof IMentionable;
+            case ATTACHMENT -> value instanceof Message.Attachment;
+        };
+    }
+
     private boolean isValidOptionType(CommandOption option, Object value) {
         if (value == null) {
             return !option.isRequired();
+        }
+        if (!matchesType(option.getType(), value)) {
+            return false;
         }
 
         try {

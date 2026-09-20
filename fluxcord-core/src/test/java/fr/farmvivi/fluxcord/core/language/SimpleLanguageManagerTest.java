@@ -146,8 +146,9 @@ class SimpleLanguageManagerTest {
                 "quoted", "It''s {0}",
                 "big", "{0,number,#}"));
 
-        assertEquals("Its {0}", manager.getString("quote", "x"), "a single quote swallows the placeholder");
-        assertEquals("It's x", manager.getString("quoted", "x"));
+        assertEquals("It's x", manager.getString("quote", "x"), "a lone apostrophe is escaped for MessageFormat (it used to swallow the placeholder)");
+        assertEquals("It's x", manager.getString("quoted", "x"), "an already doubled one is left alone");
+        assertEquals("It's x", manager.getString("quote", "x"));
         assertEquals("1234567", manager.getString("big", 1234567), "explicit number pattern avoids grouping");
     }
 
