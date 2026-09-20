@@ -27,16 +27,16 @@ public class ExampleCommand {
         }
 
         // Check permissions (example)
-        if (!plugin.getPluginPermissionManager().hasPermission(
+        if (!plugin.getPermissions().hasPermission(
                 context.getUser().getId(), "template.use")) {
-            String message = plugin.getPluginLanguageManager()
+            String message = plugin.getLanguage()
                     .getString("errors.no_permission");
             context.reply(message);
             return CommandResult.error("No permission");
         }
 
         // Get localized message
-        String response = plugin.getPluginLanguageManager()
+        String response = plugin.getLanguage()
                 .getString("messages.example_message");
 
         context.reply(response);

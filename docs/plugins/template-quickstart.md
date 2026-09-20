@@ -183,16 +183,16 @@ debug:
 ```java
 public CommandResult execute(CommandContext context) {
     // Check permissions
-    if (!plugin.getPluginPermissionManager().hasPermission(
+    if (!plugin.getPermissions().hasPermission(
             context.getUser().getId(), "template.use")) {
-        String message = plugin.getPluginLanguageManager()
+        String message = plugin.getLanguage()
                 .getString("errors.no_permission");
         context.reply(message);
         return CommandResult.error("No permission");
     }
     
     // Get localized response
-    String response = plugin.getPluginLanguageManager()
+    String response = plugin.getLanguage()
             .getString("messages.example_message");
     
     context.reply(response);
@@ -244,8 +244,8 @@ public void onMessageReceived(MessageReceivedEvent event) {
 ```java
 public void saveUserPreference(String userId, String key, Object value) {
     try {
-        plugin.getPluginDataStorage().getUserStorage(userId).set(key, value);
-        plugin.getPluginDataStorage().saveAll();
+        plugin.getStorage().getUserStorage(userId).set(key, value);
+        plugin.getStorage().saveAll();
         
         plugin.logger.debug("Saved user preference: {} = {} for user {}", 
                            key, value, userId);
@@ -282,10 +282,10 @@ template:
 
 ```java
 // Simple message
-String message = getPluginLanguageManager().getString("messages.example_message");
+String message = getLanguage().getString("messages.example_message");
 
 // Message with placeholders
-String welcome = getPluginLanguageManager().getString("messages.welcome_user", username);
+String welcome = getLanguage().getString("messages.welcome_user", username);
 ```
 
 ## Customization Guide
@@ -297,7 +297,7 @@ String welcome = getPluginLanguageManager().getString("messages.welcome_user", u
 3. Register command in main plugin class:
 
 ```java
-commandService.registerCommand(this, builder -> {
+getCommands().registerCommand(builder -> {
     builder.name("mycommand")
            .description("My custom command")
            .executor((context, cmd) -> myCommand.execute(context));
@@ -323,7 +323,7 @@ eventManager.registerListener(myEventListener, this);
 ### 4. Adding New Permissions
 
 ```java
-getPluginPermissionManager().registerPermission(new SimplePermission(
+getPermissions().registerPermission(new SimplePermission(
     pluginPrefix("custom.permission"),
     "Description of the permission",
     PermissionDefault.FALSE

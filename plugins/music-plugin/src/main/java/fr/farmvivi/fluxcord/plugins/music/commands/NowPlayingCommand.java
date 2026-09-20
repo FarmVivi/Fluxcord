@@ -26,7 +26,7 @@ public class NowPlayingCommand {
     public void execute(CommandContext ctx) {
         Optional<Guild> optGuild = ctx.getGuild();
         if (optGuild.isEmpty()) {
-            PluginLanguageAdapter lm = plugin.getPluginLanguageManager();
+            PluginLanguageAdapter lm = plugin.getLanguage();
             ctx.replyError(lm.getString(ctx.getLocale(), "music.error.guild_only"));
             return;
         }
@@ -35,12 +35,12 @@ public class NowPlayingCommand {
         AudioTrack track = player.getPlayingTrack();
 
         if (track == null) {
-            PluginLanguageAdapter lm = plugin.getPluginLanguageManager();
+            PluginLanguageAdapter lm = plugin.getLanguage();
             ctx.replyError(lm.getString(ctx.getLocale(), "music.error.nothing_playing"));
             return;
         }
 
-        PluginLanguageAdapter lm = plugin.getPluginLanguageManager();
+        PluginLanguageAdapter lm = plugin.getLanguage();
         Locale locale = ctx.getLocale();
 
         EmbedBuilder embed = new EmbedBuilder()

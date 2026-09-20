@@ -183,8 +183,8 @@ public class AudioExamplePlugin extends AbstractPlugin {
             guild.getAudioManager().openAudioConnection(voiceChannel);
 
             // Enregistre les handlers avec le service audio using configured volume
-            audioService.registerSendHandler(guild, this, sendHandler, defaultVolume, 60);
-            audioService.registerReceiveHandler(guild, this, receiveHandler);
+            getContext().getAudioService().registerSendHandler(guild, this, sendHandler, defaultVolume, 60);
+            getContext().getAudioService().registerReceiveHandler(guild, this, receiveHandler);
 
             // Stocke les handlers pour plus tard
             sendHandlers.put(guildId, sendHandler);
@@ -212,13 +212,13 @@ public class AudioExamplePlugin extends AbstractPlugin {
         if (event.getChannelLeft().getMembers().size() <= 1) {
             // Désenregistre les handlers
             if (sendHandlers.containsKey(guildId)) {
-                audioService.deregisterSendHandler(guild, this);
+                getContext().getAudioService().deregisterSendHandler(guild, this);
                 MySendHandler handler = sendHandlers.remove(guildId);
                 handler.cleanup();
             }
 
             if (receiveHandlers.containsKey(guildId)) {
-                audioService.deregisterReceiveHandler(guild, this);
+                getContext().getAudioService().deregisterReceiveHandler(guild, this);
                 MyReceiveHandler handler = receiveHandlers.remove(guildId);
                 handler.cleanup();
             }

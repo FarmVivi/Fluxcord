@@ -20,7 +20,7 @@ public class VolumeCommand {
     public void execute(CommandContext ctx, Integer level) {
         Optional<Guild> optGuild = ctx.getGuild();
         if (optGuild.isEmpty()) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.guild_only"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.guild_only"));
             return;
         }
         Guild guild = optGuild.get();
@@ -30,20 +30,20 @@ public class VolumeCommand {
         // Check permission
         String userId = ctx.getUser().getId();
         String perm = plugin.getId() + ".volume";
-        boolean allowed = plugin.getPluginPermissionManager().hasPermission(userId, guild.getId(), perm)
-                || plugin.getPluginPermissionManager().hasPermission(userId, perm);
+        boolean allowed = plugin.getPermissions().hasPermission(userId, guild.getId(), perm)
+                || plugin.getPermissions().hasPermission(userId, perm);
         if (!allowed) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.no_permission"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.no_permission"));
             return;
         }
 
         if (level == null) {
             // Show current volume
-            ctx.replyInfo(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.volume.current", player.getVolume()));
+            ctx.replyInfo(plugin.getLanguage().getString(ctx.getLocale(), "music.volume.current", player.getVolume()));
         } else {
             // Set new volume
             player.setVolume(level);
-            ctx.replySuccess(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.volume.set", level));
+            ctx.replySuccess(plugin.getLanguage().getString(ctx.getLocale(), "music.volume.set", level));
         }
     }
 }

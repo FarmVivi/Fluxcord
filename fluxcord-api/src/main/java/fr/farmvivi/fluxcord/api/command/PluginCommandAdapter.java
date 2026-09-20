@@ -140,6 +140,16 @@ public class PluginCommandAdapter {
         commandService.synchronizeGlobalCommands();
     }
 
+    /** @return true while {@code userId} must wait before using {@code commandName} again */
+    public boolean isOnCooldown(String userId, String commandName) {
+        return commandService.isOnCooldown(userId, commandName);
+    }
+
+    /** @return seconds left on the cooldown, 0 when none */
+    public int getRemainingCooldown(String userId, String commandName) {
+        return commandService.getRemainingCooldown(userId, commandName);
+    }
+
     /**
      * Gets the prefix for text commands.
      *

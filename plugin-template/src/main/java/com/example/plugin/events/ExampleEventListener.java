@@ -51,7 +51,7 @@ public class ExampleEventListener extends ListenerAdapter {
         if (event.getMessage().getMentions().isMentioned(event.getJDA().getSelfUser()) &&
                 plugin.getConfiguration().getBoolean("features.respond_to_mentions", false)) {
 
-            String response = plugin.getPluginLanguageManager()
+            String response = plugin.getLanguage()
                     .getString("messages.mention_response", event.getAuthor().getAsMention());
 
             event.getChannel().sendMessage(response).queue();

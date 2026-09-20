@@ -20,7 +20,7 @@ public class ClearCommand {
     public void execute(CommandContext ctx) {
         Optional<Guild> optGuild = ctx.getGuild();
         if (optGuild.isEmpty()) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.guild_only"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.guild_only"));
             return;
         }
         Guild guild = optGuild.get();
@@ -28,14 +28,14 @@ public class ClearCommand {
         MusicPlayer player = plugin.getMusicManager().getPlayer(guild);
 
         if (player.getTrackScheduler().getQueueSize() == 0) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.queue_empty"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.queue_empty"));
             return;
         }
 
         int cleared = player.getTrackScheduler().getQueueSize();
         player.getTrackScheduler().clear();
 
-        ctx.replySuccess(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.queue.cleared", cleared));
+        ctx.replySuccess(plugin.getLanguage().getString(ctx.getLocale(), "music.queue.cleared", cleared));
 
         player.getPlayerMessage().refresh();
         player.saveState();

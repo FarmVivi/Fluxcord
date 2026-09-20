@@ -22,7 +22,7 @@ public class SeekCommand {
     public void execute(CommandContext ctx, String timeStr) {
         Optional<Guild> optGuild = ctx.getGuild();
         if (optGuild.isEmpty()) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.guild_only"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.guild_only"));
             return;
         }
         Guild guild = optGuild.get();
@@ -31,28 +31,28 @@ public class SeekCommand {
         AudioTrack track = player.getPlayingTrack();
 
         if (track == null) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.nothing_playing"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.nothing_playing"));
             return;
         }
 
         if (!track.isSeekable()) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.not_seekable"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.not_seekable"));
             return;
         }
 
         long position = TimeParser.parseTime(timeStr);
         if (position < 0) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.invalid_time"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.invalid_time"));
             return;
         }
 
         if (position > track.getDuration()) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.seek_too_far"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.seek_too_far"));
             return;
         }
 
         track.setPosition(position);
-        ctx.replySuccess(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.seeked", TimeParser.formatTime(position)));
+        ctx.replySuccess(plugin.getLanguage().getString(ctx.getLocale(), "music.seeked", TimeParser.formatTime(position)));
 
         player.getPlayerMessage().refresh();
         player.saveState();

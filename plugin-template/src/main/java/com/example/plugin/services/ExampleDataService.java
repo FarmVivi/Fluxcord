@@ -24,8 +24,8 @@ public class ExampleDataService {
         }
 
         try {
-            plugin.getPluginDataStorage().getUserStorage(userId).set(key, value);
-            plugin.getPluginDataStorage().saveAll();
+            plugin.getStorage().getUserStorage(userId).set(key, value);
+            plugin.getStorage().saveAll();
 
             plugin.getLogger().debug("Saved user preference: {} = {} for user {}",
                     key, value, userId);
@@ -43,7 +43,7 @@ public class ExampleDataService {
         }
 
         try {
-            return plugin.getPluginDataStorage().getUserStorage(userId)
+            return plugin.getStorage().getUserStorage(userId)
                     .get(key, (Class<T>) defaultValue.getClass())
                     .orElse(defaultValue);
         } catch (Exception e) {
@@ -57,8 +57,8 @@ public class ExampleDataService {
      */
     public void updateGuildSetting(String guildId, String setting, Object value) {
         try {
-            plugin.getPluginDataStorage().getGuildStorage(guildId).set("settings." + setting, value);
-            plugin.getPluginDataStorage().saveAll();
+            plugin.getStorage().getGuildStorage(guildId).set("settings." + setting, value);
+            plugin.getStorage().saveAll();
 
             plugin.getLogger().info("Updated guild setting {} = {} for guild {}",
                     setting, value, guildId);
@@ -72,15 +72,15 @@ public class ExampleDataService {
      */
     public void incrementUsageCounter(String feature) {
         try {
-            long currentCount = plugin.getPluginDataStorage().getGlobalStorage()
+            long currentCount = plugin.getStorage().getGlobalStorage()
                     .get("stats." + feature, Long.class)
                     .orElse(0L);
-            plugin.getPluginDataStorage().getGlobalStorage()
+            plugin.getStorage().getGlobalStorage()
                     .set("stats." + feature, currentCount + 1);
 
             // Save periodically (not every increment for performance)
             if (currentCount % 10 == 0) {
-                plugin.getPluginDataStorage().saveAll();
+                plugin.getStorage().saveAll();
             }
         } catch (Exception e) {
             plugin.getLogger().error("Failed to increment usage counter", e);
@@ -92,7 +92,7 @@ public class ExampleDataService {
      */
     public void cleanup() {
         try {
-            plugin.getPluginDataStorage().saveAll();
+            plugin.getStorage().saveAll();
             plugin.getLogger().info("Data service cleanup completed");
         } catch (Exception e) {
             plugin.getLogger().error("Failed to cleanup data service", e);

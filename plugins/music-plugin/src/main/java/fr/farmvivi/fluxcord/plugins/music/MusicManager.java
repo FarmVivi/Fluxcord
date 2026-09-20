@@ -123,7 +123,7 @@ public class MusicManager {
         Optional<Guild> optGuild = ctx.getGuild();
         if (optGuild.isEmpty()) {
             // This command must be used in a guild context
-            PluginLanguageAdapter lm = plugin.getPluginLanguageManager();
+            PluginLanguageAdapter lm = plugin.getLanguage();
             Locale locale = ctx.getLocale();
             ctx.replyError(lm.getString(locale, "music.error.guild_only"));
             return;
@@ -151,7 +151,7 @@ public class MusicManager {
                     : null;
 
             if (voiceChannel == null) {
-                PluginLanguageAdapter lm = plugin.getPluginLanguageManager();
+                PluginLanguageAdapter lm = plugin.getLanguage();
                 ctx.replyError(lm.getString(ctx.getLocale(), "music.error.not_in_voice"));
                 return;
             }
@@ -169,7 +169,7 @@ public class MusicManager {
                         guild.getName(), track.getInfo().title, track.getInfo().uri);
                 remember(guild, track);
 
-                PluginLanguageAdapter lm = plugin.getPluginLanguageManager();
+                PluginLanguageAdapter lm = plugin.getLanguage();
                 Locale locale = ctx.getLocale();
 
                 EmbedBuilder embed = new EmbedBuilder()
@@ -207,7 +207,7 @@ public class MusicManager {
                     logger.info("[{}] Playlist loaded: {} ({} tracks)",
                             guild.getName(), playlist.getName(), tracks.size());
 
-                    PluginLanguageAdapter lm = plugin.getPluginLanguageManager();
+                    PluginLanguageAdapter lm = plugin.getLanguage();
                     Locale locale = ctx.getLocale();
 
                     EmbedBuilder embed = new EmbedBuilder()
@@ -239,14 +239,14 @@ public class MusicManager {
             @Override
             public void noMatches() {
                 logger.warn("[{}] No matches found for: {}", guild.getName(), query);
-                PluginLanguageAdapter lm = plugin.getPluginLanguageManager();
+                PluginLanguageAdapter lm = plugin.getLanguage();
                 ctx.replyError(lm.getString(ctx.getLocale(), "music.error.no_matches"));
             }
 
             @Override
             public void loadFailed(FriendlyException exception) {
                 logger.error("[{}] Failed to load track: {}", guild.getName(), query, exception);
-                PluginLanguageAdapter lm = plugin.getPluginLanguageManager();
+                PluginLanguageAdapter lm = plugin.getLanguage();
                 ctx.replyError(lm.getString(ctx.getLocale(), "music.error.load_failed", exception.getMessage()));
             }
         });
@@ -325,7 +325,7 @@ public class MusicManager {
      */
     private boolean restoreState(Guild guild) {
         String guildId = guild.getId();
-        java.util.Optional<?> raw = plugin.getPluginDataStorage()
+        java.util.Optional<?> raw = plugin.getStorage()
                 .getGuildStorage(guildId)
                 .get(MusicPlayer.STATE_KEY, Map.class);
         if (raw.isEmpty()) {
@@ -343,8 +343,8 @@ public class MusicManager {
             if (state.isExpired(plugin.getPersistenceTtlMillis())) {
                 logger.info("Discarding expired playback state for guild {}", guildId);
             }
-            plugin.getPluginDataStorage().getGuildStorage(guildId).remove(MusicPlayer.STATE_KEY);
-            plugin.getPluginDataStorage().saveAll();
+            plugin.getStorage().getGuildStorage(guildId).remove(MusicPlayer.STATE_KEY);
+            plugin.getStorage().saveAll();
             return false;
         }
 

@@ -20,7 +20,7 @@ public class ShuffleCommand {
     public void execute(CommandContext ctx) {
         Optional<Guild> optGuild = ctx.getGuild();
         if (optGuild.isEmpty()) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.guild_only"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.guild_only"));
             return;
         }
         Guild guild = optGuild.get();
@@ -28,7 +28,7 @@ public class ShuffleCommand {
         MusicPlayer player = plugin.getMusicManager().getPlayer(guild);
 
         if (player.getTrackScheduler().getQueueSize() == 0) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.queue_empty"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.queue_empty"));
             return;
         }
 
@@ -36,9 +36,9 @@ public class ShuffleCommand {
         player.getTrackScheduler().setShuffleMode(shuffled);
 
         if (shuffled) {
-            ctx.replySuccess(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.shuffle.enabled"));
+            ctx.replySuccess(plugin.getLanguage().getString(ctx.getLocale(), "music.shuffle.enabled"));
         } else {
-            ctx.replySuccess(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.shuffle.disabled"));
+            ctx.replySuccess(plugin.getLanguage().getString(ctx.getLocale(), "music.shuffle.disabled"));
         }
 
         player.getPlayerMessage().refresh();

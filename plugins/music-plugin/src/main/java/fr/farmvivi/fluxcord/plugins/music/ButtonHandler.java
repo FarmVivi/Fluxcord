@@ -27,7 +27,7 @@ public class ButtonHandler {
         Guild guild = event.getGuild();
         if (guild == null || !guild.getId().equals(info.guildId())) {
             if (!event.isAcknowledged()) {
-                event.reply(plugin.getPluginLanguageManager().getString("music.error.wrong_guild"))
+                event.reply(plugin.getLanguage().getString("music.error.wrong_guild"))
                         .setEphemeral(true)
                         .queue();
             }
@@ -37,7 +37,7 @@ public class ButtonHandler {
         Member member = event.getMember();
         if (member == null || member.getVoiceState() == null || member.getVoiceState().getChannel() == null) {
             if (!event.isAcknowledged()) {
-                event.reply(plugin.getPluginLanguageManager().getString("music.error.not_in_voice"))
+                event.reply(plugin.getLanguage().getString("music.error.not_in_voice"))
                         .setEphemeral(true)
                         .queue();
             }
@@ -62,7 +62,7 @@ public class ButtonHandler {
 
                 // Build provider options dynamically from configuration
                 var providerMenuBuilder = StringSelectMenu.create("provider")
-                        .setPlaceholder(plugin.getPluginLanguageManager().getString("music.modal.provider.placeholder"))
+                        .setPlaceholder(plugin.getLanguage().getString("music.modal.provider.placeholder"))
                         .setMaxValues(1)
                         .setMinValues(1);
 
@@ -72,7 +72,7 @@ public class ButtonHandler {
 
                 // Fallback: if no option is available, inform the user
                 if (providerMenuBuilder.getOptions().isEmpty()) {
-                    event.reply(plugin.getPluginLanguageManager().getString("music.error.no_providers"))
+                    event.reply(plugin.getLanguage().getString("music.error.no_providers"))
                             .setEphemeral(true)
                             .queue();
                     return;
@@ -83,15 +83,15 @@ public class ButtonHandler {
                                 "query",
                                 TextInputStyle.SHORT
                         )
-                        .setPlaceholder(plugin.getPluginLanguageManager().getString("music.modal.query.placeholder"))
+                        .setPlaceholder(plugin.getLanguage().getString("music.modal.query.placeholder"))
                         .setRequired(true)
                         .build();
 
                 String modalId = "music:" + guild.getId() + ":add";
-                Modal modal = Modal.create(modalId, plugin.getPluginLanguageManager().getString("music.modal.title"))
+                Modal modal = Modal.create(modalId, plugin.getLanguage().getString("music.modal.title"))
                         .addComponents(
-                                Label.of(plugin.getPluginLanguageManager().getString("music.modal.provider.label"), providerMenuBuilder.build()),
-                                Label.of(plugin.getPluginLanguageManager().getString("music.modal.query.label"), queryInput)
+                                Label.of(plugin.getLanguage().getString("music.modal.provider.label"), providerMenuBuilder.build()),
+                                Label.of(plugin.getLanguage().getString("music.modal.query.label"), queryInput)
                         )
                         .build();
 
@@ -175,7 +175,7 @@ public class ButtonHandler {
 
             default:
                 if (!event.isAcknowledged()) {
-                    event.reply(plugin.getPluginLanguageManager().getString("music.error.unknown_action"))
+                    event.reply(plugin.getLanguage().getString("music.error.unknown_action"))
                             .setEphemeral(true)
                             .queue();
                 }
@@ -188,12 +188,12 @@ public class ButtonHandler {
         String guildId = member.getGuild().getId();
         // Permission nodes are registered as pluginName.node
         String perm = plugin.getId() + "." + permission.substring(permission.indexOf('.') + 1);
-        return plugin.getPluginPermissionManager().hasPermission(userId, guildId, perm)
-                || plugin.getPluginPermissionManager().hasPermission(userId, perm);
+        return plugin.getPermissions().hasPermission(userId, guildId, perm)
+                || plugin.getPermissions().hasPermission(userId, perm);
     }
 
     private void replyNoPermission(ButtonInteractionEvent event) {
-        PluginLanguageAdapter lm = plugin.getPluginLanguageManager();
+        PluginLanguageAdapter lm = plugin.getLanguage();
         if (!event.isAcknowledged()) {
             event.reply(lm.getString("music.error.no_permission")).setEphemeral(true).queue();
         }

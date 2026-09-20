@@ -1,50 +1,28 @@
 package fr.farmvivi.fluxcord.api.plugin;
 
-import fr.farmvivi.fluxcord.api.audio.AudioService;
-import fr.farmvivi.fluxcord.api.command.CommandService;
 import fr.farmvivi.fluxcord.api.command.PluginCommandAdapter;
 import fr.farmvivi.fluxcord.api.config.Configuration;
 import fr.farmvivi.fluxcord.api.discord.DiscordAPI;
 import fr.farmvivi.fluxcord.api.event.EventManager;
-import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.api.language.PluginLanguageAdapter;
-import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
 import fr.farmvivi.fluxcord.api.permissions.PluginPermissionAdapter;
-import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
 import fr.farmvivi.fluxcord.api.storage.PluginDataStorageAdapter;
-import fr.farmvivi.fluxcord.api.storage.binary.BinaryStorageManager;
 import fr.farmvivi.fluxcord.api.storage.binary.PluginBinaryStorageAdapter;
 import org.slf4j.Logger;
 
 import java.io.File;
 
 /**
- * Convenience base class for plugins.
- * Provides common functionality and access to core services.
+ * Base class for plugins: keeps the {@link PluginContext} handed to {@link #onLoad(PluginContext)}, logs each
+ * lifecycle phase, and offers short accessors to the plugin-scoped views of the core services
+ * ({@link #getCommands()}, {@link #getPermissions()}, {@link #getLanguage()}, {@link #getStorage()},
+ * {@link #getBinaryStorage()}). Everything else is one call away on {@link #getContext()}.
  */
 public abstract class AbstractPlugin implements Plugin {
-    // Core services
     protected PluginContext context;
     protected Logger logger;
     protected EventManager eventManager;
     protected DiscordAPI discordAPI;
-    protected Configuration configuration;
-    protected String dataFolder;
-    protected LanguageManager languageManager;
-    protected DataStorageManager dataStorageManager;
-    protected BinaryStorageManager binaryStorageManager;
-    protected PermissionManager permissionManager;
-    protected AudioService audioService;
-    protected CommandService commandService;
-
-    // Plugin-specific managers
-    protected PluginPermissionAdapter pluginPermissionAdapter;
-    protected PluginLanguageAdapter pluginLanguageAdapter;
-    protected PluginDataStorageAdapter pluginDataStorageAdapter;
-    protected PluginBinaryStorageAdapter pluginBinaryStorageAdapter;
-    protected PluginCommandAdapter pluginCommandAdapter;
-
-    // Plugin state
     private PluginLifecycle lifecycle = PluginLifecycle.DISCOVERED;
 
     @Override
@@ -68,30 +46,8 @@ public abstract class AbstractPlugin implements Plugin {
         this.logger = context.getLogger();
         this.eventManager = context.getEventManager();
         this.discordAPI = context.getDiscordAPI();
-        this.configuration = context.getConfiguration();
-        this.dataFolder = context.getDataFolder();
-        this.languageManager = context.getLanguageManager();
-        this.dataStorageManager = context.getDataStorageManager();
-        this.binaryStorageManager = context.getBinaryStorageManager();
-        this.permissionManager = context.getPermissionManager();
-        this.audioService = context.getAudioService();
-        this.commandService = context.getCommandService();
 
-        // Plugin-scoped views come from the context (P5); a context that does not provide them (a bare mock in
-        // a unit test) gets them built here from the shared managers
-        this.pluginLanguageAdapter = context.getLanguage() != null
-                ? context.getLanguage() : new PluginLanguageAdapter(this, languageManager);
-        this.pluginPermissionAdapter = context.getPermissions() != null
-                ? context.getPermissions() : new PluginPermissionAdapter(this, permissionManager, languageManager);
-        this.pluginDataStorageAdapter = context.getStorage() != null
-                ? context.getStorage() : new PluginDataStorageAdapter(this, dataStorageManager);
-        this.pluginBinaryStorageAdapter = context.getBinaryStorage() != null
-                ? context.getBinaryStorage() : new PluginBinaryStorageAdapter(this, binaryStorageManager);
-        this.pluginCommandAdapter = context.getCommands() != null
-                ? context.getCommands() : new PluginCommandAdapter(this, commandService);
-
-        // Create data directory if it doesn't exist
-        File dataDir = new File(dataFolder);
+        File dataDir = new File(context.getDataFolder());
         if (!dataDir.exists() && !dataDir.mkdirs()) {
             logger.warn("Failed to create data directory for plugin: {}", getName());
         }
@@ -122,12 +78,6 @@ public abstract class AbstractPlugin implements Plugin {
     @Override
     public void onDisable() {
         logger.info("Disabling {} v{}", getName(), getVersion());
-
-        // Automatically unregister all event handlers
-        if (eventManager != null) {
-            eventManager.unregisterListener(this);
-            eventManager.unregisterAll(this);
-        }
     }
 
     @Override
@@ -145,113 +95,62 @@ public abstract class AbstractPlugin implements Plugin {
         this.lifecycle = lifecycle;
     }
 
-    /**
-     * Gets the plugin context.
-     *
-     * @return the plugin context
-     */
+    /** @return the context handed to {@link #onLoad(PluginContext)} (null before load) */
     public PluginContext getContext() {
         return context;
     }
 
-    /**
-     * Convenience accessor for the plugin configuration.
-     *
-     * @return configuration instance
-     */
+    /** @return this plugin's {@code config.yml} */
     public Configuration getConfiguration() {
-        return configuration;
+        return context.getConfiguration();
     }
 
-    /**
-     * Convenience accessor for the plugin data folder path.
-     *
-     * @return absolute path to plugin data folder
-     */
+    /** @return this plugin's data folder ({@code plugins/<id>}) */
     public String getDataFolder() {
-        return dataFolder;
+        return context.getDataFolder();
     }
 
-    /**
-     * Gets the plugin-specific permission manager.
-     * This provides convenient methods for registering and checking permissions
-     * specifically for this plugin.
-     *
-     * @return the plugin permission manager
-     */
-    public PluginPermissionAdapter getPluginPermissionManager() {
-        return pluginPermissionAdapter;
+    public Logger getLogger() {
+        return logger;
     }
 
-    /**
-     * Gets the plugin-specific language manager.
-     * This provides convenient methods for translating strings specifically for this plugin.
-     *
-     * @return the plugin language manager
-     */
-    public PluginLanguageAdapter getPluginLanguageManager() {
-        return pluginLanguageAdapter;
+    /** Commands registered on behalf of this plugin (released with it). */
+    public PluginCommandAdapter getCommands() {
+        return context.getCommands();
     }
 
-    /**
-     * Gets the plugin-specific data storage adapter.
-     * This provides convenient methods for storing and retrieving data
-     * specifically for this plugin with automatic namespacing.
-     *
-     * @return the plugin data storage adapter
-     */
-    public PluginDataStorageAdapter getPluginDataStorage() {
-        return pluginDataStorageAdapter;
+    /** Permissions registered on behalf of this plugin. */
+    public PluginPermissionAdapter getPermissions() {
+        return context.getPermissions();
     }
 
-    /**
-     * Gets the plugin-specific binary storage adapter.
-     * This provides convenient methods for storing and retrieving binary files
-     * specifically for this plugin with automatic namespacing.
-     *
-     * @return the plugin binary storage adapter
-     */
-    public PluginBinaryStorageAdapter getPluginBinaryStorage() {
-        return pluginBinaryStorageAdapter;
+    /** Translations in this plugin's namespace. */
+    public PluginLanguageAdapter getLanguage() {
+        return context.getLanguage();
     }
 
-    /**
-     * Gets the plugin-specific command adapter.
-     * This provides convenient methods for registering and managing commands
-     * specifically for this plugin.
-     *
-     * @return the plugin command adapter
-     */
-    public PluginCommandAdapter getPluginCommandAdapter() {
-        return pluginCommandAdapter;
+    /** Key/value storage with this plugin's keys namespaced. */
+    public PluginDataStorageAdapter getStorage() {
+        return context.getStorage();
     }
 
-    /**
-     * Registers JDA listeners (e.g. {@code ListenerAdapter} subclasses) for Discord events. Works whether Discord
-     * is connected yet or not, and the core removes them when the plugin is disabled. Use this for Discord
-     * events; {@code @EventHandler} methods only receive Fluxcord events, never JDA ones.
-     *
-     * @param listeners the JDA listeners
-     */
-    protected void addDiscordListeners(Object... listeners) {
-        discordAPI.addEventListeners(this, listeners);
+    /** Binary storage under this plugin's folder. */
+    public PluginBinaryStorageAdapter getBinaryStorage() {
+        return context.getBinaryStorage();
     }
 
-    /**
-     * Returns whether this plugin is currently enabled.
-     *
-     * @return true if this plugin is enabled
-     */
+    /** @return true while the plugin is fully enabled */
     public boolean isEnabled() {
         return lifecycle == PluginLifecycle.ENABLED;
     }
 
     /**
-     * Gets the SLF4J logger for this plugin.
+     * Registers JDA listeners on behalf of this plugin: added to the builder before the connection and to the
+     * live JDA afterwards, removed automatically when the plugin is disabled or reloaded.
      *
-     * @return the logger instance
+     * @param listeners JDA {@code ListenerAdapter}s / {@code EventListener}s
      */
-    public Logger getLogger() {
-        return logger;
+    protected void addDiscordListeners(Object... listeners) {
+        discordAPI.addEventListeners(this, listeners);
     }
 }

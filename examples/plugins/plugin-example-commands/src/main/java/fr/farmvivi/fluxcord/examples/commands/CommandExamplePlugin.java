@@ -37,7 +37,7 @@ public class CommandExamplePlugin extends AbstractPlugin {
 
         // Check if plugin is enabled in config
         if (!getConfiguration().getBoolean("enabled", false)) {
-            logger.info(getPluginLanguageManager().getString("status.disabled"));
+            logger.info(getLanguage().getString("status.disabled"));
             return;
         }
 
@@ -50,8 +50,8 @@ public class CommandExamplePlugin extends AbstractPlugin {
         // Register commands
         registerCommands();
 
-        logger.info(getPluginLanguageManager().getString("status.enabled"));
-        logger.info(getPluginLanguageManager().getString("status.ready"));
+        logger.info(getLanguage().getString("status.enabled"));
+        logger.info(getLanguage().getString("status.ready"));
     }
 
     @Override
@@ -66,19 +66,19 @@ public class CommandExamplePlugin extends AbstractPlugin {
      */
     private void registerPermissions() {
         // Basic command usage permission
-        getPluginPermissionManager().registerPermission(new SimplePermission(
+        getPermissions().registerPermission(new SimplePermission(
                 "commandexample.use",
                 "Allows usage of basic command examples",
                 PermissionDefault.TRUE));
 
         // Admin command permission
-        getPluginPermissionManager().registerPermission(new SimplePermission(
+        getPermissions().registerPermission(new SimplePermission(
                 "commandexample.admin",
                 "Allows usage of administrative commands",
                 PermissionDefault.OP));
 
         // Cooldown bypass permission
-        getPluginPermissionManager().registerPermission(new SimplePermission(
+        getPermissions().registerPermission(new SimplePermission(
                 "commandexample.cooldown.bypass",
                 "Allows bypassing command cooldowns",
                 PermissionDefault.OP));
@@ -116,16 +116,16 @@ public class CommandExamplePlugin extends AbstractPlugin {
             commandsRegistered++;
         }
 
-        logger.info(getPluginLanguageManager().getString("status.commands_loaded", commandsRegistered));
+        logger.info(getLanguage().getString("status.commands_loaded", commandsRegistered));
     }
 
     /**
      * Registers the ping command - demonstrates basic command functionality.
      */
     private void registerPingCommand() {
-        commandService.registerCommand(this, builder -> {
+        getCommands().registerCommand(builder -> {
             builder.name("ping")
-                    .description(getPluginLanguageManager().getString("ping.description"))
+                    .description(getLanguage().getString("ping.description"))
                     .executor(this::executePingCommand);
         });
     }
@@ -134,9 +134,9 @@ public class CommandExamplePlugin extends AbstractPlugin {
      * Registers the echo command - demonstrates argument handling.
      */
     private void registerEchoCommand() {
-        commandService.registerCommand(this, builder -> {
+        getCommands().registerCommand(builder -> {
             builder.name("echo")
-                    .description(getPluginLanguageManager().getString("echo.description"))
+                    .description(getLanguage().getString("echo.description"))
                     .stringOption("message", "Message to echo back", true)
                     .executor(this::executeEchoCommand);
         });
@@ -146,9 +146,9 @@ public class CommandExamplePlugin extends AbstractPlugin {
      * Registers the info command - demonstrates embed responses.
      */
     private void registerInfoCommand() {
-        commandService.registerCommand(this, builder -> {
+        getCommands().registerCommand(builder -> {
             builder.name("info")
-                    .description(getPluginLanguageManager().getString("info.description"))
+                    .description(getLanguage().getString("info.description"))
                     .executor(this::executeInfoCommand);
         });
     }
@@ -157,9 +157,9 @@ public class CommandExamplePlugin extends AbstractPlugin {
      * Registers the admin command - demonstrates permission checks.
      */
     private void registerAdminCommand() {
-        commandService.registerCommand(this, builder -> {
+        getCommands().registerCommand(builder -> {
             builder.name("admin")
-                    .description(getPluginLanguageManager().getString("admin.description"))
+                    .description(getLanguage().getString("admin.description"))
                     .executor(this::executeAdminCommand);
         });
     }
@@ -177,7 +177,7 @@ public class CommandExamplePlugin extends AbstractPlugin {
         commandExecutionCount.incrementAndGet();
 
         // Get response message
-        String response = getPluginLanguageManager().getString("ping.response");
+        String response = getLanguage().getString("ping.response");
 
         // Send response
         if (getConfiguration().getBoolean("responses.use_embeds", true)) {
@@ -208,7 +208,7 @@ public class CommandExamplePlugin extends AbstractPlugin {
         String message = context.getOption("message", "");
 
         if (message.isEmpty()) {
-            String errorMsg = getPluginLanguageManager().getString("echo.no_message");
+            String errorMsg = getLanguage().getString("echo.no_message");
             context.reply(errorMsg);
             return CommandResult.error("No message provided");
         }
@@ -216,7 +216,7 @@ public class CommandExamplePlugin extends AbstractPlugin {
         // Check message length
         int maxLength = getConfiguration().getInt("commands.echo.max_length", 200);
         if (message.length() > maxLength) {
-            String errorMsg = getPluginLanguageManager().getString("echo.too_long", maxLength);
+            String errorMsg = getLanguage().getString("echo.too_long", maxLength);
             context.reply(errorMsg);
             return CommandResult.error("Message too long");
         }
@@ -225,7 +225,7 @@ public class CommandExamplePlugin extends AbstractPlugin {
         commandExecutionCount.incrementAndGet();
 
         // Format response
-        String response = getPluginLanguageManager().getString("echo.response", message);
+        String response = getLanguage().getString("echo.response", message);
 
         // Send response
         if (getConfiguration().getBoolean("responses.use_embeds", true)) {
@@ -255,17 +255,17 @@ public class CommandExamplePlugin extends AbstractPlugin {
 
         // Create detailed embed
         EmbedBuilder embed = new EmbedBuilder();
-        embed.setTitle(getPluginLanguageManager().getString("info.title"));
+        embed.setTitle(getLanguage().getString("info.title"));
         embed.setColor(getEmbedColor());
 
-        embed.addField("📌 " + getPluginLanguageManager().getString("info.version", getVersion()), "", false);
-        embed.addField("⏰ " + getPluginLanguageManager().getString("info.uptime", uptime), "", false);
-        embed.addField("📊 " + getPluginLanguageManager().getString("info.commands_executed", commandExecutionCount.get()), "", false);
-        embed.addField("💾 " + getPluginLanguageManager().getString("info.memory_usage", memoryUsed), "", false);
+        embed.addField("📌 " + getLanguage().getString("info.version", getVersion()), "", false);
+        embed.addField("⏰ " + getLanguage().getString("info.uptime", uptime), "", false);
+        embed.addField("📊 " + getLanguage().getString("info.commands_executed", commandExecutionCount.get()), "", false);
+        embed.addField("💾 " + getLanguage().getString("info.memory_usage", memoryUsed), "", false);
 
         if (getConfiguration().getBoolean("commands.info.show_detailed", false)) {
             embed.addField("🔧 Configuration", "Enabled: " + getConfiguration().getBoolean("enabled", false), false);
-            embed.addField("🌐 Language", languageManager.getDefaultLocale().toString(), false);
+            embed.addField("🌐 Language", getLanguage().getDefaultLocale().toString(), false);
         }
 
         embed.setFooter("Command Example Plugin", null);
@@ -280,8 +280,8 @@ public class CommandExamplePlugin extends AbstractPlugin {
      */
     private CommandResult executeAdminCommand(CommandContext context, Command command) {
         // Check permissions
-        if (!getPluginPermissionManager().hasPermission(context.getUser().getId(), "commandexample.admin")) {
-            String errorMsg = getPluginLanguageManager().getString("admin.no_permission");
+        if (!getPermissions().hasPermission(context.getUser().getId(), "commandexample.admin")) {
+            String errorMsg = getLanguage().getString("admin.no_permission");
             context.reply(errorMsg);
             return CommandResult.error("No permission");
         }
@@ -290,7 +290,7 @@ public class CommandExamplePlugin extends AbstractPlugin {
         commandExecutionCount.incrementAndGet();
 
         // Execute admin action
-        String response = getPluginLanguageManager().getString("admin.response");
+        String response = getLanguage().getString("admin.response");
 
         // Send response
         MessageEmbed embed = createSimpleEmbed("🔧 Admin", response, Color.ORANGE);
@@ -307,15 +307,15 @@ public class CommandExamplePlugin extends AbstractPlugin {
      */
     private boolean isOnCooldown(CommandContext context, String commandName) {
         // Skip cooldown check for bypass permission
-        if (getPluginPermissionManager().hasPermission(context.getUser().getId(), "commandexample.cooldown.bypass")) {
+        if (getPermissions().hasPermission(context.getUser().getId(), "commandexample.cooldown.bypass")) {
             return false;
         }
 
         // Check command-specific cooldown
         int cooldown = getConfiguration().getInt("commands." + commandName + ".cooldown", 0);
-        if (cooldown > 0 && commandService.isOnCooldown(context.getUser().getId(), commandName)) {
-            int remaining = commandService.getRemainingCooldown(context.getUser().getId(), commandName);
-            String cooldownMsg = getPluginLanguageManager().getString("general.cooldown", remaining);
+        if (cooldown > 0 && getCommands().isOnCooldown(context.getUser().getId(), commandName)) {
+            int remaining = getCommands().getRemainingCooldown(context.getUser().getId(), commandName);
+            String cooldownMsg = getLanguage().getString("general.cooldown", remaining);
             context.reply(cooldownMsg);
             return true;
         }

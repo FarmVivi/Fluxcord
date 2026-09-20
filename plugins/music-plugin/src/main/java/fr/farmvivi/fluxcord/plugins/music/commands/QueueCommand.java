@@ -28,7 +28,7 @@ public class QueueCommand {
     public void execute(CommandContext ctx, int page) {
         Optional<Guild> optGuild = ctx.getGuild();
         if (optGuild.isEmpty()) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.guild_only"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.guild_only"));
             return;
         }
         Guild guild = optGuild.get();
@@ -37,11 +37,11 @@ public class QueueCommand {
         List<AudioTrack> queue = player.getTrackScheduler().getQueue();
 
         if (queue.isEmpty() && player.getPlayingTrack() == null) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.queue.empty"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.queue.empty"));
             return;
         }
 
-        PluginLanguageAdapter lm = plugin.getPluginLanguageManager();
+        PluginLanguageAdapter lm = plugin.getLanguage();
         Locale locale = ctx.getLocale();
 
         EmbedBuilder embed = new EmbedBuilder()

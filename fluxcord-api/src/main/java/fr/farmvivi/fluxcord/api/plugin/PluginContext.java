@@ -1,18 +1,13 @@
 package fr.farmvivi.fluxcord.api.plugin;
 
 import fr.farmvivi.fluxcord.api.audio.AudioService;
-import fr.farmvivi.fluxcord.api.command.CommandService;
 import fr.farmvivi.fluxcord.api.command.PluginCommandAdapter;
 import fr.farmvivi.fluxcord.api.config.Configuration;
 import fr.farmvivi.fluxcord.api.discord.DiscordAPI;
 import fr.farmvivi.fluxcord.api.event.EventManager;
-import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.api.language.PluginLanguageAdapter;
-import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
 import fr.farmvivi.fluxcord.api.permissions.PluginPermissionAdapter;
-import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
 import fr.farmvivi.fluxcord.api.storage.PluginDataStorageAdapter;
-import fr.farmvivi.fluxcord.api.storage.binary.BinaryStorageManager;
 import fr.farmvivi.fluxcord.api.storage.binary.PluginBinaryStorageAdapter;
 import org.slf4j.Logger;
 
@@ -87,51 +82,16 @@ public interface PluginContext {
     PluginLoader getPluginLoader();
 
     /**
-     * Gets the language manager for internationalization.
-     *
-     * @return the language manager
-     */
-    LanguageManager getLanguageManager();
-
-    /**
-     * Gets the data storage manager for persistent data.
-     *
-     * @return the data storage manager
-     */
-    DataStorageManager getDataStorageManager();
-
-    /**
-     * Gets the binary storage manager for large file storage.
-     *
-     * @return the binary storage manager
-     */
-    BinaryStorageManager getBinaryStorageManager();
-
-    /**
-     * Gets the permission manager for registering and checking permissions.
-     *
-     * @return the permission manager
-     */
-    PermissionManager getPermissionManager();
-
-    /**
      * Gets the audio service for managing audio connections.
      *
      * @return the audio service, or null if audio is disabled
      */
     AudioService getAudioService();
 
-    /**
-     * Gets the command service for registering and managing commands.
-     *
-     * @return the command service
-     */
-    CommandService getCommandService();
-
-    // ---- plugin-scoped views (P5) ----------------------------------------------------------------------------
-    // The same services, namespaced by this plugin's id: commands/permissions/languages are registered on behalf
-    // of the plugin (and released with it), storage keys and paths are prefixed. Prefer these over the shared
-    // managers above; AbstractPlugin exposes them as getPlugin*() for convenience.
+    // ---- plugin-scoped views ----------------------------------------------------------------------------------
+    // Commands, permissions and translations are registered on behalf of this plugin (and released with it);
+    // storage keys and paths are namespaced by its id. The shared managers are reachable through the adapters
+    // (e.g. PluginCommandAdapter.getCommandService()) when a plugin really needs to cross its own scope.
 
     /** @return this plugin's command registration façade */
     PluginCommandAdapter getCommands();

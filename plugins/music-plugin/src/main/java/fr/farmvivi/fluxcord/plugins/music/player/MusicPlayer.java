@@ -464,13 +464,13 @@ public class MusicPlayer {
         }
         try {
             PlaybackState state = captureState();
-            ScopedStorage storage = plugin.getPluginDataStorage().getGuildStorage(guild.getId());
+            ScopedStorage storage = plugin.getStorage().getGuildStorage(guild.getId());
             if (state.hasPlayback() && state.getVoiceChannelId() != null) {
                 storage.set(STATE_KEY, state.toMap());
             } else {
                 storage.remove(STATE_KEY);
             }
-            plugin.getPluginDataStorage().saveAll();
+            plugin.getStorage().saveAll();
         } catch (Exception e) {
             logger.warn("[{}] Failed to save playback state", guild.getName(), e);
         }
@@ -481,8 +481,8 @@ public class MusicPlayer {
      */
     public void clearState() {
         try {
-            plugin.getPluginDataStorage().getGuildStorage(guild.getId()).remove(STATE_KEY);
-            plugin.getPluginDataStorage().saveAll();
+            plugin.getStorage().getGuildStorage(guild.getId()).remove(STATE_KEY);
+            plugin.getStorage().saveAll();
         } catch (Exception e) {
             logger.debug("[{}] Failed to clear playback state", guild.getName(), e);
         }

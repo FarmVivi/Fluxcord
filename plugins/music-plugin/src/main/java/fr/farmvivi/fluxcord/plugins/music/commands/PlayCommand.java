@@ -23,7 +23,7 @@ public class PlayCommand {
     public void execute(CommandContext ctx, String query, boolean playNow) {
         Optional<Guild> optGuild = ctx.getGuild();
         if (optGuild.isEmpty()) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.guild_only"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.guild_only"));
             return;
         }
         Guild guild = optGuild.get();
@@ -37,17 +37,17 @@ public class PlayCommand {
         }
         AudioChannel voiceChannel = member != null && member.getVoiceState() != null ? member.getVoiceState().getChannel() : null;
         if (voiceChannel == null) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.not_in_voice"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.not_in_voice"));
             return;
         }
 
         // Check permission (prefer guild-scoped if available)
         String userId = ctx.getUser().getId();
         String perm = plugin.getId() + ".play";
-        boolean allowed = plugin.getPluginPermissionManager().hasPermission(userId, guild.getId(), perm)
-                || plugin.getPluginPermissionManager().hasPermission(userId, perm);
+        boolean allowed = plugin.getPermissions().hasPermission(userId, guild.getId(), perm)
+                || plugin.getPermissions().hasPermission(userId, perm);
         if (!allowed) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.no_permission"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.no_permission"));
             return;
         }
 

@@ -120,11 +120,11 @@ class PluginManagerTest {
         AbstractPlugin alpha = (AbstractPlugin) manager.getPlugin("alpha");
         PluginContext context = alpha.getContext();
 
-        assertSame(context.getStorage(), alpha.getPluginDataStorage(), "AbstractPlugin uses the context's views (P5)");
-        assertSame(context.getCommands(), alpha.getPluginCommandAdapter());
-        assertSame(context.getPermissions(), alpha.getPluginPermissionManager());
-        assertSame(context.getLanguage(), alpha.getPluginLanguageManager());
-        assertSame(context.getBinaryStorage(), alpha.getPluginBinaryStorage());
+        assertSame(context.getStorage(), alpha.getStorage(), "AbstractPlugin uses the context's views (P5)");
+        assertSame(context.getCommands(), alpha.getCommands());
+        assertSame(context.getPermissions(), alpha.getPermissions());
+        assertSame(context.getLanguage(), alpha.getLanguage());
+        assertSame(context.getBinaryStorage(), alpha.getBinaryStorage());
         assertEquals("alpha.", context.getStorage().getGuildStorage("g").getPrefix());
     }
 

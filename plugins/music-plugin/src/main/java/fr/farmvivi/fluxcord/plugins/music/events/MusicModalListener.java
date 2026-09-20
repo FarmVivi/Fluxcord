@@ -1,6 +1,5 @@
 package fr.farmvivi.fluxcord.plugins.music.events;
 
-import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.plugins.music.MusicPlugin;
 import fr.farmvivi.fluxcord.plugins.music.ui.MusicPlayerMessage;
 import fr.farmvivi.fluxcord.plugins.music.util.ModalCommandContext;
@@ -64,7 +63,7 @@ public class MusicModalListener extends ListenerAdapter {
                     logger.debug("[MusicModal] Missing fields: providerPresent={}, queryPresent={} (modalId={})",
                             providerValue != null, queryValue != null, modalId);
                 }
-                event.reply(plugin.getPluginLanguageManager().getString("music.error.modal.invalid"))
+                event.reply(plugin.getLanguage().getString("music.error.modal.invalid"))
                         .setEphemeral(true)
                         .queue();
                 return;
@@ -90,7 +89,7 @@ public class MusicModalListener extends ListenerAdapter {
                     logger.debug("[MusicModal] Invalid values: provider='{}', queryPresent={} (modalId={})",
                             provider, query != null && !query.isEmpty(), modalId);
                 }
-                event.reply(plugin.getPluginLanguageManager().getString("music.error.modal.invalid"))
+                event.reply(plugin.getLanguage().getString("music.error.modal.invalid"))
                         .setEphemeral(true)
                         .queue();
                 return;
@@ -113,8 +112,7 @@ public class MusicModalListener extends ListenerAdapter {
             }
             event.deferReply(true).queue();
 
-            LanguageManager lm = plugin.getContext().getLanguageManager();
-            var locale = lm.getDefaultLocale();
+            var locale = plugin.getLanguage().getDefaultLocale();
             var ctx = new ModalCommandContext(event, locale, true, true);
             // Play now = false by default; could add a checkbox in modal later
             plugin.getMusicManager().loadTrack(ctx, effectiveQuery, false);
@@ -126,7 +124,7 @@ public class MusicModalListener extends ListenerAdapter {
             logger.error("[MusicModal] Unexpected error handling modal interaction (modalId={}, guild={}, user={})",
                     modalId, guildId, userId, e);
             try {
-                event.reply(plugin.getPluginLanguageManager().getString("music.error.modal.unexpected"))
+                event.reply(plugin.getLanguage().getString("music.error.modal.unexpected"))
                         .setEphemeral(true)
                         .queue();
             } catch (Exception ignored) {

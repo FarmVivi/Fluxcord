@@ -21,7 +21,7 @@ public class LoopCommand {
     public void execute(CommandContext ctx, String mode) {
         Optional<Guild> optGuild = ctx.getGuild();
         if (optGuild.isEmpty()) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.guild_only"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.guild_only"));
             return;
         }
         Guild guild = optGuild.get();
@@ -33,19 +33,19 @@ public class LoopCommand {
             case "off":
                 scheduler.setLoopMode(false);
                 scheduler.setLoopQueueMode(false);
-                ctx.replySuccess(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.loop.disabled"));
+                ctx.replySuccess(plugin.getLanguage().getString(ctx.getLocale(), "music.loop.disabled"));
                 break;
 
             case "track":
                 scheduler.setLoopMode(true);
                 scheduler.setLoopQueueMode(false);
-                ctx.replySuccess(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.loop.track"));
+                ctx.replySuccess(plugin.getLanguage().getString(ctx.getLocale(), "music.loop.track"));
                 break;
 
             case "queue":
                 scheduler.setLoopMode(false);
                 scheduler.setLoopQueueMode(true);
-                ctx.replySuccess(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.loop.queue"));
+                ctx.replySuccess(plugin.getLanguage().getString(ctx.getLocale(), "music.loop.queue"));
                 break;
 
             case "toggle":
@@ -53,15 +53,15 @@ public class LoopCommand {
                 if (scheduler.isLoopMode()) {
                     scheduler.setLoopMode(false);
                     scheduler.setLoopQueueMode(true);
-                    ctx.replySuccess(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.loop.queue"));
+                    ctx.replySuccess(plugin.getLanguage().getString(ctx.getLocale(), "music.loop.queue"));
                 } else if (scheduler.isLoopQueueMode()) {
                     scheduler.setLoopMode(false);
                     scheduler.setLoopQueueMode(false);
-                    ctx.replySuccess(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.loop.disabled"));
+                    ctx.replySuccess(plugin.getLanguage().getString(ctx.getLocale(), "music.loop.disabled"));
                 } else {
                     scheduler.setLoopMode(true);
                     scheduler.setLoopQueueMode(false);
-                    ctx.replySuccess(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.loop.track"));
+                    ctx.replySuccess(plugin.getLanguage().getString(ctx.getLocale(), "music.loop.track"));
                 }
                 break;
         }

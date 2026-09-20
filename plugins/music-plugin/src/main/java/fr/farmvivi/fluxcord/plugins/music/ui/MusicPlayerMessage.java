@@ -51,7 +51,7 @@ public class MusicPlayerMessage {
 
     public MusicPlayerMessage(MusicPlayer musicPlayer) {
         this.musicPlayer = musicPlayer;
-        this.lang = musicPlayer.getPlugin().getPluginLanguageManager();
+        this.lang = musicPlayer.getPlugin().getLanguage();
 
         // Try to restore message from storage
         restoreMessage();
@@ -161,7 +161,7 @@ public class MusicPlayerMessage {
      */
     private EmbedBuilder createEmbed(AudioTrack track) {
         EmbedBuilder embed = new EmbedBuilder();
-        java.util.Locale locale = musicPlayer.getPlugin().getContext().getLanguageManager().getDefaultLocale();
+        java.util.Locale locale = musicPlayer.getPlugin().getLanguage().getDefaultLocale();
 
         if (track == null) {
             embed.setTitle(lang.getString(locale, "music.player.no_track"))
@@ -494,7 +494,7 @@ public class MusicPlayerMessage {
      */
     private void saveMessage() {
         String guildId = musicPlayer.getGuild().getId();
-        ScopedStorage guildStorage = musicPlayer.getPlugin().getPluginDataStorage().getGuildStorage(guildId);
+        ScopedStorage guildStorage = musicPlayer.getPlugin().getStorage().getGuildStorage(guildId);
         // Persist Discord snowflakes as Strings: stored as JSON numbers they would be reloaded as
         // doubles and lose precision (a 19-digit ID gets rounded), breaking message retrieval.
         if (messageId != null) {
@@ -507,7 +507,7 @@ public class MusicPlayerMessage {
         } else {
             guildStorage.remove("player_messages.channel_id");
         }
-        musicPlayer.getPlugin().getPluginDataStorage().saveAll();
+        musicPlayer.getPlugin().getStorage().saveAll();
     }
 
     /**
@@ -532,7 +532,7 @@ public class MusicPlayerMessage {
      */
     private void restoreMessage() {
         String guildId = musicPlayer.getGuild().getId();
-        ScopedStorage guildStorage = musicPlayer.getPlugin().getPluginDataStorage().getGuildStorage(guildId);
+        ScopedStorage guildStorage = musicPlayer.getPlugin().getStorage().getGuildStorage(guildId);
         Long storedMessageId = parseIdOrNull(guildStorage.get("player_messages.message_id", String.class).orElse(null));
         Long storedChannelId = parseIdOrNull(guildStorage.get("player_messages.channel_id", String.class).orElse(null));
 

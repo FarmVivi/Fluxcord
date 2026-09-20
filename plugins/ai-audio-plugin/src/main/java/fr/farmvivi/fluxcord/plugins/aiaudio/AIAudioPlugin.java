@@ -70,11 +70,11 @@ public class AIAudioPlugin extends AbstractPlugin {
         perm("analyze", "Allows advanced audio analysis", PermissionDefault.OP);
         perm("voicecommands", "Allows voice command features", PermissionDefault.TRUE);
         perm("admin", "Allows administrative AI audio actions", PermissionDefault.OP);
-        logger.debug("AI Audio permissions registered: {}", getPluginPermissionManager().getRegisteredPermissions());
+        logger.debug("AI Audio permissions registered: {}", getPermissions().getRegisteredPermissions());
     }
 
     private void perm(String node, String desc, PermissionDefault def) {
-        getPluginPermissionManager().registerPermission(new AIPermission(permissionKey(node), desc, def));
+        getPermissions().registerPermission(new AIPermission(permissionKey(node), desc, def));
     }
 
     private String permissionKey(String node) {

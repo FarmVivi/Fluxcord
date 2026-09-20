@@ -21,7 +21,7 @@ public class PauseCommand {
     public void execute(CommandContext ctx) {
         Optional<Guild> optGuild = ctx.getGuild();
         if (optGuild.isEmpty()) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.guild_only"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.guild_only"));
             return;
         }
         Guild guild = optGuild.get();
@@ -29,14 +29,14 @@ public class PauseCommand {
         MusicPlayer player = plugin.getMusicManager().getPlayer(guild);
 
         if (player.getPlayingTrack() == null) {
-            ctx.replyError(plugin.getPluginLanguageManager().getString(ctx.getLocale(), "music.error.nothing_playing"));
+            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.nothing_playing"));
             return;
         }
 
         boolean paused = !player.isPaused();
         player.setPaused(paused);
 
-        PluginLanguageAdapter lm = plugin.getPluginLanguageManager();
+        PluginLanguageAdapter lm = plugin.getLanguage();
         if (paused) {
             ctx.replySuccess(lm.getString(ctx.getLocale(), "music.paused"));
         } else {

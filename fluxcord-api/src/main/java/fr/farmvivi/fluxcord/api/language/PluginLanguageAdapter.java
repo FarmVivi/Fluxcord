@@ -44,6 +44,16 @@ public class PluginLanguageAdapter {
         }
     }
 
+    /** @return the bot's default locale (what text and console commands use) */
+    public Locale getDefaultLocale() {
+        return languageManager.getDefaultLocale();
+    }
+
+    /** @return the shared language manager, for the rare cases that need to leave this plugin's namespace */
+    public LanguageManager getLanguageManager() {
+        return languageManager;
+    }
+
     /**
      * Gets a translated string for the specified key in the default language.
      * The namespace is automatically added.

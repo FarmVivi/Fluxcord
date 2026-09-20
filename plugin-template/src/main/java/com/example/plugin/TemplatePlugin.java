@@ -108,13 +108,13 @@ public class TemplatePlugin extends AbstractPlugin {
         }
 
         // Log successful enablement with localized message
-        String enabledMessage = getPluginLanguageManager().getString("lifecycle.plugin_enabled");
+        String enabledMessage = getLanguage().getString("lifecycle.plugin_enabled");
         logger.info(enabledMessage);
 
         // Example: Save plugin start time for statistics
         if (exampleStorageEnabled) {
             dataService.incrementUsageCounter("plugin_starts");
-            getPluginDataStorage().getGlobalStorage().set("last_started", System.currentTimeMillis());
+            getStorage().getGlobalStorage().set("last_started", System.currentTimeMillis());
         }
     }
 
@@ -161,7 +161,7 @@ public class TemplatePlugin extends AbstractPlugin {
         }
 
         // Log shutdown with localized message
-        String disabledMessage = getPluginLanguageManager().getString("lifecycle.plugin_disabled");
+        String disabledMessage = getLanguage().getString("lifecycle.plugin_disabled");
         logger.info(disabledMessage);
     }
 
@@ -234,26 +234,26 @@ public class TemplatePlugin extends AbstractPlugin {
      */
     private void registerPermissions() {
         // Basic usage permission
-        getPluginPermissionManager().registerPermission(new SimplePermission(
+        getPermissions().registerPermission(new SimplePermission(
                 pluginPrefix("use"),
                 "Allows usage of basic template features",
                 PermissionDefault.TRUE));
 
         // Admin permission for configuration management
-        getPluginPermissionManager().registerPermission(new SimplePermission(
+        getPermissions().registerPermission(new SimplePermission(
                 pluginPrefix("admin"),
                 "Allows administrative template actions",
                 PermissionDefault.OP));
 
         // Command-specific permissions
         if (exampleCommandsEnabled) {
-            getPluginPermissionManager().registerPermission(new SimplePermission(
+            getPermissions().registerPermission(new SimplePermission(
                     pluginPrefix("command.example"),
                     "Allows usage of example commands",
                     PermissionDefault.TRUE));
         }
 
-        logger.debug("Permissions registered: {}", getPluginPermissionManager().getRegisteredPermissions().size());
+        logger.debug("Permissions registered: {}", getPermissions().getRegisteredPermissions().size());
     }
 
     /**
@@ -288,9 +288,9 @@ public class TemplatePlugin extends AbstractPlugin {
         }
 
         // Register example command using CommandService
-        commandService.registerCommand(this, builder -> {
+        getCommands().registerCommand(builder -> {
             builder.name("template-example")
-                    .description(getPluginLanguageManager().getString("commands.example"))
+                    .description(getLanguage().getString("commands.example"))
                     .executor((context, cmd) -> exampleCommand.execute(context));
         });
 

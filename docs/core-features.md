@@ -72,7 +72,7 @@ public class MyPlugin extends AbstractPlugin {
 
 ```java
 // Using CommandBuilder
-commandService.registerCommand(this, builder -> {
+getCommands().registerCommand(builder -> {
     builder.name("ping")
            .description("Ping the bot")
            .executor((context, cmd) -> {
@@ -151,14 +151,14 @@ public void onPluginEvent(PluginEnableEvent event) {
 
 ```java
 // Register permissions
-getPluginPermissionManager().registerPermission(new SimplePermission(
+getPermissions().registerPermission(new SimplePermission(
     "myplugin.admin",
     "Administrative access to MyPlugin",
     PermissionDefault.OP
 ));
 
 // Check permissions
-if (getPluginPermissionManager().hasPermission(userId, "myplugin.admin")) {
+if (getPermissions().hasPermission(userId, "myplugin.admin")) {
     // User has permission
 }
 ```
@@ -220,8 +220,8 @@ config.save();
 
 ```java
 // Get translations
-String message = getPluginLanguageManager().getString("welcome", "Hello {0}!", username);
-String localized = getPluginLanguageManager().getString(Locale.FRENCH, "goodbye");
+String message = getLanguage().getString("welcome", "Hello {0}!", username);
+String localized = getLanguage().getString(Locale.FRENCH, "goodbye");
 ```
 
 **Configuration**:
@@ -242,23 +242,23 @@ String localized = getPluginLanguageManager().getString(Locale.FRENCH, "goodbye"
 **Entry Points**:
 
 - `fr.farmvivi.fluxcord.api.storage.DataStorageManager` - Storage management (interface; the core implements it)
-- `fr.farmvivi.fluxcord.api.storage.PluginDataStorageAdapter` - Plugin-scoped storage (`getPluginDataStorage()`)
+- `fr.farmvivi.fluxcord.api.storage.PluginDataStorageAdapter` - Plugin-scoped storage (`getStorage()`)
 - `fr.farmvivi.fluxcord.api.storage.ScopedStorage` - the view every `get*Storage(...)` returns: one scope, plus a key prefix (`<pluginId>.`) when obtained through the plugin adapter
 
 **How to Use**:
 
 ```java
 // Different storage scopes
-getPluginDataStorage().getGlobalStorage().set("server.uptime", System.currentTimeMillis());
-getPluginDataStorage().getUserStorage(userId).set("preferences.theme", "dark");
-getPluginDataStorage().getGuildStorage(guildId).set("config.prefix", "!");
-getPluginDataStorage().getUserGuildStorage(userId, guildId).set("xp", 1500);
+getStorage().getGlobalStorage().set("server.uptime", System.currentTimeMillis());
+getStorage().getUserStorage(userId).set("preferences.theme", "dark");
+getStorage().getGuildStorage(guildId).set("config.prefix", "!");
+getStorage().getUserGuildStorage(userId, guildId).set("xp", 1500);
 
 // Keys are stored as "<pluginId>.<key>" inside the scope, so plugins never collide with each other or with
 // core keys (e.g. "commands.prefix"); getKeys()/getAll()/clear() only see the plugin's own keys.
 
 // Save changes
-getPluginDataStorage().saveAll();
+getStorage().saveAll();
 ```
 
 **Value types**: values are stored as JSON with one shared model for the FILE and DB backends
@@ -285,7 +285,7 @@ object when it is still cached, so treat numbers as `Number`. `null` cannot be s
 **Entry Points**:
 
 - `fr.farmvivi.fluxcord.api.storage.binary.BinaryStorageManager` - Binary storage management (interface; the core implements it)
-- `fr.farmvivi.fluxcord.api.storage.binary.PluginBinaryStorageAdapter` - Plugin-scoped binary storage (`getPluginBinaryStorage()`)
+- `fr.farmvivi.fluxcord.api.storage.binary.PluginBinaryStorageAdapter` - Plugin-scoped binary storage (`getBinaryStorage()`)
 - `fr.farmvivi.fluxcord.api.storage.binary.ScopedBinaryStorage` - the view every `get*Storage(...)` returns; plugin files live under `<pluginId>/`
 
 **How to Use**:
@@ -293,12 +293,12 @@ object when it is still cached, so treat numbers as `Number`. `null` cannot be s
 ```java
 // Store and retrieve files
 BinaryStorageKey key = BinaryStorageKey.of("avatars", userId + ".png");
-getPluginBinaryStorage().storeFile(key, imageBytes);
-byte[] retrieved = getPluginBinaryStorage().getFile(key);
+getBinaryStorage().storeFile(key, imageBytes);
+byte[] retrieved = getBinaryStorage().getFile(key);
 
 // File operations
-boolean exists = getPluginBinaryStorage().fileExists(key);
-getPluginBinaryStorage().deleteFile(key);
+boolean exists = getBinaryStorage().fileExists(key);
+getBinaryStorage().deleteFile(key);
 ```
 
 **Configuration**:

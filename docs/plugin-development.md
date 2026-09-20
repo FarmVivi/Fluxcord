@@ -119,7 +119,7 @@ public CommandResult banCommand(CommandContext ctx) {
 ```java
 @Command(name = "admin", description = "Admin-only command")
 public CommandResult adminCommand(CommandContext ctx) {
-    if (!getPluginPermissionManager().hasPermission(ctx.getUser(), "myplugin.admin")) {
+    if (!getPermissions().hasPermission(ctx.getUser(), "myplugin.admin")) {
         ctx.reply("❌ You don't have permission to use this command!");
         return CommandResult.NO_PERMISSION;
     }
@@ -539,17 +539,17 @@ advanced:
 ```java
 // Store player data
 public void savePlayerLevel(String playerId, int level) {
-    getPluginDataStorage().set("players." + playerId + ".level", level);
+    getStorage().set("players." + playerId + ".level", level);
 }
 
 // Retrieve player data
 public int getPlayerLevel(String playerId) {
-    return getPluginDataStorage().getInt("players." + playerId + ".level", 1);
+    return getStorage().getInt("players." + playerId + ".level", 1);
 }
 
 // Store complex objects
 public void savePlayerData(String playerId, PlayerData data) {
-    getPluginDataStorage().set("players." + playerId, data.toMap());
+    getStorage().set("players." + playerId, data.toMap());
 }
 ```
 
@@ -559,7 +559,7 @@ public void savePlayerData(String playerId, PlayerData data) {
 // Store files
 public void savePlayerAvatar(String playerId, byte[] imageData) {
     BinaryStorageKey key = new BinaryStorageKey("avatars", playerId + ".png");
-    try (OutputStream out = getPluginBinaryStorage().getOutputStream(key, true)) {
+    try (OutputStream out = getBinaryStorage().getOutputStream(key, true)) {
         out.write(imageData);
     } catch (IOException e) {
         logger.error("Failed to save avatar", e);
@@ -569,7 +569,7 @@ public void savePlayerAvatar(String playerId, byte[] imageData) {
 // Retrieve files
 public byte[] getPlayerAvatar(String playerId) {
     BinaryStorageKey key = new BinaryStorageKey("avatars", playerId + ".png");
-    return getPluginBinaryStorage().getInputStream(key)
+    return getBinaryStorage().getInputStream(key)
         .map(this::readAllBytes)
         .orElse(null);
 }
@@ -582,7 +582,7 @@ public byte[] getPlayerAvatar(String playerId) {
 ```java
 @Override
 public void onEnable() {
-    PluginPermissionAdapter perms = getPluginPermissionManager();
+    PluginPermissionAdapter perms = getPermissions();
     
     // Basic permissions
     perms.registerPermission("myplugin.use", PermissionDefault.TRUE);
@@ -598,7 +598,7 @@ public void onEnable() {
 
 ```java
 public boolean canUseFeature(User user, String feature) {
-    return getPluginPermissionManager().hasPermission(user, "myplugin." + feature);
+    return getPermissions().hasPermission(user, "myplugin." + feature);
 }
 
 public void restrictedAction(CommandContext ctx) {

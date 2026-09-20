@@ -14,7 +14,7 @@ User-facing text (replies, embeds, permission descriptions, help) goes through `
 
 ## Map
 - `api/language/LanguageManager` — `getString(key)`, `getString(key, args...)`, `getString(locale, key)`, `getString(locale, key, args...)`, `registerNamespace(ns)`, `loadLanguage(ns, locale, Map<String,String>)`, `getDefaultLocale()`, `getAvailableLocales()`.
-- `api/language/PluginLanguageAdapter` — created in `AbstractPlugin.onLoad`; namespace = `plugin.getId()`; prefixes keys with `<id>:` so plugins call `getPluginLanguageManager().getString("player.now_playing", title)`.
+- `api/language/PluginLanguageAdapter` — created in `AbstractPlugin.onLoad`; namespace = `plugin.getId()`; prefixes keys with `<id>:` so plugins call `getLanguage().getString("player.now_playing", title)`.
 - `core/language/SimpleLanguageManager` (~600 lines) — two maps `translations` (runtime `lang/` folder overrides) and `defaultTranslations` (from classpath / jar resources), both `namespace → locale → flatKey → string`. Nested YAML is flattened to dotted keys (`commands.messages.cooldown`).
 - `core/language/LanguageFileLoader` — loads the **core** runtime folder `./lang/*.yml` at boot (`Fluxcord.createLanguageServices`). Plugin languages are loaded by `PluginManager.loadPlugin` (jar `lang/*.yml` then `plugins/<id>/lang/*.yml`), namespace `id.toLowerCase()`.
 - Resources: `fluxcord-core/src/main/resources/lang/{en-US,fr-FR}.yml` (core namespace), `plugins/music-plugin/src/main/resources/lang/*.yml`.

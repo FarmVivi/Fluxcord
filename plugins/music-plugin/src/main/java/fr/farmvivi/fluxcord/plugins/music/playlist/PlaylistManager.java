@@ -131,7 +131,7 @@ public class PlaylistManager {
      * Loads playlists from storage.
      */
     private void loadPlaylists() {
-        PluginDataStorageAdapter adapter = plugin.getPluginDataStorage();
+        PluginDataStorageAdapter adapter = plugin.getStorage();
         ScopedStorage storage = adapter.getGlobalStorage();
 
         // Load user playlists
@@ -176,7 +176,7 @@ public class PlaylistManager {
      * Saves playlists to storage.
      */
     private void savePlaylists() {
-        PluginDataStorageAdapter adapter = plugin.getPluginDataStorage();
+        PluginDataStorageAdapter adapter = plugin.getStorage();
         ScopedStorage storage = adapter.getGlobalStorage();
 
         // First clear previous entries for this namespace subset

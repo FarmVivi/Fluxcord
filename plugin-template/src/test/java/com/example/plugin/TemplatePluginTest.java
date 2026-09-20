@@ -1,15 +1,15 @@
 package com.example.plugin;
 
-import fr.farmvivi.fluxcord.api.command.CommandService;
+import fr.farmvivi.fluxcord.api.command.PluginCommandAdapter;
 import fr.farmvivi.fluxcord.api.config.Configuration;
 import fr.farmvivi.fluxcord.api.discord.DiscordAPI;
 import fr.farmvivi.fluxcord.api.event.EventManager;
-import fr.farmvivi.fluxcord.api.language.LanguageManager;
-import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
+import fr.farmvivi.fluxcord.api.language.PluginLanguageAdapter;
+import fr.farmvivi.fluxcord.api.permissions.PluginPermissionAdapter;
 import fr.farmvivi.fluxcord.api.plugin.PluginContext;
 import fr.farmvivi.fluxcord.api.plugin.PluginLifecycle;
-import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
-import fr.farmvivi.fluxcord.api.storage.binary.BinaryStorageManager;
+import fr.farmvivi.fluxcord.api.storage.PluginDataStorageAdapter;
+import fr.farmvivi.fluxcord.api.storage.binary.PluginBinaryStorageAdapter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,25 +37,25 @@ public class TemplatePluginTest {
     private Logger mockLogger;
 
     @Mock
-    private LanguageManager mockLanguageManager;
+    private PluginLanguageAdapter mockLanguage;
 
     @Mock
     private Configuration mockConfiguration;
 
     @Mock
-    private PermissionManager mockPermissionManager;
+    private PluginPermissionAdapter mockPermissions;
 
     @Mock
     private EventManager mockEventManager;
 
     @Mock
-    private DataStorageManager mockDataStorageManager;
+    private PluginDataStorageAdapter mockStorage;
 
     @Mock
-    private BinaryStorageManager mockBinaryStorageManager;
+    private PluginBinaryStorageAdapter mockBinaryStorage;
 
     @Mock
-    private CommandService mockCommandService;
+    private PluginCommandAdapter mockCommands;
 
     @Mock
     private DiscordAPI mockDiscordAPI;
@@ -70,14 +70,15 @@ public class TemplatePluginTest {
         when(mockContext.getPluginName()).thenReturn("TemplatePlugin");
         when(mockContext.getPluginVersion()).thenReturn("1.0.0");
         when(mockContext.getLogger()).thenReturn(mockLogger);
-        when(mockContext.getLanguageManager()).thenReturn(mockLanguageManager);
         when(mockContext.getConfiguration()).thenReturn(mockConfiguration);
-        when(mockContext.getPermissionManager()).thenReturn(mockPermissionManager);
         when(mockContext.getEventManager()).thenReturn(mockEventManager);
-        when(mockContext.getDataStorageManager()).thenReturn(mockDataStorageManager);
-        when(mockContext.getBinaryStorageManager()).thenReturn(mockBinaryStorageManager);
-        when(mockContext.getCommandService()).thenReturn(mockCommandService);
         when(mockContext.getDiscordAPI()).thenReturn(mockDiscordAPI);
+        // plugin-scoped views, as the core hands them out
+        when(mockContext.getLanguage()).thenReturn(mockLanguage);
+        when(mockContext.getPermissions()).thenReturn(mockPermissions);
+        when(mockContext.getStorage()).thenReturn(mockStorage);
+        when(mockContext.getBinaryStorage()).thenReturn(mockBinaryStorage);
+        when(mockContext.getCommands()).thenReturn(mockCommands);
         when(mockContext.getDataFolder()).thenReturn("plugins/TemplatePlugin");
 
         // Default config stubs
@@ -85,12 +86,9 @@ public class TemplatePluginTest {
         when(mockConfiguration.getInt(anyString(), anyInt())).thenReturn(0);
 
         // Language stubs
-        when(mockLanguageManager.registerNamespace(anyString())).thenReturn(true);
-        when(mockLanguageManager.getString(anyString())).thenReturn("ok");
-        when(mockLanguageManager.getString(anyString(), any())).thenReturn("ok");
-        when(mockLanguageManager.getString(any(), anyString())).thenReturn("ok");
-        when(mockLanguageManager.getString(any(), anyString(), any())).thenReturn("ok");
-        when(mockLanguageManager.getDefaultLocale()).thenReturn(java.util.Locale.ENGLISH);
+        when(mockLanguage.getString(anyString())).thenReturn("ok");
+        when(mockLanguage.getString(anyString(), any(Object[].class))).thenReturn("ok");
+        when(mockLanguage.getDefaultLocale()).thenReturn(java.util.Locale.ENGLISH);
     }
 
     @Test
@@ -150,5 +148,7 @@ public class TemplatePluginTest {
 
         assertEquals(mockContext, plugin.getContext());
         assertEquals("plugins/TemplatePlugin", plugin.getDataFolder());
+        assertSame(mockStorage, plugin.getStorage(), "scoped views come from the context");
+        assertSame(mockCommands, plugin.getCommands());
     }
 }

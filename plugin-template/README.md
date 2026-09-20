@@ -154,9 +154,9 @@ debug:
 ### Command Example
 
 ```java
-commandService.registerCommand(this, builder -> {
+getCommands().registerCommand(builder -> {
     builder.name("template-example")
-           .description(getPluginLanguageManager().getString("commands.example"))
+           .description(getLanguage().getString("commands.example"))
            .executor((context, cmd) -> exampleCommand.execute(context));
 });
 ```
@@ -179,15 +179,15 @@ public void onMessageReceived(MessageReceivedEvent event) {
 
 ```java
 public void saveUserPreference(String userId, String key, Object value) {
-    plugin.getPluginDataStorage().getUserStorage(userId).set(key, value);
-    plugin.getPluginDataStorage().saveAll();
+    plugin.getStorage().getUserStorage(userId).set(key, value);
+    plugin.getStorage().saveAll();
 }
 ```
 
 ### Permission Example
 
 ```java
-getPluginPermissionManager().registerPermission(new SimplePermission(
+getPermissions().registerPermission(new SimplePermission(
     pluginPrefix("use"),
     "Allows usage of basic template features",
     PermissionDefault.TRUE
@@ -246,7 +246,7 @@ template:
 **Usage:**
 
 ```java
-String message = getPluginLanguageManager().getString("messages.welcome_user", username);
+String message = getLanguage().getString("messages.welcome_user", username);
 ```
 
 ## Dependencies

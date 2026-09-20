@@ -148,12 +148,7 @@ public class PluginManager implements PluginLoader, Closeable {
                     new File(pluginsFolder, descriptor.id()).getAbsolutePath(),
                     this,
                     classLoader,
-                    languageManager,
-                    dataStorageManager,
-                    binaryStorageManager,
-                    permissionManager,
                     audioService,
-                    commandService,
                     // built before onLoad: the plugin instance cannot answer getId() yet, the descriptor can
                     new PluginCommandAdapter(plugin, commandService),
                     new PluginPermissionAdapter(plugin, permissionManager, languageManager),
