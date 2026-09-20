@@ -26,11 +26,12 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 
 ## 3. Commands
 
-- [ ] **C1 — Split `SimpleCommandService`** (~840 lines): `CommandExecutor` (gating pipeline: enabled → guildOnly → permission → cooldown → events → execute → metrics), `JdaCommandMapper` (`createCommandData`/`buildOptionData`/subcommands), `CommandSynchronizer` (global/guild sync + debounce), `CooldownTracker`, keep `SimpleCommandService` as the façade implementing `CommandService`.
-- [ ] **C2 — Parser loop semantics.** In `processCommand`, a `CommandParseException` falls through to the next parser instead of replying with a usage error; unknown commands are only logged at debug. Define the intended behaviour (reply `commands.messages.unknown_command`? usage on parse error?) and test it.
+- [x] **C1 — Split `SimpleCommandService`.** Done 2026-09-20 (917 → ~600 lines): `CommandExecutor` (gating pipeline, cooldowns, metrics, events; `CommandExecutionTest`) and `SlashCommandDataMapper` (command model → JDA `CommandData`; `SlashCommandDataMapperTest`). Sync/debounce and prefix storage stay in the service (small, and part of the `CommandService` contract). Bug fixed on the way: subcommand options lost their choices/bounds/autocomplete on sync.
+- [x] **C2 — Parser loop semantics.** Done 2026-09-20: the first parser that recognises the event owns it (`dispatch`). Unknown command → debug log only (a `!foo` message that is not ours must stay silent); parse failure → ephemeral `commands.messages.parse_error` reply on the invoking transport; refused or failed execution → error reply on every transport (before, a slash command refused by permission/cooldown/guild-only got **no reply at all** — "The application did not respond").
 - [x] **C3 — Autocomplete.** Done 2026-09-20: `CommandListener.onCommandAutoCompleteInteraction` → `SimpleCommandService.handleAutocomplete` (≤ 25 choices, failures answer empty); API `AutocompleteProvider<T>` + `AutocompleteContext(partial, guildId, userId, options)`, legacy `Function<String, …>` adapted; `/perm` uses it for permission nodes and a real `userOption`; console parses USER options by ID. `CommandAutocompleteTest` (5).
 - [ ] **C4 — Command namespace collisions** across plugins: today the second `play` is dropped with a warning. Decide: reject at registration with a clear error, or allow per-plugin prefixes.
 - [ ] **C5 — `CommandMessageBuilder`** (~610 lines) handles three transports with flags (`differ`, `ephemeral`); consider one `ReplyTarget` strategy per transport.
+- [ ] **C6 — Subcommands are not routed.** `SlashCommandParser.parse` ignores `event.getSubcommandName()` and reads options from the parent only; `Text`/`ConsoleCommandParser` do the same. Subcommands sync to Discord (`SlashCommandDataMapper`) but execute the parent. No first-party plugin uses them yet; fix or drop the builder feature (found 2026-09-20 during C1).
 
 ## 4. Events
 

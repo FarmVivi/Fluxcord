@@ -195,6 +195,16 @@ public interface CommandContext {
     boolean isDeferred();
 
     /**
+     * Whether a reply (not a mere deferral) has already been sent through this context. The core uses it to
+     * avoid answering a failed command twice when the command already explained the failure itself.
+     *
+     * @return true once any {@code reply*} method has been called
+     */
+    default boolean hasReplied() {
+        return false;
+    }
+
+    /**
      * Checks if the reply should be ephemeral.
      *
      * @return true if the reply should be ephemeral

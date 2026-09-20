@@ -1,14 +1,10 @@
 package fr.farmvivi.fluxcord.core.command;
 
 import fr.farmvivi.fluxcord.api.command.*;
-import fr.farmvivi.fluxcord.api.command.event.CommandExecuteEvent;
-import fr.farmvivi.fluxcord.api.command.event.CommandExecutedEvent;
 import fr.farmvivi.fluxcord.api.command.exception.CommandParseException;
-import fr.farmvivi.fluxcord.api.command.exception.CommandPermissionException;
 import fr.farmvivi.fluxcord.api.command.option.AutocompleteContext;
 import fr.farmvivi.fluxcord.api.command.option.CommandOption;
 import fr.farmvivi.fluxcord.api.command.option.OptionChoice;
-import fr.farmvivi.fluxcord.api.command.option.OptionType2;
 import fr.farmvivi.fluxcord.api.config.Configuration;
 import fr.farmvivi.fluxcord.api.config.ConfigurationException;
 import fr.farmvivi.fluxcord.api.event.EventManager;
@@ -29,20 +25,14 @@ import fr.farmvivi.fluxcord.core.command.system.VersionCommand;
 import fr.farmvivi.fluxcord.core.util.Debouncer;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
-import net.dv8tion.jda.api.interactions.FileType;
-import net.dv8tion.jda.api.interactions.InteractionContextType;
-import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions;
 import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
-import net.dv8tion.jda.api.interactions.commands.OptionType;
-import net.dv8tion.jda.api.interactions.commands.build.*;
+import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -63,12 +53,8 @@ public class SimpleCommandService implements CommandService {
     private final Configuration configuration;
     private final DataStorageManager storageManager;
     // Statistics
-    private final AtomicLong commandExecutionCount = new AtomicLong();
-    private final AtomicLong successfulCommandExecutionCount = new AtomicLong();
-    private final AtomicLong failedCommandExecutionCount = new AtomicLong();
-    private final AtomicLong totalExecutionTimeNs = new AtomicLong();
+    private final CommandExecutor executor;
     // Cooldowns: userId -> (commandName -> expirationTime)
-    private final Map<String, Map<String, Long>> cooldowns = new ConcurrentHashMap<>();
     private JDA jda;
     private boolean enabled;
     private String defaultPrefix;
@@ -104,6 +90,7 @@ public class SimpleCommandService implements CommandService {
         this.defaultPrefix = defaultPrefix;
 
         this.registry = new SimpleCommandRegistry();
+        this.executor = new CommandExecutor(eventManager, languageManager, permissionManager, this::isEnabled);
 
         // Register parsers
         parsers.add(new SlashCommandParser(languageManager));
@@ -261,7 +248,7 @@ public class SimpleCommandService implements CommandService {
             }
 
             if (command.getGuildIds().contains(guild.getId())) {
-                commandData.add(createCommandData(command));
+                commandData.add(SlashCommandDataMapper.toCommandData(command));
             }
         }
 
@@ -287,7 +274,7 @@ public class SimpleCommandService implements CommandService {
             }
 
             if (command.getGuildIds().isEmpty() && !command.isSubcommand()) {
-                commandData.add(createCommandData(command));
+                commandData.add(SlashCommandDataMapper.toCommandData(command));
             }
         }
 
@@ -375,351 +362,43 @@ public class SimpleCommandService implements CommandService {
 
     @Override
     public long getCommandExecutionCount() {
-        return commandExecutionCount.get();
+        return executor.getExecutionCount();
     }
 
     @Override
     public long getSuccessfulCommandExecutionCount() {
-        return successfulCommandExecutionCount.get();
+        return executor.getSuccessCount();
     }
 
     @Override
     public long getFailedCommandExecutionCount() {
-        return failedCommandExecutionCount.get();
+        return executor.getFailureCount();
     }
 
     @Override
     public double getAverageExecutionTimeMs() {
-        long count = commandExecutionCount.get();
-        if (count == 0) {
-            return 0;
-        }
-
-        return (double) totalExecutionTimeNs.get() / (count * 1_000_000);
+        return executor.getAverageExecutionTimeMs();
     }
 
     @Override
     public boolean isOnCooldown(String userId, String commandName) {
-        Map<String, Long> userCooldowns = cooldowns.get(userId);
-        if (userCooldowns == null) {
-            return false;
-        }
-
-        Long expirationTime = userCooldowns.get(commandName);
-        if (expirationTime == null) {
-            return false;
-        }
-
-        return expirationTime > System.currentTimeMillis();
+        return executor.isOnCooldown(userId, commandName);
     }
 
     @Override
     public int getRemainingCooldown(String userId, String commandName) {
-        Map<String, Long> userCooldowns = cooldowns.get(userId);
-        if (userCooldowns == null) {
-            return 0;
-        }
-
-        Long expirationTime = userCooldowns.get(commandName);
-        if (expirationTime == null) {
-            return 0;
-        }
-
-        long remaining = expirationTime - System.currentTimeMillis();
-        return remaining > 0 ? (int) (remaining / 1000) : 0;
+        return executor.getRemainingCooldown(userId, commandName);
     }
 
     /**
-     * Executes a command with the given context.
-     * This method is called by the command listener.
+     * Runs a parsed command through the execution pipeline (see {@link CommandExecutor}).
      *
      * @param command the command to execute
      * @param context the command context
-     * @return the command result
+     * @return the command result; on refusal, its error message is localised and ready to be shown
      */
     public CommandResult executeCommand(Command command, CommandContext context) {
-        Locale locale = context.getLocale();
-
-        if (!isEnabled()) {
-            return CommandResult.error(languageManager.getString(locale, "commands.messages.system_disabled"));
-        }
-
-        // Check if the command is enabled
-        if (!command.isEnabled()) {
-            return CommandResult.error(languageManager.getString(locale, "commands.messages.disabled"));
-        }
-
-        // Determine if this is a console command (user is null)
-        boolean isConsoleCommand = context.getUser() == null;
-
-        // Check guild-only (skip for console commands - they are not bound to guilds)
-        if (command.isGuildOnly() && !context.isFromGuild() && !isConsoleCommand) {
-            return CommandResult.error(languageManager.getString(locale, "commands.messages.guild_only"));
-        }
-
-        String userId = isConsoleCommand ? "CONSOLE" : context.getUser().getId();
-
-        // Check admin permission (skip for console commands - they are trusted)
-        if (command.getPermission() != null && !isConsoleCommand) {
-            String guildId = context.getGuild().map(Guild::getId).orElse(null);
-
-            try {
-                if (!permissionManager.hasPermission(userId, guildId, command.getPermission())) {
-                    throw new CommandPermissionException(
-                            "You don't have permission to use this command", command.getPermission());
-                }
-            } catch (Exception e) {
-                return CommandResult.error(languageManager.getString(locale, "commands.messages.permission_error", e.getMessage()));
-            }
-        }
-
-        // Check cooldown (skip for console commands)
-        if (!isConsoleCommand && isOnCooldown(userId, command.getName())) {
-            int seconds = getRemainingCooldown(userId, command.getName());
-            return CommandResult.error(languageManager.getString(locale, "commands.messages.cooldown", seconds));
-        }
-
-        // Fire command execute event
-        CommandExecuteEvent executeEvent = new CommandExecuteEvent(command, context);
-        eventManager.fireEvent(executeEvent);
-
-        // Check if the event was cancelled
-        if (executeEvent.isCancelled()) {
-            return CommandResult.error(languageManager.getString(locale, "commands.messages.execution_cancelled"));
-        }
-
-        // Execute the command
-        CommandResult result;
-        long startTime = System.nanoTime();
-
-        try {
-            result = command.execute(context);
-
-            // Apply cooldown if specified (skip for console commands)
-            if (command.getCooldown() > 0 && !isConsoleCommand) {
-                applyCooldown(userId, command.getName(), command.getCooldown());
-            }
-        } catch (Exception e) {
-            logger.error("Error executing command {}: {}", command.getName(), e.getMessage(), e);
-            result = CommandResult.error(languageManager.getString(locale, "commands.messages.execution_error", e.getMessage()));
-        }
-
-        long endTime = System.nanoTime();
-        long executionTimeNs = endTime - startTime;
-
-        // Update statistics
-        commandExecutionCount.incrementAndGet();
-        totalExecutionTimeNs.addAndGet(executionTimeNs);
-
-        if (result.isSuccess()) {
-            successfulCommandExecutionCount.incrementAndGet();
-        } else {
-            failedCommandExecutionCount.incrementAndGet();
-        }
-
-        // Fire command executed event
-        CommandExecutedEvent executedEvent = new CommandExecutedEvent(
-                command, context, result, executionTimeNs / 1_000_000);
-        eventManager.fireEvent(executedEvent);
-
-        return result;
-    }
-
-    /**
-     * Applies a cooldown to a command for a user.
-     *
-     * @param userId          the user ID
-     * @param commandName     the command name
-     * @param cooldownSeconds the cooldown in seconds
-     */
-    private void applyCooldown(String userId, String commandName, int cooldownSeconds) {
-        long expirationTime = System.currentTimeMillis() + (cooldownSeconds * 1000L);
-        cooldowns.computeIfAbsent(userId, k -> new ConcurrentHashMap<>())
-                .put(commandName, expirationTime);
-    }
-
-    /**
-     * Builds JDA option data from a command option.
-     *
-     * @param option the command option
-     * @return the JDA option data
-     */
-    private OptionData buildOptionData(CommandOption<?> option) {
-        OptionData optionData = new OptionData(
-                convertOptionType(option.getType()),
-                option.getName(),
-                option.getDescription(),
-                option.isRequired()
-        );
-
-        // Add min/max values for number options
-        if (option.getMinValue() != null) {
-            if (option.getType() == OptionType2.INTEGER) {
-                optionData.setMinValue(option.getMinValue().longValue());
-            } else if (option.getType() == OptionType2.NUMBER) {
-                optionData.setMinValue(option.getMinValue().doubleValue());
-            }
-        }
-
-        if (option.getMaxValue() != null) {
-            if (option.getType() == OptionType2.INTEGER) {
-                optionData.setMaxValue(option.getMaxValue().longValue());
-            } else if (option.getType() == OptionType2.NUMBER) {
-                optionData.setMaxValue(option.getMaxValue().doubleValue());
-            }
-        }
-
-        // Add min/max length for string options
-        if (option.getMinLength() != null) {
-            optionData.setMinLength(option.getMinLength());
-        }
-
-        if (option.getMaxLength() != null) {
-            optionData.setMaxLength(option.getMaxLength());
-        }
-
-        // Add choices
-        if (!option.getChoices().isEmpty()) {
-            for (OptionChoice<?> choice : option.getChoices()) {
-                if (choice.value() instanceof String string) {
-                    optionData.addChoice(choice.name(), string);
-                } else if (choice.value() instanceof Integer integer) {
-                    optionData.addChoice(choice.name(), integer);
-                } else if (choice.value() instanceof Double doubleValue) {
-                    optionData.addChoice(choice.name(), doubleValue);
-                }
-            }
-        }
-
-        // Enable autocomplete
-        if (option.getAutocompleteProvider() != null) {
-            optionData.setAutoComplete(true);
-        }
-
-        // Restrict accepted file types for attachment options (JDA 6.6+)
-        if (option.getType() == OptionType2.ATTACHMENT && !option.getFileTypes().isEmpty()) {
-            optionData.addFileTypes(option.getFileTypes().stream()
-                    .map(SimpleCommandService::toFileType)
-                    .toList());
-        }
-
-        return optionData;
-    }
-
-    /**
-     * Converts a Fluxcord file type string to a JDA {@link FileType}.
-     * Generic categories map to JDA's constants; anything else is treated as a file extension.
-     *
-     * @param fileType a category ({@code image}, {@code video}, {@code audio}) or an extension without dot
-     * @return the JDA file type
-     */
-    private static FileType toFileType(String fileType) {
-        return switch (fileType.toLowerCase(Locale.ROOT)) {
-            case "image" -> FileType.IMAGE;
-            case "video" -> FileType.VIDEO;
-            case "audio" -> FileType.AUDIO;
-            default -> FileType.ofExtension(fileType);
-        };
-    }
-
-    /**
-     * Builds JDA subcommand data from a command.
-     *
-     * @param subcommand the subcommand
-     * @return the JDA subcommand data
-     */
-    private SubcommandData buildSubcommandData(Command subcommand) {
-        SubcommandData subcommandData = new SubcommandData(
-                subcommand.getName().toLowerCase(),
-                subcommand.getDescription()
-        );
-
-        // Add options to subcommand
-        for (CommandOption<?> option : subcommand.getOptions()) {
-            OptionData optionData = new OptionData(
-                    convertOptionType(option.getType()),
-                    option.getName(),
-                    option.getDescription(),
-                    option.isRequired()
-            );
-
-            subcommandData.addOptions(optionData);
-        }
-
-        return subcommandData;
-    }
-
-    /**
-     * Builds JDA subcommand group data from a command.
-     *
-     * @param command the command containing the subcommands
-     * @return the JDA subcommand group data
-     */
-    private SubcommandGroupData buildSubcommandGroupData(Command command) {
-        SubcommandGroupData groupData = new SubcommandGroupData(
-                command.getGroup().toLowerCase(),
-                command.getDescription()
-        );
-
-        for (Command subcommand : command.getSubcommands()) {
-            groupData.addSubcommands(buildSubcommandData(subcommand));
-        }
-
-        return groupData;
-    }
-
-    /**
-     * Creates JDA command data from a command.
-     *
-     * @param command the command
-     * @return the command data
-     */
-    private CommandData createCommandData(Command command) {
-        SlashCommandData data = Commands.slash(command.getName().toLowerCase(), command.getDescription());
-
-        // Add options
-        for (CommandOption<?> option : command.getOptions()) {
-            data.addOptions(buildOptionData(option));
-        }
-
-        // Add subcommands
-        if (!command.getSubcommands().isEmpty()) {
-            // Group subcommands if a group is specified
-            if (command.getGroup() != null) {
-                data.addSubcommandGroups(buildSubcommandGroupData(command));
-            } else {
-                // Add subcommands directly
-                for (Command subcommand : command.getSubcommands()) {
-                    data.addSubcommands(buildSubcommandData(subcommand));
-                }
-            }
-        }
-
-        // Set default permissions
-        if (command.getPermission() != null) {
-            data.setDefaultPermissions(DefaultMemberPermissions.DISABLED);
-        } else {
-            data.setDefaultPermissions(DefaultMemberPermissions.ENABLED);
-        }
-
-        // Set context types (replaces setGuildOnly)
-        if (command.isGuildOnly()) {
-            data.setContexts(InteractionContextType.GUILD);
-        } else {
-            data.setContexts(InteractionContextType.GUILD, InteractionContextType.BOT_DM, InteractionContextType.PRIVATE_CHANNEL);
-        }
-
-        return data;
-    }
-
-    /**
-     * Converts an option type to a JDA option type.
-     *
-     * @param type the option type
-     * @return the JDA option type
-     */
-    private OptionType convertOptionType(OptionType2 type) {
-        return type.getJdaType();
+        return executor.execute(command, context);
     }
 
     /**
@@ -837,8 +516,10 @@ public class SimpleCommandService implements CommandService {
     }
 
     /**
-     * Processes a command from a JDA event.
-     * This method is called by the command listener.
+     * Entry point for the three front-ends (slash interaction, prefixed message, console line). The first parser
+     * that recognises the event owns it: an unknown command is ignored, a parse failure (missing/invalid option)
+     * is answered with a usage error, a refusal or failed execution is answered with its error message, and a
+     * successful execution is left to the command (which may have replied or deferred itself).
      *
      * @param event the JDA event
      */
@@ -846,72 +527,69 @@ public class SimpleCommandService implements CommandService {
         if (!isEnabled()) {
             return;
         }
-
-        logger.debug("Processing event of type {}", event.getClass().getSimpleName());
-
-        // Find a parser that can handle this event
         for (CommandParser parser : parsers) {
-            if (parser.canParse(event)) {
-                logger.debug("Parser {} can handle event type {}", parser.getClass().getSimpleName(), event.getClass().getSimpleName());
-
-                if (parser.isCommandInvocation(event)) {
-                    logger.debug("Parser {} detected command invocation", parser.getClass().getSimpleName());
-
-                    try {
-                        // Extract the command name
-                        String commandName = parser.extractCommandName(event);
-                        logger.debug("Extracted command name: '{}'", commandName);
-
-                        // Find the command
-                        Command command = registry.getCommand(commandName)
-                                .orElseGet(() -> registry.getCommandByAlias(commandName).orElse(null));
-
-                        if (command == null) {
-                            // Unknown command - log for debugging
-                            logger.debug("Unknown command '{}' attempted via {}", commandName, parser.getClass().getSimpleName());
-                            continue;
-                        }
-
-                        logger.debug("Found command '{}', executing...", command.getName());
-
-                        // Parse the command
-                        CommandContext context = parser.parse(event, command);
-
-                        // Execute the command (commands should handle their own deferral if needed)
-                        CommandResult result = executeCommand(command, context);
-
-                        // Handle replies based on command result and context
-                        if (event instanceof net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent slashEvent) {
-                            if (slashEvent.isAcknowledged()) {
-                                // Command was deferred - check if we need to send a response
-                                if (!result.isSuccess() && result.getErrorMessage() != null) {
-                                    context.replyError(result.getErrorMessage());
-                                }
-                                // For successful commands, assume they handled their own reply through context
-                                // If they didn't, the deferred interaction will remain as "Bot is thinking..."
-                                // which is acceptable for commands that don't need explicit confirmation
-                            }
-                            // If not acknowledged, the reply was sent directly by the command
-                        } else {
-                            // For text and console commands, only reply on error if no explicit reply was sent
-                            if (!result.isSuccess() && result.getErrorMessage() != null) {
-                                context.replyError(result.getErrorMessage());
-                            }
-                        }
-
-                        logger.debug("Command '{}' executed with success: {}", command.getName(), result.isSuccess());
-
-                        // We found and executed a command, so we're done
-                        return;
-                    } catch (CommandParseException e) {
-                        // Failed to parse the command - try the next parser
-                        logger.debug("Failed to parse command with {}: {}", parser.getClass().getSimpleName(), e.getMessage());
-                    } catch (Exception e) {
-                        // Something went wrong - log and continue
-                        logger.error("Error processing command with {}: {}", parser.getClass().getSimpleName(), e.getMessage(), e);
-                    }
-                }
+            if (parser.canParse(event) && parser.isCommandInvocation(event)) {
+                dispatch(parser, event);
+                return;
             }
+        }
+    }
+
+    private void dispatch(CommandParser parser, net.dv8tion.jda.api.events.Event event) {
+        String parserName = parser.getClass().getSimpleName();
+        String commandName;
+        try {
+            commandName = parser.extractCommandName(event);
+        } catch (CommandParseException e) {
+            logger.debug("{}: not a command invocation ({})", parserName, e.getMessage());
+            return;
+        }
+
+        Command command = registry.getCommand(commandName)
+                .orElseGet(() -> registry.getCommandByAlias(commandName).orElse(null));
+        if (command == null) {
+            logger.debug("Unknown command '{}' via {}", commandName, parserName);
+            return;
+        }
+
+        CommandContext context;
+        try {
+            context = parser.parse(event, command);
+        } catch (CommandParseException e) {
+            logger.debug("{}: cannot parse '{}': {}", parserName, commandName, e.getMessage());
+            replyParseError(event, e.getMessage());
+            return;
+        } catch (Exception e) {
+            logger.error("{}: error parsing '{}': {}", parserName, commandName, e.getMessage(), e);
+            replyParseError(event, e.getMessage());
+            return;
+        }
+
+        CommandResult result = executeCommand(command, context);
+        logger.debug("Command '{}' executed with success: {}", command.getName(), result.isSuccess());
+        if (!result.isSuccess() && result.getErrorMessage() != null && !context.hasReplied()) {
+            // Refusals never touched the interaction, so this is the first (and only) reply; a deferred command
+            // that failed gets its "thinking..." placeholder edited into the error. A command that already
+            // explained its failure itself (e.g. a usage message) is left alone.
+            try {
+                context.replyError(result.getErrorMessage());
+            } catch (Exception e) {
+                logger.error("Could not reply to the failed command '{}': {}", command.getName(), e.getMessage(), e);
+            }
+        }
+    }
+
+    /** Answers an unparsable invocation on its own transport (no {@link CommandContext} exists yet). */
+    private void replyParseError(net.dv8tion.jda.api.events.Event event, String reason) {
+        Locale locale = event instanceof net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent slash
+                ? slash.getUserLocale().toLocale() : languageManager.getDefaultLocale();
+        try {
+            CommandMessageBuilder message = new CommandMessageBuilder(event, languageManager, locale);
+            message.setEphemeral(true);
+            message.error(languageManager.getString(locale, "commands.messages.parse_error", reason));
+            message.replyNow();
+        } catch (Exception e) {
+            logger.error("Could not reply with a usage error: {}", e.getMessage(), e);
         }
     }
 }

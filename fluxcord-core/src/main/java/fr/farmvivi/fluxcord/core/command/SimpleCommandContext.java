@@ -33,6 +33,7 @@ public class SimpleCommandContext implements CommandContext {
     private final Map<String, Object> options;
     private final LanguageManager languageManager;
     private boolean deferred = false;
+    private boolean replied = false;
     private boolean ephemeral = false;
 
     /**
@@ -159,6 +160,7 @@ public class SimpleCommandContext implements CommandContext {
         messageBuilder.setDiffer(deferred);
         messageBuilder.setEphemeral(ephemeral);
         messageBuilder.replyNow();
+        replied = true;
     }
 
     @Override
@@ -171,6 +173,7 @@ public class SimpleCommandContext implements CommandContext {
             messageBuilder.setComponents(components);
         }
         messageBuilder.replyNow();
+        replied = true;
     }
 
     @Override
@@ -180,6 +183,7 @@ public class SimpleCommandContext implements CommandContext {
         messageBuilder.setEphemeral(ephemeral);
         messageBuilder.addEmbeds(embed.build());
         messageBuilder.replyNow();
+        replied = true;
     }
 
     @Override
@@ -192,6 +196,7 @@ public class SimpleCommandContext implements CommandContext {
             messageBuilder.setComponents(components);
         }
         messageBuilder.replyNow();
+        replied = true;
     }
 
     @Override
@@ -201,6 +206,7 @@ public class SimpleCommandContext implements CommandContext {
         messageBuilder.setEphemeral(ephemeral);
         messageBuilder.success(message);
         messageBuilder.replyNow();
+        replied = true;
     }
 
     @Override
@@ -210,6 +216,7 @@ public class SimpleCommandContext implements CommandContext {
         messageBuilder.setEphemeral(ephemeral);
         messageBuilder.info(message);
         messageBuilder.replyNow();
+        replied = true;
     }
 
     @Override
@@ -219,6 +226,7 @@ public class SimpleCommandContext implements CommandContext {
         messageBuilder.setEphemeral(ephemeral);
         messageBuilder.warning(message);
         messageBuilder.replyNow();
+        replied = true;
     }
 
     @Override
@@ -228,6 +236,7 @@ public class SimpleCommandContext implements CommandContext {
         messageBuilder.setEphemeral(ephemeral);
         messageBuilder.error(message);
         messageBuilder.replyNow();
+        replied = true;
     }
 
     @Override
@@ -245,6 +254,11 @@ public class SimpleCommandContext implements CommandContext {
             logger.debug("Deferring reply for interaction event.");
             callback.deferReply(ephemeral).queue();
         }
+    }
+
+    @Override
+    public boolean hasReplied() {
+        return replied;
     }
 
     @Override

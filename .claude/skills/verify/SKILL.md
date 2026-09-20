@@ -68,3 +68,4 @@ Before ending a task where this skill was used: fix anything above that turned o
 
 ## Known issues / open questions
 - Confirm `mvn -q -pl fluxcord-core -am test` picks up api changes without a prior `install` (it should, same reactor).
+- 2026-09-20: `java.lang.Error: Unresolved compilation problem` in a surefire run means the IDE (ECJ) wrote stale classes into `target/test-classes`; `rm -rf fluxcord-core/target/test-classes` (or a `clean`) before `mvn test -pl fluxcord-core`.

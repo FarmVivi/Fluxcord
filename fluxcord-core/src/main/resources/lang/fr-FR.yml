@@ -19,6 +19,7 @@ commands:
     unknown_command: "Commande inconnue : {0}"
     execution_cancelled: "L'exécution de la commande a été annulée"
     execution_error: "Une erreur est survenue lors de l'exécution de la commande : {0}"
+    parse_error: "Utilisation invalide : {0}"
   help:
     title: "Commande : {0}"
     command_not_found: "Commande introuvable : {0}"

@@ -19,6 +19,7 @@ commands:
     unknown_command: "Unknown command: {0}"
     execution_cancelled: "Command execution was cancelled"
     execution_error: "An error occurred while executing the command: {0}"
+    parse_error: "Invalid usage: {0}"
   help:
     title: "Command: {0}"
     command_not_found: "Command not found: {0}"
