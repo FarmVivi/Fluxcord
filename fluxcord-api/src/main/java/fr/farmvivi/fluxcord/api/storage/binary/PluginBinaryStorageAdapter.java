@@ -11,8 +11,13 @@ public class PluginBinaryStorageAdapter {
     private final String namespace;
 
     public PluginBinaryStorageAdapter(Plugin plugin, BinaryStorageManager storageManager) {
+        this(plugin.getId(), storageManager);
+    }
+
+    /** Same, from the plugin id alone (the core builds the adapter before the plugin instance is initialised). */
+    public PluginBinaryStorageAdapter(String pluginId, BinaryStorageManager storageManager) {
         this.storageManager = storageManager;
-        this.namespace = plugin.getId();
+        this.namespace = pluginId;
     }
 
     /** @return the plugin's view of the global scope */

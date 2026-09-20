@@ -18,14 +18,14 @@ For *writing* a plugin see `fluxcord-plugin-dev`; this skill is about the engine
 | `core/plugin/PluginDescriptor.java` | record from `plugin.yml`: `id, name, main, version, description, authors, dependencies, softDependencies`. |
 | `core/plugin/DependencyResolver.java` | topological order from descriptors; `getMissingDependencies()` → those plugins are put in `failedPlugins`. |
 | `core/plugin/PluginConfiguration.java` | extends `YamlConfiguration`; copies default `config.yml` from the jar to `plugins/<id>/config.yml`; `initializeMigration(plugin)` uses `Plugin.getMigrationClass()` or the plugin itself if it implements `ConfigurableMigrationPlugin`, driven by `config_version`. |
-| `core/plugin/PluginContextImpl.java` | the `PluginContext` handed to `onLoad`: id/name/version, logger named after the id, every core service, data folder `plugins/<id>`. |
-| `api/plugin/AbstractPlugin.java` | base class; `onLoad` captures services and builds the five `Plugin*Adapter`s (namespaced by id). |
+| `core/plugin/PluginContextImpl.java` | the `PluginContext` handed to `onLoad`: id/name/version, logger named after the id, every core service, data folder `plugins/<id>`, and (P5) the five plugin-scoped views `getCommands()/getPermissions()/getLanguage()/getStorage()/getBinaryStorage()` — built by `PluginManager` from the **descriptor** id/name because the plugin instance cannot answer `getId()` before `onLoad`. |
+| `api/plugin/AbstractPlugin.java` | base class; `onLoad` captures services and takes the adapters from the context (builds its own only when the context returns null — mocked contexts in unit tests). |
 | `api/plugin/PluginLifecycle.java` | `DISCOVERED → LOADED → PRE_ENABLING → ENABLING → POST_ENABLING → ENABLED → PRE_DISABLING → DISABLING → POST_DISABLING → DISABLED`, plus `ERROR`. |
 
 ## Boot flow (called from `Fluxcord.startBot`)
 `loadPlugins()` = `scanPlugins()` (parse every `plugins/*.jar` plugin.yml) → resolver order → `loadPlugin(jarPath)` for each → `plugins.put(id, plugin)`.
 `loadPlugin` per jar: new `PluginClassLoader` → instantiate `main` → fire `PluginLoadingEvent` → build `PluginConfiguration` + `PluginContextImpl` → `plugin.setLifecycle(LOADED)`; `plugin.onLoad(ctx)` → `pluginConfig.initializeMigration(plugin)` → load `lang/*.yml` from the jar then from `plugins/<id>/lang/` into namespace `id.toLowerCase()` → fire `PluginLoadedEvent`.
-Then, phase by phase over *all* plugins in dependency order: `preEnablePlugins()` (before JDA connects — plugins may still edit `JDABuilder`), `enablePlugins()`, `postEnablePlugins()` (sets `ENABLED`, fires `PluginEnabledEvent`). Each phase only touches plugins in the *previous* state, so a failure in one phase silently drops the plugin from the next ones (it is added to `failedPlugins`, state `ERROR`).
+Then, phase by phase over *all* plugins in dependency order: `preEnablePlugins()` (before JDA connects — plugins may still edit `JDABuilder`), `enablePlugins()`, `postEnablePlugins()` (sets `ENABLED`, fires `PluginEnabledEvent`). Each phase only touches plugins in the *previous* state. A failure (load or any phase) goes through `markFailed(id)` (P4): `ERROR`, `releaseResources`, and every *hard* dependant (transitively, via the descriptors) is failed the same way before its turn comes — soft dependants carry on. `getFailedPlugins()` lists them.
 
 Shutdown: `close()` = `preDisablePlugins()` → `disablePlugins()` → `postDisablePlugins()` → `cleanupResources()` (unregister event listeners, close classloaders, clear maps).
 
@@ -33,7 +33,7 @@ Shutdown: `close()` = `preDisablePlugins()` → `disablePlugins()` → `postDisa
 - **Two lifecycle paths, one implementation** (P1 done 2026-09-20): the phased `*Plugins()` methods (boot/shutdown, needed for the pre-connect/post-connect split) and `enablePlugin()`/`disablePlugin()` (reload) both go through `executeLifecyclePhase`, `markEnabled`, `markDisabled` and `releaseResources` (events, permissions, audio, commands). Add new per-plugin cleanup to `releaseResources` only.
 - `reloadPlugins()` (all) disconnects and reconnects JDA; it relies on `DiscordAPI.connect()` being re-entrant.
 - Plugin classloader is closed on reload/shutdown; any thread or JDA listener the plugin left registered keeps the old classes alive (leak + `ClassCastException` on reload). JDA listeners added by plugins are **not** removed by the core — plugins must do it in `onDisable`.
-- `PluginContextImpl` gives the *shared* service instances; namespacing is done by the adapters in `AbstractPlugin`, not by the context. A plugin can bypass namespacing by calling `context.getCommandService()` directly.
+- `PluginContextImpl` still exposes the *shared* managers next to the scoped views; a plugin can bypass namespacing by calling `context.getCommandService()` directly (kept on purpose for cross-plugin integration).
 - Language namespace is registered twice defensively (`onLoad` via `PluginLanguageAdapter`, then `loadPlugin`). Harmless but a sign the responsibility is unclear.
 - `PluginConfiguration` ignores the manager'"'"'s `pluginsFolder`: it resolves `plugins/<id>/config.yml` from `-Dplugins.dir` / `DISCORD_PLUGINS_DIR` / cwd `plugins`, while `PluginContext.getDataFolder()` uses the manager'"'"'s folder. Same place only because `Fluxcord` passes `new File("plugins")`.
 - `System.exit` is never called here (only in `Fluxcord`); errors are logged and the plugin goes `ERROR`. Check the log line `Plugin loading complete: X loaded successfully, Y failed`.
@@ -51,6 +51,7 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 - 2026-09-20: `PluginClassLoaderTest` builds a real jar in a `@TempDir` by copying bytecode of classes from the test classpath (`com.example.fixture.SamplePluginClass`); fixture classes must live outside `fr.farmvivi.fluxcord.{api,core}` or they are parent-first by design. Reading resources through `url.openStream()` caches the `JarFile` and locks the jar on Windows even after `close()` — use `setUseCaches(false)`.
 - 2026-09-20 (T1): `PluginManagerTest` confirmed and fixed: `reloadPlugin` stored the new instance under `getName()` (so `getPlugin(id)` was null after a reload and a second entry appeared), and `loadPlugin` left the class loader open when the main class failed to load (jar locked on Windows). Both fixed.
 
+- 2026-09-20 (P4/P5): a dependant of a failed plugin used to be enabled anyway (and a dependant of a plugin that failed to *load* was loaded too); `markFailed` cascades now. Adapters (`PluginLanguageAdapter`, `PluginDataStorageAdapter`, `PluginBinaryStorageAdapter`) got `(pluginId, …)` constructors because the context is built before `onLoad`.
+
 ## Known issues / open questions
 - P3 done except the fail-fast on bundled api classes (now harmless).
-- Should `failedPlugins` block dependants? Currently a dependant of a failed plugin is still enabled (only *missing* deps are handled by the resolver).

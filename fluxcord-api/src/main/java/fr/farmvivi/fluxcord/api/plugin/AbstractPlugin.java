@@ -77,12 +77,18 @@ public abstract class AbstractPlugin implements Plugin {
         this.audioService = context.getAudioService();
         this.commandService = context.getCommandService();
 
-        // Initialize plugin-specific managers
-        this.pluginLanguageAdapter = new PluginLanguageAdapter(this, languageManager);
-        this.pluginPermissionAdapter = new PluginPermissionAdapter(this, permissionManager, languageManager);
-        this.pluginDataStorageAdapter = new PluginDataStorageAdapter(this, dataStorageManager);
-        this.pluginBinaryStorageAdapter = new PluginBinaryStorageAdapter(this, binaryStorageManager);
-        this.pluginCommandAdapter = new PluginCommandAdapter(this, commandService);
+        // Plugin-scoped views come from the context (P5); a context that does not provide them (a bare mock in
+        // a unit test) gets them built here from the shared managers
+        this.pluginLanguageAdapter = context.getLanguage() != null
+                ? context.getLanguage() : new PluginLanguageAdapter(this, languageManager);
+        this.pluginPermissionAdapter = context.getPermissions() != null
+                ? context.getPermissions() : new PluginPermissionAdapter(this, permissionManager, languageManager);
+        this.pluginDataStorageAdapter = context.getStorage() != null
+                ? context.getStorage() : new PluginDataStorageAdapter(this, dataStorageManager);
+        this.pluginBinaryStorageAdapter = context.getBinaryStorage() != null
+                ? context.getBinaryStorage() : new PluginBinaryStorageAdapter(this, binaryStorageManager);
+        this.pluginCommandAdapter = context.getCommands() != null
+                ? context.getCommands() : new PluginCommandAdapter(this, commandService);
 
         // Create data directory if it doesn't exist
         File dataDir = new File(dataFolder);

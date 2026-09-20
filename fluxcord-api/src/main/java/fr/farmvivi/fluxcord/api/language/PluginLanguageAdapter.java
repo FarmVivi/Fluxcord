@@ -14,7 +14,7 @@ public class PluginLanguageAdapter {
     private static final Logger logger = LoggerFactory.getLogger(PluginLanguageAdapter.class);
     private final LanguageManager languageManager;
     private final String namespace;
-    private final Plugin plugin;
+    private final String pluginName;
 
     /**
      * Creates a new plugin language manager.
@@ -23,16 +23,24 @@ public class PluginLanguageAdapter {
      * @param languageManager the core language manager
      */
     public PluginLanguageAdapter(Plugin plugin, LanguageManager languageManager) {
-        this.plugin = plugin;
+        this(plugin.getId(), plugin.getName(), languageManager);
+    }
+
+    /**
+     * Same, from the plugin id and name alone (the core builds the adapter before the plugin instance is
+     * initialised). Registers the namespace {@code pluginId}.
+     */
+    public PluginLanguageAdapter(String pluginId, String pluginName, LanguageManager languageManager) {
         this.languageManager = languageManager;
-        this.namespace = plugin.getId();
+        this.namespace = pluginId;
+        this.pluginName = pluginName;
 
         // Register the namespace automatically
         boolean registered = languageManager.registerNamespace(namespace);
         if (registered) {
-            logger.debug("Registered plugin namespace '{}' for plugin {}", namespace, plugin.getName());
+            logger.debug("Registered plugin namespace '{}' for plugin {}", namespace, pluginName);
         } else {
-            logger.debug("Plugin namespace '{}' already registered for plugin {}", namespace, plugin.getName());
+            logger.debug("Plugin namespace '{}' already registered for plugin {}", namespace, pluginName);
         }
     }
 
@@ -46,7 +54,7 @@ public class PluginLanguageAdapter {
     public String getString(String key) {
         String fullKey = namespace + ":" + key;
         if (logger.isDebugEnabled()) {
-            logger.debug("[{}] getString key='{}' -> '{}'", plugin.getName(), key, fullKey);
+            logger.debug("[{}] getString key='{}' -> '{}'", pluginName, key, fullKey);
         }
         return languageManager.getString(fullKey);
     }
@@ -62,7 +70,7 @@ public class PluginLanguageAdapter {
     public String getString(String key, Object... args) {
         String fullKey = namespace + ":" + key;
         if (logger.isDebugEnabled()) {
-            logger.debug("[{}] getString key='{}' with {} arg(s) -> '{}'", plugin.getName(), key, args == null ? 0 : args.length, fullKey);
+            logger.debug("[{}] getString key='{}' with {} arg(s) -> '{}'", pluginName, key, args == null ? 0 : args.length, fullKey);
         }
         return languageManager.getString(fullKey, args);
     }
@@ -78,7 +86,7 @@ public class PluginLanguageAdapter {
     public String getString(Locale locale, String key) {
         String fullKey = namespace + ":" + key;
         if (logger.isDebugEnabled()) {
-            logger.debug("[{}] getString locale={}, key='{}' -> '{}'", plugin.getName(), locale.toLanguageTag(), key, fullKey);
+            logger.debug("[{}] getString locale={}, key='{}' -> '{}'", pluginName, locale.toLanguageTag(), key, fullKey);
         }
         return languageManager.getString(locale, fullKey);
     }
@@ -95,7 +103,7 @@ public class PluginLanguageAdapter {
     public String getString(Locale locale, String key, Object... args) {
         String fullKey = namespace + ":" + key;
         if (logger.isDebugEnabled()) {
-            logger.debug("[{}] getString locale={}, key='{}' with {} arg(s) -> '{}'", plugin.getName(), locale.toLanguageTag(), key, args == null ? 0 : args.length, fullKey);
+            logger.debug("[{}] getString locale={}, key='{}' with {} arg(s) -> '{}'", pluginName, locale.toLanguageTag(), key, args == null ? 0 : args.length, fullKey);
         }
         return languageManager.getString(locale, fullKey, args);
     }

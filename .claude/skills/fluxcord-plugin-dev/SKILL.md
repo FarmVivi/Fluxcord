@@ -49,6 +49,8 @@ Engine internals: `fluxcord-plugin-system`. This skill is the plugin author's vi
 ## Improvement loop (mandatory — see /skill-maintenance)
 Verify what you used against the code, fix or delete wrong lines, add dated **Learnings**, prune resolved **Known issues**. Keep < 300 lines.
 
+- 2026-09-20 (P5): `PluginContext` now also offers the plugin-scoped views directly (`getCommands()`, `getPermissions()`, `getLanguage()`, `getStorage()`, `getBinaryStorage()`); `AbstractPlugin.getPlugin*()` return the same instances. Plugins that don't extend `AbstractPlugin` can use them instead of rebuilding adapters.
+
 ## Learnings
 - 2026-09-19: Initial audit.
 

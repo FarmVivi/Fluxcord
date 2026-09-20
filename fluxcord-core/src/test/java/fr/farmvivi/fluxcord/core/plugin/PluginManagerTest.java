@@ -6,7 +6,9 @@ import fr.farmvivi.fluxcord.api.discord.DiscordAPI;
 import fr.farmvivi.fluxcord.api.event.EventHandler;
 import fr.farmvivi.fluxcord.api.permissions.Permission;
 import fr.farmvivi.fluxcord.api.permissions.PermissionDefault;
+import fr.farmvivi.fluxcord.api.plugin.AbstractPlugin;
 import fr.farmvivi.fluxcord.api.plugin.Plugin;
+import fr.farmvivi.fluxcord.api.plugin.PluginContext;
 import fr.farmvivi.fluxcord.api.plugin.PluginLifecycle;
 import fr.farmvivi.fluxcord.api.plugin.events.PluginEnableEvent;
 import fr.farmvivi.fluxcord.api.plugin.events.PluginLifecycleChangeEvent;
@@ -112,6 +114,21 @@ class PluginManagerTest {
     }
 
     @Test
+    void contextHandsOutPluginScopedViews() throws Exception {
+        PluginJars.plugin(pluginsFolder.toPath(), "alpha");
+        boot();
+        AbstractPlugin alpha = (AbstractPlugin) manager.getPlugin("alpha");
+        PluginContext context = alpha.getContext();
+
+        assertSame(context.getStorage(), alpha.getPluginDataStorage(), "AbstractPlugin uses the context's views (P5)");
+        assertSame(context.getCommands(), alpha.getPluginCommandAdapter());
+        assertSame(context.getPermissions(), alpha.getPluginPermissionManager());
+        assertSame(context.getLanguage(), alpha.getPluginLanguageManager());
+        assertSame(context.getBinaryStorage(), alpha.getPluginBinaryStorage());
+        assertEquals("alpha.", context.getStorage().getGuildStorage("g").getPrefix());
+    }
+
+    @Test
     void shutdownDisablesInReverseOrderAndReleasesEverything() throws Exception {
         PluginJars.plugin(pluginsFolder.toPath(), "alpha");
         PluginJars.plugin(pluginsFolder.toPath(), "beta", "dependencies: [alpha]\n");
@@ -181,6 +198,38 @@ class PluginManagerTest {
         assertEquals(PluginLifecycle.ERROR, manager.getPlugin("alpha").getLifecycle());
         assertEquals(List.of("onLoad", "onPreEnable", "onEnable"), PluginCalls.of("alpha"));
         assertEquals(PluginLifecycle.ENABLED, manager.getPlugin("beta").getLifecycle());
+    }
+
+    @Test
+    void aFailedHardDependencyTakesItsDependantsDownWithIt() throws Exception {
+        PluginJars.plugin(pluginsFolder.toPath(), "alpha");
+        PluginJars.plugin(pluginsFolder.toPath(), "beta", "dependencies: [alpha]\n");
+        PluginJars.plugin(pluginsFolder.toPath(), "gamma", "dependencies: [beta]\n");
+        PluginJars.plugin(pluginsFolder.toPath(), "delta", "soft-dependencies: [alpha]\n");
+        System.setProperty("fixture.fail", "alpha:onEnable");
+
+        boot();
+
+        assertEquals(PluginLifecycle.ERROR, manager.getPlugin("alpha").getLifecycle());
+        assertEquals(PluginLifecycle.ERROR, manager.getPlugin("beta").getLifecycle(), "hard dependant");
+        assertEquals(PluginLifecycle.ERROR, manager.getPlugin("gamma").getLifecycle(), "transitive dependant");
+        assertEquals(PluginLifecycle.ENABLED, manager.getPlugin("delta").getLifecycle(), "soft dependency: unaffected");
+        assertEquals(List.of("onLoad", "onPreEnable"), PluginCalls.of("beta"), "never enabled after alpha failed");
+        assertEquals(List.of("onLoad", "onPreEnable"), PluginCalls.of("gamma"));
+        assertTrue(manager.getFailedPlugins().containsAll(List.of("alpha", "beta", "gamma")));
+    }
+
+    @Test
+    void aDependantOfAPluginThatFailedToLoadIsNotLoaded() throws Exception {
+        PluginJars.build(pluginsFolder.toPath(), "alpha.jar", List.of(),
+                java.util.Map.of("plugin.yml", "id: alpha\nname: a\nversion: 1\nmain: com.example.Missing\n"));
+        PluginJars.plugin(pluginsFolder.toPath(), "beta", "dependencies: [alpha]\n");
+
+        boot();
+
+        assertNull(manager.getPlugin("beta"));
+        assertTrue(PluginCalls.of("beta").isEmpty(), "never instantiated");
+        assertTrue(manager.getFailedPlugins().containsAll(List.of("alpha", "beta")));
     }
 
     @Test

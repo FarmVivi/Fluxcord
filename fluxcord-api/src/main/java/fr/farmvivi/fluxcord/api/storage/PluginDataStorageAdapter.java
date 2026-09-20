@@ -12,8 +12,13 @@ public class PluginDataStorageAdapter {
     private final String namespace;
 
     public PluginDataStorageAdapter(Plugin plugin, DataStorageManager storageManager) {
+        this(plugin.getId(), storageManager);
+    }
+
+    /** Same, from the plugin id alone (the core builds the adapter before the plugin instance is initialised). */
+    public PluginDataStorageAdapter(String pluginId, DataStorageManager storageManager) {
         this.storageManager = storageManager;
-        this.namespace = plugin.getId();
+        this.namespace = pluginId;
     }
 
     /** @return the plugin's view of the global scope */

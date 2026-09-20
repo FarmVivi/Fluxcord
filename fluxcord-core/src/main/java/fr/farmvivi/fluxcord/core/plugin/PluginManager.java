@@ -12,6 +12,11 @@ import fr.farmvivi.fluxcord.api.plugin.PluginLoader;
 import fr.farmvivi.fluxcord.api.plugin.events.*;
 import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
 import fr.farmvivi.fluxcord.api.storage.binary.BinaryStorageManager;
+import fr.farmvivi.fluxcord.api.command.PluginCommandAdapter;
+import fr.farmvivi.fluxcord.api.permissions.PluginPermissionAdapter;
+import fr.farmvivi.fluxcord.api.language.PluginLanguageAdapter;
+import fr.farmvivi.fluxcord.api.storage.PluginDataStorageAdapter;
+import fr.farmvivi.fluxcord.api.storage.binary.PluginBinaryStorageAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
@@ -148,7 +153,13 @@ public class PluginManager implements PluginLoader, Closeable {
                     binaryStorageManager,
                     permissionManager,
                     audioService,
-                    commandService
+                    commandService,
+                    // built before onLoad: the plugin instance cannot answer getId() yet, the descriptor can
+                    new PluginCommandAdapter(plugin, commandService),
+                    new PluginPermissionAdapter(plugin, permissionManager, languageManager),
+                    new PluginLanguageAdapter(descriptor.id(), descriptor.name(), languageManager),
+                    new PluginDataStorageAdapter(descriptor.id(), dataStorageManager),
+                    new PluginBinaryStorageAdapter(descriptor.id(), binaryStorageManager)
             );
 
             // Initialize the plugin (this will register the plugin namespace via PluginLanguageAdapter)
@@ -409,12 +420,12 @@ public class PluginManager implements PluginLoader, Closeable {
                     plugins.put(pluginName, plugin);
                     logger.info("Loaded plugin: {} v{}", pluginName, pluginDescriptors.get(pluginName).version());
                 } else {
-                    failedPlugins.add(pluginName);
                     logger.error("Failed to load plugin: {}", pluginName);
+                    markFailed(pluginName);
                 }
             } catch (Exception e) {
-                failedPlugins.add(pluginName);
                 logger.error("Error loading plugin: {}", pluginName, e);
+                markFailed(pluginName);
             }
         }
 
@@ -435,8 +446,7 @@ public class PluginManager implements PluginLoader, Closeable {
                     executeLifecyclePhase(plugin, PluginLifecycle.PRE_ENABLING, Plugin::onPreEnable);
                 } catch (Exception e) {
                     logger.error("Error pre-enabling plugin: {} ({})", plugin.getId(), plugin.getName(), e);
-                    failedPlugins.add(plugin.getId());
-                    plugin.setLifecycle(PluginLifecycle.ERROR);
+                    markFailed(plugin.getId());
                 }
             }
         }
@@ -453,8 +463,7 @@ public class PluginManager implements PluginLoader, Closeable {
                     executeLifecyclePhase(plugin, PluginLifecycle.ENABLING, Plugin::onEnable);
                 } catch (Exception e) {
                     logger.error("Error enabling plugin: {} ({})", plugin.getId(), plugin.getName(), e);
-                    failedPlugins.add(plugin.getId());
-                    plugin.setLifecycle(PluginLifecycle.ERROR);
+                    markFailed(plugin.getId());
                 }
             }
         }
@@ -472,8 +481,7 @@ public class PluginManager implements PluginLoader, Closeable {
                     markEnabled(plugin);
                 } catch (Exception e) {
                     logger.error("Error post-enabling plugin: {} ({})", plugin.getId(), plugin.getName(), e);
-                    failedPlugins.add(plugin.getId());
-                    plugin.setLifecycle(PluginLifecycle.ERROR);
+                    markFailed(plugin.getId());
                 }
             }
         }
@@ -854,6 +862,38 @@ public class PluginManager implements PluginLoader, Closeable {
             eventManager.fireEvent(new PluginDisabledEvent(plugin));
         }
         logger.info("Plugin fully disabled: {} ({})", plugin.getId(), plugin.getName());
+    }
+
+    /**
+     * Records a boot failure: the plugin goes {@code ERROR}, whatever it registered so far is released, and every
+     * plugin that hard-depends on it (transitively) is failed the same way — a dependant cannot run without its
+     * dependency, and the resolver only knows about <em>missing</em> dependencies, not failed ones. Soft
+     * dependants are left alone. Idempotent.
+     */
+    private void markFailed(String pluginId) {
+        if (!failedPlugins.add(pluginId)) {
+            return;
+        }
+        Plugin plugin = plugins.get(pluginId);
+        if (plugin != null) {
+            plugin.setLifecycle(PluginLifecycle.ERROR);
+            try {
+                releaseResources(plugin);
+            } catch (Exception e) {
+                logger.error("Error releasing resources of failed plugin {}", pluginId, e);
+            }
+        }
+        for (PluginDescriptor descriptor : pluginDescriptors.values()) {
+            if (descriptor.dependencies().contains(pluginId) && !failedPlugins.contains(descriptor.id())) {
+                logger.error("Plugin {} cannot run: its dependency {} failed", descriptor.id(), pluginId);
+                markFailed(descriptor.id());
+            }
+        }
+    }
+
+    /** Ids of the plugins that failed to load or enable during this boot (including dependants of failed ones). */
+    public Set<String> getFailedPlugins() {
+        return Collections.unmodifiableSet(failedPlugins);
     }
 
     private void executeLifecyclePhase(Plugin plugin, PluginLifecycle newLifecycle, PluginAction action) {
