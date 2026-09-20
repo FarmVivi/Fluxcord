@@ -358,4 +358,62 @@ class AudioPipelineTest {
         assertNull(pipeline.getSendHandler(tts));
         assertEquals(1, b.provideCalls);
     }
+
+    // ---- receive side: the pipeline is the single JDA receive handler and fans out to the plugins' ----------
+
+    @Test
+    void receiveHandlersAreFannedOutByWhatEachOneAccepts() {
+        net.dv8tion.jda.api.audio.AudioReceiveHandler combinedOnly = mock(net.dv8tion.jda.api.audio.AudioReceiveHandler.class);
+        when(combinedOnly.canReceiveCombined()).thenReturn(true);
+        net.dv8tion.jda.api.audio.AudioReceiveHandler encodedOnly = mock(net.dv8tion.jda.api.audio.AudioReceiveHandler.class);
+        when(encodedOnly.canReceiveEncoded()).thenReturn(true);
+
+        assertFalse(pipeline.canReceiveCombined());
+        assertFalse(pipeline.canReceiveUser());
+        assertFalse(pipeline.canReceiveEncoded());
+
+        pipeline.registerReceiveHandler(music, combinedOnly);
+        pipeline.registerReceiveHandler(tts, encodedOnly);
+        assertTrue(pipeline.canReceiveCombined());
+        assertFalse(pipeline.canReceiveUser(), "nobody asked for per-user audio");
+        assertTrue(pipeline.canReceiveEncoded());
+
+        net.dv8tion.jda.api.audio.CombinedAudio combined = mock(net.dv8tion.jda.api.audio.CombinedAudio.class);
+        net.dv8tion.jda.api.audio.UserAudio userAudio = mock(net.dv8tion.jda.api.audio.UserAudio.class);
+        net.dv8tion.jda.api.audio.OpusPacket packet = mock(net.dv8tion.jda.api.audio.OpusPacket.class);
+        pipeline.handleCombinedAudio(combined);
+        pipeline.handleUserAudio(userAudio);
+        pipeline.handleEncodedAudio(packet);
+
+        verify(combinedOnly).handleCombinedAudio(combined);
+        verify(combinedOnly, never()).handleEncodedAudio(any());
+        verify(encodedOnly).handleEncodedAudio(packet);
+        verify(encodedOnly, never()).handleCombinedAudio(any());
+        verify(combinedOnly, never()).handleUserAudio(any());
+
+        pipeline.deregisterReceiveHandler(music);
+        assertFalse(pipeline.canReceiveCombined());
+        assertFalse(pipeline.hasReceiveHandler(music));
+        assertTrue(pipeline.hasReceiveHandler(tts));
+    }
+
+    @Test
+    void aReadOnlyPcmBufferIsConvertedThroughATemporaryCopy() {
+        AudioSendHandler readOnly = new AudioSendHandler() {
+            @Override public boolean canProvide() { return true; }
+            @Override public boolean isOpus() { return false; }
+            @Override public ByteBuffer provide20MsAudio() {
+                ByteBuffer pcm = ByteBuffer.allocate(FRAME_BYTES).order(ByteOrder.LITTLE_ENDIAN);
+                while (pcm.hasRemaining()) {
+                    pcm.putShort((short) 1000);
+                }
+                return pcm.flip().asReadOnlyBuffer(); // no backing array exposed
+            }
+        };
+        pipeline.registerSendHandler(music, readOnly, 100, 50);
+
+        ByteBuffer out = frame();
+
+        assertEquals(1000, firstSampleBigEndian(out));
+    }
 }

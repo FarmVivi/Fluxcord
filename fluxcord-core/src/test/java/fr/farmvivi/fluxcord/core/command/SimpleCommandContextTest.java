@@ -18,6 +18,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -124,5 +125,12 @@ class SimpleCommandContextTest {
         ctx.reply("plain");
         String out = console.toString(StandardCharsets.UTF_8);
         assertTrue(out.contains("careful") && out.contains("fyi") && out.contains("[CONSOLE] plain"), out);
+
+        console.reset();
+        ctx.reply("with-components", List.of());
+        ctx.replyEmbed(new net.dv8tion.jda.api.EmbedBuilder().setTitle("T").setDescription("embed-body"));
+        ctx.replyEmbed(new net.dv8tion.jda.api.EmbedBuilder().setDescription("embed-2"), null);
+        out = console.toString(StandardCharsets.UTF_8);
+        assertTrue(out.contains("with-components") && out.contains("embed-body") && out.contains("embed-2"), out);
     }
 }
