@@ -52,7 +52,7 @@ plugin focuses on specific functionality while being minimal, complete, and prod
 
 **Features to Demonstrate**:
 
-- Discord event listeners (@EventHandler)
+- Discord event listeners (JDA `ListenerAdapter` via `addDiscordListeners`) and Fluxcord events (`@EventHandler`)
 - Event priorities and execution order
 - Event filtering and conditional processing
 - Plugin lifecycle events

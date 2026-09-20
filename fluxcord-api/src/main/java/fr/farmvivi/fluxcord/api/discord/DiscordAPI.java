@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.api.discord;
 
+import fr.farmvivi.fluxcord.api.plugin.Plugin;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.OnlineStatus;
@@ -148,4 +149,22 @@ public interface DiscordAPI {
      * @return true if the current presence matches the shutdown presence
      */
     boolean isShutdownPresence();
+
+    /**
+     * Registers JDA event listeners (e.g. a {@code ListenerAdapter}) on behalf of a plugin. Works before the
+     * connection (added to the builder) and after it (added to the live JDA, e.g. on a hot reload). The core
+     * removes them when the plugin is disabled, so the plugin does not have to.
+     *
+     * @param plugin    the owning plugin
+     * @param listeners the JDA listeners
+     */
+    void addEventListeners(Plugin plugin, Object... listeners);
+
+    /**
+     * Removes every JDA listener registered through {@link #addEventListeners} by this plugin.
+     *
+     * @param plugin the plugin
+     * @return the number of listeners removed
+     */
+    int removeEventListeners(Plugin plugin);
 }

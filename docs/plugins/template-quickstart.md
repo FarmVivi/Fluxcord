@@ -211,7 +211,9 @@ public CommandResult execute(CommandContext context) {
 **File**: `events/ExampleEventListener.java`
 
 ```java
-@EventHandler(priority = EventPriority.NORMAL)
+// ExampleEventListener extends ListenerAdapter: Discord events are JDA listener overrides,
+// registered with addDiscordListeners(listener); @EventHandler is only for Fluxcord events.
+@Override
 public void onMessageReceived(MessageReceivedEvent event) {
     // Skip bot messages
     if (event.getAuthor().isBot()) {
@@ -305,7 +307,7 @@ commandService.registerCommand(this, builder -> {
 ### 2. Adding New Events
 
 1. Create event listener class in `events/` package
-2. Add event handler methods with `@EventHandler`
+2. Add `ListenerAdapter` overrides for Discord events and `@EventHandler` methods for Fluxcord events
 3. Register listener in main plugin class:
 
 ```java

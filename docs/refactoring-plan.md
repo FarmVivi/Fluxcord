@@ -35,7 +35,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 ## 4. Events
 
 - [x] **E1 — Dispatch semantics.** Done 2026-09-20: dispatch is polymorphic (concrete class first, then supertypes, per priority); `ignoreCancelled` now has Bukkit semantics (`true` = skipped once cancelled, default `false` = always called); handler lists are copy-on-write (registration from the main thread raced with `fireEvent` from storage/async threads); priority Javadoc fixed (LOWEST → MONITOR). Open: virtual threads for `fireEventAsync`.
-- [ ] **E2 — JDA listener ergonomics.** Add `DiscordAPI.addEventListener(Plugin, Object...)` that registers on builder or JDA depending on state and removes on disable; fix `docs/*.md`, `plugin-template` and `README` which show the non-working `@EventHandler` on `MessageReceivedEvent`.
+- [x] **E2 — JDA listener ergonomics.** Done 2026-09-20: `DiscordAPI.addEventListeners(plugin, ...)`/`removeEventListeners(plugin)` (builder + live JDA, tracked per plugin id, released by `PluginManager.releaseResources`), `AbstractPlugin.addDiscordListeners(...)`; music/example/ai-audio plugins and the template use it; docs (`plugin-development`, `core-features`, `template-quickstart`, READMEs) rewritten — `@EventHandler` is documented as Fluxcord-events-only.
 
 ## 5. Storage
 

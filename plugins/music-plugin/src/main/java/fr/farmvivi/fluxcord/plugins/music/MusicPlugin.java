@@ -61,17 +61,13 @@ public class MusicPlugin extends AbstractPlugin {
         // Load configuration
         loadConfiguration();
 
-        // Register JDA event listeners directly (Discord events)
+        // Discord events go through JDA listeners (registered on the builder or the live JDA by the core, and
+        // removed automatically when the plugin is disabled)
         try {
-            // Register on builder (pre-connect) and on live JDA if already connected
-            MusicButtonListener buttonListener = new MusicButtonListener(this);
-            MusicModalListener modalListener = new MusicModalListener(this);
-            MusicReadyListener readyListener = new MusicReadyListener(this);
-            MusicVoiceListener voiceListener = new MusicVoiceListener(this);
-            getContext().getDiscordAPI().getBuilder().addEventListeners(buttonListener, modalListener, readyListener, voiceListener);
+            addDiscordListeners(new MusicButtonListener(this), new MusicModalListener(this),
+                    new MusicReadyListener(this), new MusicVoiceListener(this));
             JDA jda = getContext().getDiscordAPI().getJDA();
             if (jda != null) {
-                jda.addEventListener(buttonListener, modalListener, readyListener, voiceListener);
                 // JDA already connected (e.g. plugin hot-reload): ReadyEvent won't fire again,
                 // so restore persisted playback right away.
                 if (jda.getStatus() == JDA.Status.CONNECTED) {

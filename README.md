@@ -245,9 +245,12 @@ public class MyAwesomePlugin extends AbstractPlugin {
         ctx.reply("Hello from my plugin!");
     }
     
-    @EventHandler
-    public void onMessageReceived(MessageReceivedEvent event) {
-        // Handle Discord events
+    private void setupEventHandlers() {
+        // Discord events: a JDA listener, removed automatically when the plugin is disabled
+        addDiscordListeners(new ListenerAdapter() {
+            @Override
+            public void onMessageReceived(MessageReceivedEvent event) { /* ... */ }
+        });
     }
 }
 ```

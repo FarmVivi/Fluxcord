@@ -5,12 +5,19 @@ import fr.farmvivi.fluxcord.api.event.EventPriority;
 import fr.farmvivi.fluxcord.api.plugin.AbstractPlugin;
 import fr.farmvivi.fluxcord.api.plugin.events.PluginEnableEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
+import net.dv8tion.jda.api.hooks.ListenerAdapter;
 
 /**
- * Example event listener demonstrating Discord event handling.
- * This listener can be enabled/disabled via configuration.
+ * Example listener showing the two event buses:
+ * <ul>
+ *   <li>Discord events (JDA): override {@link ListenerAdapter} methods and register with
+ *       {@code addDiscordListeners(listener)} — {@code @EventHandler} never receives JDA events;</li>
+ *   <li>Fluxcord events (plugins, storage, permissions, i18n, audio, commands): {@code @EventHandler}
+ *       methods, registered with {@code eventManager.registerListener(listener, plugin)}.</li>
+ * </ul>
+ * The same object can do both, as here.
  */
-public class ExampleEventListener {
+public class ExampleEventListener extends ListenerAdapter {
 
     private final AbstractPlugin plugin;
 
@@ -19,10 +26,9 @@ public class ExampleEventListener {
     }
 
     /**
-     * Example Discord message event handler.
-     * Demonstrates event handling with configuration checks.
+     * Discord message event (JDA bus): a {@link ListenerAdapter} override.
      */
-    @EventHandler(priority = EventPriority.NORMAL)
+    @Override
     public void onMessageReceived(MessageReceivedEvent event) {
         // Skip bot messages
         if (event.getAuthor().isBot()) {
@@ -53,8 +59,7 @@ public class ExampleEventListener {
     }
 
     /**
-     * Example plugin event handler.
-     * Demonstrates handling internal plugin events.
+     * Fluxcord event (internal bus): an {@code @EventHandler} method.
      */
     @EventHandler(priority = EventPriority.LOW)
     public void onPluginEvent(PluginEnableEvent event) {

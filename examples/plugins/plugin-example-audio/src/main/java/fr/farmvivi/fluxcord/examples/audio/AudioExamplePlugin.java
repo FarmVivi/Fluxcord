@@ -65,12 +65,12 @@ public class AudioExamplePlugin extends AbstractPlugin {
                 onGuildVoiceLeave(event);
             }
         };
-        if (discordAPI != null && discordAPI.getJDA() != null) {
-            discordAPI.getJDA().addEventListener(jdaListener);
-            logger.debug("Registered JDA voice listener for AudioExamplePlugin");
-        } else {
-            logger.warn("JDA not available; voice auto-join will be inactive until connected");
-        }
+        // Works before and after the Discord connection; removed by the core when the plugin is disabled
+        addDiscordListeners(jdaListener);
+        logger.debug("Registered JDA voice listener for AudioExamplePlugin");
+
+        // Fluxcord events (@EventHandler methods of this class, e.g. AudioFrameMixedEvent) need an explicit registration
+        eventManager.registerListener(this, this);
     }
 
     @Override
@@ -91,10 +91,7 @@ public class AudioExamplePlugin extends AbstractPlugin {
         receiveHandlers.clear();
 
         // Unregister JDA listener
-        if (jdaListener != null && discordAPI != null && discordAPI.getJDA() != null) {
-            discordAPI.getJDA().removeEventListener(jdaListener);
-            jdaListener = null;
-        }
+        jdaListener = null; // the core removed it from JDA when disabling the plugin
 
         logger.info("Audio Example Plugin disabled!");
     }
@@ -150,7 +147,7 @@ public class AudioExamplePlugin extends AbstractPlugin {
     /**
      * Gère l'événement lorsqu'un utilisateur rejoint un salon vocal.
      */
-    @EventHandler(priority = EventPriority.NORMAL)
+    // Called by the JDA listener above (Discord events are not dispatched through @EventHandler)
     public void onGuildVoiceJoin(GuildVoiceUpdateEvent event) {
         // Only auto-join if enabled in configuration
         if (!autoJoinEnabled) return;
@@ -203,7 +200,6 @@ public class AudioExamplePlugin extends AbstractPlugin {
     /**
      * Gère l'événement lorsqu'un utilisateur quitte un salon vocal.
      */
-    @EventHandler(priority = EventPriority.NORMAL)
     public void onGuildVoiceLeave(GuildVoiceUpdateEvent event) {
         // Vérifie si l'utilisateur a quitté un salon vocal (channelLeft != null)
         if (event.getChannelLeft() == null) return;

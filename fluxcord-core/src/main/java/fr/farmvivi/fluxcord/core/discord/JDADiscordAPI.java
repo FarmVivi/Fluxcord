@@ -1,6 +1,7 @@
 package fr.farmvivi.fluxcord.core.discord;
 
 import fr.farmvivi.fluxcord.api.discord.DiscordAPI;
+import fr.farmvivi.fluxcord.api.plugin.Plugin;
 import fr.farmvivi.fluxcord.core.Fluxcord;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
@@ -31,6 +32,8 @@ public class JDADiscordAPI implements DiscordAPI {
     private OnlineStatus defaultStatus = OnlineStatus.ONLINE;
     private Activity shutdownActivity = Activity.playing("shutting down...");
     private OnlineStatus shutdownStatus = OnlineStatus.DO_NOT_DISTURB;
+    // JDA listeners registered per plugin id, so a disable/reload removes them from the builder and the live JDA
+    private final java.util.Map<String, java.util.List<Object>> pluginListeners = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * Creates a new JDADiscordAPI.
@@ -309,5 +312,38 @@ public class JDADiscordAPI implements DiscordAPI {
 
         return currentStatus == shutdownStatus &&
                 (currentActivity != null && currentActivity.equals(shutdownActivity));
+    }
+
+    @Override
+    public void addEventListeners(Plugin plugin, Object... listeners) {
+        if (plugin == null || listeners == null || listeners.length == 0) {
+            return;
+        }
+        pluginListeners.computeIfAbsent(plugin.getId(), id -> new java.util.concurrent.CopyOnWriteArrayList<>())
+                .addAll(java.util.Arrays.asList(listeners));
+        // The builder keeps them for (re)connects; the live JDA needs them now if already connected
+        builder.addEventListeners(listeners);
+        if (jda != null) {
+            jda.addEventListener(listeners);
+        }
+        logger.debug("Registered {} JDA listener(s) for plugin {}", listeners.length, plugin.getId());
+    }
+
+    @Override
+    public int removeEventListeners(Plugin plugin) {
+        if (plugin == null) {
+            return 0;
+        }
+        java.util.List<Object> listeners = pluginListeners.remove(plugin.getId());
+        if (listeners == null || listeners.isEmpty()) {
+            return 0;
+        }
+        Object[] array = listeners.toArray();
+        builder.removeEventListeners(array);
+        if (jda != null) {
+            jda.removeEventListener(array);
+        }
+        logger.debug("Removed {} JDA listener(s) of plugin {}", array.length, plugin.getId());
+        return array.length;
     }
 }

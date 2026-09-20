@@ -221,6 +221,17 @@ public abstract class AbstractPlugin implements Plugin {
     }
 
     /**
+     * Registers JDA listeners (e.g. {@code ListenerAdapter} subclasses) for Discord events. Works whether Discord
+     * is connected yet or not, and the core removes them when the plugin is disabled. Use this for Discord
+     * events; {@code @EventHandler} methods only receive Fluxcord events, never JDA ones.
+     *
+     * @param listeners the JDA listeners
+     */
+    protected void addDiscordListeners(Object... listeners) {
+        discordAPI.addEventListeners(this, listeners);
+    }
+
+    /**
      * Returns whether this plugin is currently enabled.
      *
      * @return true if this plugin is enabled

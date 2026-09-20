@@ -164,7 +164,9 @@ commandService.registerCommand(this, builder -> {
 ### Event Example
 
 ```java
-@EventHandler(priority = EventPriority.NORMAL)
+// Discord events: ListenerAdapter override, registered with addDiscordListeners(listener).
+// @EventHandler methods only receive Fluxcord events (PluginEnableEvent...).
+@Override
 public void onMessageReceived(MessageReceivedEvent event) {
     if (!exampleEventsEnabled || event.getAuthor().isBot()) {
         return;

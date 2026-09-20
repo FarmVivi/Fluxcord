@@ -19,7 +19,7 @@ Engine internals: `fluxcord-plugin-system`. This skill is the plugin author's vi
 3. Main class `extends AbstractPlugin`. Hooks and what belongs where:
    - `onLoad(ctx)` — call `super.onLoad(ctx)` first (it wires `logger`, services, adapters, creates the data folder). Read config only.
    - `onPreEnable()` — register permissions (`getPluginPermissionManager().registerPermission(new SimplePermission("<id>.node", desc, PermissionDefault.X))`), add JDA intents/listeners on `getContext().getDiscordAPI().getBuilder()` (JDA not connected yet at boot).
-   - `onEnable()` — register commands (`commandService.registerCommand(this, b -> b.name(...)...)` or `getPluginCommandAdapter().registerCommand(...)`), register internal event listeners (`eventManager.registerListener(obj, this)`), and — for the hot-reload case — `if (getJDA() != null) jda.addEventListener(...)` since the builder is already consumed.
+   - `onEnable()` — register commands (`commandService.registerCommand(this, b -> b.name(...)...)` or `getPluginCommandAdapter().registerCommand(...)`), register Fluxcord event listeners (`eventManager.registerListener(obj, this)`) and Discord listeners with `addDiscordListeners(listenerAdapter...)` (handles pre/post-connect and is auto-removed on disable).
    - `onPostEnable()` — cross-plugin integration (other plugins are enabled now).
    - `onPreDisable/onDisable/onPostDisable()` — stop threads/schedulers, `jda.removeEventListener(...)`, close audio (`audioService.deregisterSendHandler`), save data. The core unregisters your commands/permissions/internal listeners only on the single-plugin disable path; don't rely on it (see engine skill).
 4. Services available as protected fields after `onLoad`: `logger`, `eventManager`, `discordAPI`, `configuration` (plugin `config.yml`), `dataFolder`, `languageManager`, `dataStorageManager`, `binaryStorageManager`, `permissionManager`, `audioService`, `commandService`. Prefer the namespaced adapters: `getPluginCommandAdapter()`, `getPluginPermissionManager()`, `getPluginLanguageManager()`, `getPluginDataStorage()`, `getPluginBinaryStorage()`.
@@ -44,7 +44,7 @@ Engine internals: `fluxcord-plugin-system`. This skill is the plugin author's vi
 - `examples/plugins/plugin-example-commands` — command API tour (options, subcommands, replies).
 - `examples/plugins/plugin-example-audio` — send/receive handlers, priority ducking.
 - `plugins/ai-audio-plugin` — a stub (TODOs only); don't copy patterns from it.
-- Docs: `docs/plugin-development.md`, `docs/commands.md`, `docs/audio-api.md`, `docs/plugins/*`. **Known stale**: `@EventHandler` on JDA events in docs/template (see `fluxcord-events`).
+- Docs: `docs/plugin-development.md`, `docs/commands.md`, `docs/audio-api.md`, `docs/plugins/*` (event sections fixed 2026-09-20).
 
 ## Improvement loop (mandatory — see /skill-maintenance)
 Verify what you used against the code, fix or delete wrong lines, add dated **Learnings**, prune resolved **Known issues**. Keep < 300 lines.
@@ -54,5 +54,4 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 ## Known issues / open questions
 - P3: add `fr.farmvivi.fluxcord.api` to `CORE_PACKAGES`; fix template scope; consider failing fast in `loadPlugin` when a plugin jar contains `fr/farmvivi/fluxcord/api/` classes.
-- Template and docs still teach the non-working `@EventHandler` JDA pattern.
 - No helper for "register a JDA listener bound to this plugin" — every plugin re-implements the builder/JDA dual registration and often forgets removal.

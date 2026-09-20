@@ -1,6 +1,5 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio;
 
-import fr.farmvivi.fluxcord.api.event.EventHandler;
 import fr.farmvivi.fluxcord.api.permissions.Permission;
 import fr.farmvivi.fluxcord.api.permissions.PermissionDefault;
 import fr.farmvivi.fluxcord.api.plugin.AbstractPlugin;
@@ -28,6 +27,14 @@ public class AIAudioPlugin extends AbstractPlugin {
 
         // Register permissions
         registerPermissions();
+
+        // Voice events from Discord
+        addDiscordListeners(new net.dv8tion.jda.api.hooks.ListenerAdapter() {
+            @Override
+            public void onGuildVoiceUpdate(GuildVoiceUpdateEvent event) {
+                onVoiceUpdate(event);
+            }
+        });
 
         // Initialize AI services
         initializeServices();
@@ -107,7 +114,7 @@ public class AIAudioPlugin extends AbstractPlugin {
     }
     */
 
-    @EventHandler
+    // Discord events reach plugins through JDA listeners (see onEnable), not @EventHandler
     public void onVoiceUpdate(GuildVoiceUpdateEvent event) {
         // TODO: Handle voice channel events for AI processing
         if (speechRecognition != null) {

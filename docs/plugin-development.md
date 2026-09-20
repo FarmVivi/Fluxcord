@@ -133,26 +133,47 @@ public CommandResult adminCommand(CommandContext ctx) {
 
 ### Discord Events
 
+Discord events (messages, members, voice, buttons...) come from JDA. They are **not** dispatched through
+`@EventHandler` (that annotation is for Fluxcord events only, see below): implement a JDA `ListenerAdapter`
+and register it with `addDiscordListeners(...)`. It works before and after the connection, and the core
+removes it when the plugin is disabled or reloaded.
+
 ```java
-@EventHandler
-public void onMessageReceived(MessageReceivedEvent event) {
-    if (event.getAuthor().isBot()) return;
-    
-    String content = event.getMessage().getContentRaw();
-    if (content.contains("hello")) {
-        event.getMessage().addReaction("👋").queue();
+public class MyDiscordListener extends ListenerAdapter {
+    @Override
+    public void onMessageReceived(MessageReceivedEvent event) {
+        if (event.getAuthor().isBot()) return;
+        if (event.getMessage().getContentRaw().contains("hello")) {
+            event.getMessage().addReaction(Emoji.fromUnicode("👋")).queue();
+        }
+    }
+
+    @Override
+    public void onGuildMemberJoin(GuildMemberJoinEvent event) {
+        String welcome = String.format("Welcome %s to %s!", event.getUser().getAsMention(), event.getGuild().getName());
+        event.getGuild().getSystemChannel().sendMessage(welcome).queue();
     }
 }
 
+// in onEnable()
+addDiscordListeners(new MyDiscordListener());
+```
+
+Events needing a privileged intent (message content, members, presences) require the intent to be enabled
+in the Discord developer portal.
+
+### Fluxcord Events
+
+Plugin lifecycle, storage, permission, language, audio and command events go through the internal bus:
+`@EventHandler` methods with exactly one parameter implementing `fr.farmvivi.fluxcord.api.event.Event`,
+registered with `eventManager.registerListener(listenerObject, this)`. Handlers on a parent event type
+receive its subclasses; priorities run `LOWEST` → `MONITOR`; `ignoreCancelled = true` skips the handler once
+the event is cancelled.
+
+```java
 @EventHandler(priority = EventPriority.HIGH)
-public void onGuildMemberJoin(GuildMemberJoinEvent event) {
-    // Welcome new members
-    String welcome = String.format("Welcome %s to %s!", 
-        event.getUser().getAsMention(), 
-        event.getGuild().getName());
-    
-    // Send to system channel
-    event.getGuild().getSystemChannel().sendMessage(welcome).queue();
+public void onPluginEnabled(PluginEnabledEvent event) {
+    logger.info("{} is up", event.getPlugin().getId());
 }
 ```
 
@@ -160,7 +181,7 @@ public void onGuildMemberJoin(GuildMemberJoinEvent event) {
 
 ```java
 // Create custom event
-public class PlayerLevelUpEvent extends Event {
+public class PlayerLevelUpEvent implements Event {
     private final User player;
     private final int newLevel;
     
@@ -814,7 +835,7 @@ See the following example plugins:
 
 1. **Plugin not loading**: Check plugin.yml format and main class
 2. **Commands not registering**: Verify @Command annotations and permissions
-3. **Events not firing**: Check @EventHandler annotations and event types
+3. **Events not firing**: Discord events need a JDA `ListenerAdapter` registered with `addDiscordListeners` (not `@EventHandler`); Fluxcord events need `eventManager.registerListener(listener, this)` and a public method with one `Event` parameter
 4. **Configuration not saving**: Ensure proper error handling
 5. **Permissions not working**: Register permissions in onEnable()
 

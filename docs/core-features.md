@@ -8,7 +8,7 @@ This document provides a comprehensive overview of all features and APIs exposed
 |---------------------------------|----------------------------------------------------------|--------------------------------------------------------------|-----------------------------------------------------------|--------------------------------------------|------------------------------------------------------------------|
 | **Plugin System**               | Core plugin lifecycle and management                     | `AbstractPlugin`, `PluginContext`, `PluginManager`           | Extend `AbstractPlugin`, implement lifecycle methods      | `plugin.yml` metadata                      | [Example Template](../plugin-template/)                          |
 | **Command System**              | Slash commands and text commands with permissions        | `CommandService`, `CommandBuilder`, `@Command`               | Register commands via `CommandService` or builder pattern | Command metadata, cooldowns, permissions   | [Example Commands](../examples/plugins/plugin-example-commands/) |
-| **Event System**                | Discord and plugin event handling with priorities        | `EventManager`, `@EventHandler`, `EventPriority`             | Register listeners with `@EventHandler` annotations       | Event priorities, async handling           | [Example Events](#)                                              |
+| **Event System**                | Fluxcord events (`@EventHandler`, priorities) and Discord events (JDA listeners) | `EventManager`, `@EventHandler`, `addDiscordListeners`      | `@EventHandler` for Fluxcord events, `ListenerAdapter` + `addDiscordListeners` for Discord events | Event priorities, async handling           | [Example Events](#)                                              |
 | **Permission System**           | Role-based permissions with plugin namespacing           | `PermissionManager`, `Permission`, `PluginPermissionAdapter` | Register permissions, check with `hasPermission()`        | Permission defaults, role mappings         | [Example Permissions](#)                                         |
 | **Configuration System**        | YAML-based plugin configuration with auto-loading        | `Configuration`, file-based configs                          | Access via `getConfiguration()`, automatic loading        | `config.yml` in plugin JAR and data folder | [Example Config](#)                                              |
 | **Internationalization (i18n)** | Multi-language support with namespace isolation          | `LanguageManager`, `PluginLanguageAdapter`                   | Register namespace, load language files                   | Language files in `lang/` directory        | [Example i18n](#)                                                |
@@ -81,11 +81,11 @@ commandService.registerCommand(this, builder -> {
            });
 });
 
-// Event-based handling
-@EventHandler
-public void onSlashCommand(SlashCommandInteractionEvent event) {
-    // Handle slash commands
-}
+// Raw interaction events, if ever needed: a JDA listener (see Event System)
+addDiscordListeners(new ListenerAdapter() {
+    @Override
+    public void onSlashCommandInteraction(SlashCommandInteractionEvent event) { /* ... */ }
+});
 ```
 
 **Configuration**:
@@ -112,12 +112,15 @@ public void onSlashCommand(SlashCommandInteractionEvent event) {
 **How to Use**:
 
 ```java
-@EventHandler(priority = EventPriority.HIGH)
-public void onMessageReceived(MessageReceivedEvent event) {
-    // Handle message events
-    logger.info("Message received: {}", event.getMessage().getContentRaw());
-}
+// Discord events: JDA ListenerAdapter, registered through the plugin (auto-removed on disable)
+addDiscordListeners(new ListenerAdapter() {
+    @Override
+    public void onMessageReceived(MessageReceivedEvent event) {
+        logger.info("Message received: {}", event.getMessage().getContentRaw());
+    }
+});
 
+// Fluxcord events: @EventHandler methods, registered with eventManager.registerListener(listener, this)
 @EventHandler
 public void onPluginEvent(PluginEnableEvent event) {
     // Handle plugin lifecycle events

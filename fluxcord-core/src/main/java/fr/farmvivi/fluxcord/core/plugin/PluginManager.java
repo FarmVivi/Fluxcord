@@ -822,6 +822,9 @@ public class PluginManager implements PluginLoader, Closeable {
         if (eventManager != null) {
             eventManager.unregisterAll(plugin);
         }
+        if (discordAPI != null) {
+            discordAPI.removeEventListeners(plugin);
+        }
         if (permissionManager != null) {
             permissionManager.unregisterPermissions(plugin);
         }

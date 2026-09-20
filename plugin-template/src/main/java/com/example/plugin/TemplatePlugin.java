@@ -3,8 +3,6 @@ package com.example.plugin;
 import com.example.plugin.commands.ExampleCommand;
 import com.example.plugin.events.ExampleEventListener;
 import com.example.plugin.services.ExampleDataService;
-import fr.farmvivi.fluxcord.api.event.EventHandler;
-import fr.farmvivi.fluxcord.api.event.EventPriority;
 import fr.farmvivi.fluxcord.api.permissions.Permission;
 import fr.farmvivi.fluxcord.api.permissions.PermissionDefault;
 import fr.farmvivi.fluxcord.api.plugin.AbstractPlugin;
@@ -183,10 +181,10 @@ public class TemplatePlugin extends AbstractPlugin {
     }
 
     /**
-     * Example event handler that demonstrates basic Discord event handling.
-     * This handler only processes events if the example events feature is enabled.
+     * Discord message handling lives in the JDA listener registered in registerEventListeners()
+     * (ExampleEventListener). This method is what it delegates to; it is not an @EventHandler because the
+     * internal bus never dispatches JDA events.
      */
-    @EventHandler(priority = EventPriority.NORMAL)
     public void onMessageReceived(MessageReceivedEvent event) {
         // Only process if example events are enabled
         if (!exampleEventsEnabled) {
@@ -307,8 +305,9 @@ public class TemplatePlugin extends AbstractPlugin {
             return;
         }
 
-        // Register the event listener
+        // Fluxcord events (@EventHandler methods) and Discord events (ListenerAdapter overrides): two buses
         eventManager.registerListener(eventListener, this);
+        addDiscordListeners(eventListener);
         logger.info("Event listeners registered");
     }
 

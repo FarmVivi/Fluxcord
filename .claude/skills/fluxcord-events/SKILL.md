@@ -30,12 +30,11 @@ if (jda != null) jda.removeEventListener(listener);
 ```
 Reference implementation: `plugins/music-plugin/.../MusicPlugin.java` (`onEnable`, button/modal/ready/voice listeners). The core itself uses this bus for commands (`core/command/listener/CommandListener`).
 
-**Stale docs**: `docs/core-features.md`, `docs/plugin-development.md`, `docs/plugins/template-quickstart.md`, `plugin-template/README.md` and `plugin-template/.../TemplatePlugin.java` / `events/ExampleEventListener.java` show `@EventHandler public void onMessageReceived(MessageReceivedEvent)`. That never fires. Fix them when you touch this area (plan item E2).
+Docs and template were fixed on 2026-09-20 (E2); if a `@EventHandler` on a JDA event type reappears anywhere, it is wrong.
 
 ## Gotchas
 - Cancellable: `event instanceof Cancellable`; `fireEvent` re-reads `isCancelled()` after each handler, so a later handler can un-cancel. `MONITOR` gets no special treatment (it can still cancel).
 - Registering the same listener object twice (even from another plugin) is refused with a warning.
-- `AudioExamplePlugin` and `AIAudioPlugin` declare `@EventHandler` methods but never call `registerListener` — and some of them take JDA events anyway. Dead code until E2 is done.
 - Events fired during `onLoad` (e.g. `PluginLoadingEvent`) can only be heard by plugins loaded earlier.
 - Intents: any JDA event needing a privileged intent (message content, members, presence) must be enabled on `getBuilder()` **before** connect, i.e. in `onPreEnable`.
 
@@ -49,7 +48,7 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 - 2026-09-19: Initial audit.
 - 2026-09-20: E1 done with the user: polymorphic dispatch + Bukkit `ignoreCancelled`. Handler storage was `EnumMap`+`ArrayList` mutated by `registerListener` while `fireEvent` copied it from other threads → now `ConcurrentHashMap`+`CopyOnWriteArrayList`. Walking a class hierarchy: `getSuperclass()` is `null` for interfaces and `ArrayDeque` rejects `null`.
 - 2026-09-20: `EventManager.hasListeners(Class)` (api default `true`, real answer in `SimpleEventManager`, hierarchy-aware). `fireEvent` already returns fast with no handler; the guard only saves *building* the event, so it is used on hot paths: audio frame (50/s), storage get/set/remove, `StringRetrievalEvent`, `PermissionCheckEvent`. Don't sprinkle it on rare events.
+- 2026-09-20 (E2): `DiscordAPI.addEventListeners(plugin, ...)`/`removeEventListeners(plugin)` + `AbstractPlugin.addDiscordListeners(...)`; the example/ai-audio plugins had `@EventHandler` on JDA events that never fired (fixed); `AudioExamplePlugin` never registered its Fluxcord handlers either (now `eventManager.registerListener(this, this)`).
 
 ## Known issues / open questions
-- E2: fix stale docs/template showing `@EventHandler` on JDA events; consider a small `DiscordAPI.addListener(plugin, ListenerAdapter)` helper that also removes listeners on disable (would remove the biggest reload footgun).
 - Unbounded async pool with no naming/metrics; consider virtual threads (Java 25).
