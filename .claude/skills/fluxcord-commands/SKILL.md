@@ -20,7 +20,7 @@ One `Command` model serves three front-ends: Discord slash commands, prefixed te
 | `core/command/SimpleCommandService.java` (~600 lines) | the façade: registry, parsers list, prefixes, JDA sync (`synchronizeCommands` → global + per-guild `updateCommands`, debounced after boot), `enable()`/`disable()`, `processCommand(jdaEvent)` → `dispatch`, autocomplete, system commands. |
 | `core/command/CommandExecutor.java` | the execution pipeline: gating (service enabled → command enabled → guild-only → permission → cooldown → cancellable `CommandExecuteEvent`), execution, cooldown map, metrics, `CommandExecutedEvent`. Console (`ctx.getUser() == null`) skips guild/permission/cooldown. Refusals return a localised error result and are not counted. |
 | `core/command/SlashCommandDataMapper.java` | command model → JDA `CommandData` (lower-cased names, bounds/choices/autocomplete/file types on top-level **and** subcommand options, `DefaultMemberPermissions.DISABLED` when the command has a permission, contexts from `guildOnly`). |
-| `core/command/SimpleCommandRegistry.java` | flat maps name→command, alias→command, plugin→commands. Global namespace: two plugins registering `play` collide (warning, second one ignored). |
+| `core/command/SimpleCommandRegistry.java` | flat maps name→command, alias→command, plugin→commands. Global namespace: a second `play` (or a name equal to an existing alias) is refused with an ERROR naming both owners and `register` returns false; an alias collision only skips the alias (warn). |
 | `core/command/SimpleCommand.java`, `SimpleCommandBuilder.java`, `SimpleCommandContext.java`, `option/SimpleCommandOption.java` | implementations. |
 | `core/command/CommandMessageBuilder.java` (~610 lines) | builds/sends replies for the three front-ends (content, embeds, components, ephemeral, deferral). |
 | `core/command/parser/{Slash,Text,Console}CommandParser.java` + `CommandParser` | `canParse(event)` / `isCommandInvocation(event)` / `extractCommandName` / `parse(event, command)` → `CommandContext`. `ConsoleCommandParser` wraps a synthetic `parser/event/ConsoleCommandEvent`. |
@@ -38,7 +38,7 @@ Replies: a refused or failed execution is answered with `context.replyError(resu
 Prefix: default from `commands.default-prefix`; per-guild override stored via `DataStorageManager` guild storage key `commands.prefix`.
 
 ## Gotchas
-- Command names are global across plugins; the `group`/`category` fields don't namespace them.
+- Command names are global across plugins (C4 decision: refuse collisions loudly, no prefixing); the `group`/`category` fields don't namespace them.
 - `i18n` keys for messages live in core `lang/*.yml` under `commands.messages.*` (`system_disabled`, `disabled`, `guild_only`, `permission_error`, `cooldown`, `execution_cancelled`, `execution_error`); the service uses `ctx.getLocale()`.
 - `synchronizeCommands` silently no-ops when JDA isn't `CONNECTED` — the usual cause of "my command doesn't show up" after a reload.
 - Guild-scoped commands (`guilds(...)`) are synced per guild; global ones take up to an hour to propagate on Discord's side — use guild scope while developing.
@@ -62,4 +62,3 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 ## Known issues / open questions
 - C3 (rename `OptionType2`): still open, API break — ask the user.
-- Global command namespace collision across plugins: warn only, or prefix with plugin id? Decide with the user.

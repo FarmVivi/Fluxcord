@@ -134,6 +134,13 @@ public class FileDataStorage extends AbstractDataStorage {
 
     @Override
     protected boolean doClear(String scope) {
+        // A debounced write for this scope may still be pending or in flight: drop it, otherwise it would either
+        // hold the file open while we delete it (Windows: delete fails) or resurrect the scope right after
+        Debouncer pending = saveThrottlers.remove(scope);
+        if (pending != null) {
+            pending.shutdown();
+        }
+
         // Clear the scope data
         File scopeDir = getScopeDirectory(scope);
         File dataFile = new File(scopeDir, DATA_FILENAME);

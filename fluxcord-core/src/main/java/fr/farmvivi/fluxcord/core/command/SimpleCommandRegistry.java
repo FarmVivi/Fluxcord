@@ -40,9 +40,17 @@ public class SimpleCommandRegistry implements CommandRegistry {
 
         String name = command.getName().toLowerCase();
 
-        // Check if the command name is already taken
-        if (commands.containsKey(name)) {
-            logger.warn("Command '{}' is already registered", name);
+        // Command names are global (a Discord slash-command name is unique per bot): a second registration is
+        // refused, loudly, naming both owners so the conflict is visible in the log instead of a silent no-op.
+        Command existing = commands.get(name);
+        if (existing == null) {
+            existing = aliasMap.get(name);
+        }
+        if (existing != null) {
+            logger.error("Cannot register command '{}' from {}: the name is already {} by {} (owner: {}). "
+                            + "Rename one of them or use a different alias.",
+                    name, owner(plugin), commands.containsKey(name) ? "registered" : "an alias of",
+                    existing.getName(), owner(commandPluginMap.get(existing)));
             return false;
         }
 
@@ -73,6 +81,10 @@ public class SimpleCommandRegistry implements CommandRegistry {
         }
 
         return true;
+    }
+
+    private static String owner(Plugin plugin) {
+        return plugin == null ? "the core" : "plugin '" + plugin.getId() + "'";
     }
 
     @Override

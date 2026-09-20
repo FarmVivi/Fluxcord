@@ -80,6 +80,14 @@ class SimpleCommandRegistryTest {
     }
 
     @Test
+    void aNameThatIsAlreadyAnAliasIsRefusedToo() {
+        registry.register(command("play", "p"), plugin);
+        assertFalse(registry.register(command("p"), new StubPlugin("b")),
+                "a new command named like an existing alias would shadow that alias");
+        assertSame("play", registry.getCommandByAlias("p").orElseThrow().getName());
+    }
+
+    @Test
     void aliasCollisionKeepsTheFirstOwnerEvenAfterTheSecondIsUnregistered() {
         SimpleCommand first = command("play", "p");
         SimpleCommand second = command("pause", "p");

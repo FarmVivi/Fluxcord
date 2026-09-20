@@ -49,4 +49,6 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 - 2026-09-20 (S3/S4): the number model changed from Gson's default (`Double` for every JSON number on untyped reads) to `LONG_OR_DOUBLE`; typed reads were never affected. `PlaybackState.fromMap` already used `instanceof Number`.
 
+- 2026-09-20: `FileDataStorage.doClear` now shuts down the scope's `Debouncer` first — a pending/in-flight debounced write raced the delete (`delete()` false on Windows while the writer holds the file, or the scope file reappearing after `clear`). Showed up as a flaky `FileDataStorageTest.clearDeletesTheScopeOnDiskAndInMemory`.
+
 ## Known issues / open questions
