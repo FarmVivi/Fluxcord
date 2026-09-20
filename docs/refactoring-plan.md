@@ -8,7 +8,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 
 - [x] **T0 — CI runs the tests.** (2026-09-20) `.github/workflows/ci.yml`: `mvn -B -ntp verify` on push/PR to `develop`/`main` (Dependabot PRs included), Surefire reports uploaded on failure, JaCoCo 0.8.15 report-only in the root pom (core coverage at start: 9 %). First run surfaced a real race in `FileDataStorage.close()` vs the debounced background save (data loss at shutdown), fixed in the same batch.
 - [ ] **T1 — Test fixtures for the engine.** A `FakePlugin` (in-memory `Plugin` + `PluginDescriptor`) and a helper that builds a real plugin jar in a `@TempDir` (plugin.yml + compiled class) so `PluginManager` can be tested end-to-end. Unblocks P1/P2/E2.
-- [ ] **T2 — Characterization tests for the pure classes.** Done 2026-09-20 (low level): `Debouncer`, `YamlConfiguration`, `EnvAwareYamlConfiguration`, `PluginDescriptor`, `DependencyResolver`, `PluginClassLoader`, `HealthServer` (41 → 91 tests). Found and fixed: resolver returned the load order **reversed** (dependants before dependencies) and non-deterministic; `Debouncer.cancelAndAwait` did not actually wait for a running action (`FutureTask.cancel` reports success while running). Remaining: `SimpleEventManager`, `SimpleCommandRegistry`, `SimpleLanguageManager` cascade, `AbstractDataStorage` cache, `SimplePermissionManager`, `AudioPipeline` send strategy.
+- [ ] **T2 — Characterization tests for the pure classes.** Done 2026-09-20 (low level): `Debouncer`, `YamlConfiguration`, `EnvAwareYamlConfiguration`, `PluginDescriptor`, `DependencyResolver`, `PluginClassLoader`, `HealthServer` (41 → 91 tests). Found and fixed: resolver returned the load order **reversed** (dependants before dependencies) and non-deterministic; `Debouncer.cancelAndAwait` did not actually wait for a running action (`FutureTask.cancel` reports success while running). `SimpleEventManager` done 2026-09-20 (22 tests, 113 total). Remaining: `SimpleCommandRegistry`, `SimpleLanguageManager` cascade, `AbstractDataStorage` cache, `SimplePermissionManager`, `AudioPipeline` send strategy.
 
 ## 1. Plugin lifecycle & identity (highest impact)
 
@@ -34,7 +34,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 
 ## 4. Events
 
-- [ ] **E1 — Dispatch semantics.** Exact-class dispatch (a `PluginEvent` handler never sees `PluginEnabledEvent`); priority Javadoc contradicts the loop order. Decide, document, test. Consider virtual threads for `fireEventAsync`.
+- [x] **E1 — Dispatch semantics.** Done 2026-09-20: dispatch is polymorphic (concrete class first, then supertypes, per priority); `ignoreCancelled` now has Bukkit semantics (`true` = skipped once cancelled, default `false` = always called); handler lists are copy-on-write (registration from the main thread raced with `fireEvent` from storage/async threads); priority Javadoc fixed (LOWEST → MONITOR). Open: virtual threads for `fireEventAsync`.
 - [ ] **E2 — JDA listener ergonomics.** Add `DiscordAPI.addEventListener(Plugin, Object...)` that registers on builder or JDA depending on state and removes on disable; fix `docs/*.md`, `plugin-template` and `README` which show the non-working `@EventHandler` on `MessageReceivedEvent`.
 
 ## 5. Storage
@@ -69,3 +69,4 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 |---|---|---|
 | 2026-09-19 | Plan created; skills + Stop hook introduced; first chantier to be chosen after review. | user + Claude |
 | 2026-09-20 | T0 done as a dedicated workflow + JaCoCo report-only (no threshold), CI also on Dependabot PRs. Keep working on `develop`; branches optional. | user |
+| 2026-09-20 | E1: polymorphic dispatch and Bukkit `ignoreCancelled` semantics (API behaviour change; no plugin in the repo used `ignoreCancelled`). | user |

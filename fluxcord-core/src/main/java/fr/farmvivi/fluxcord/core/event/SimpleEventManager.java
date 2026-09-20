@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -22,8 +23,14 @@ public class SimpleEventManager implements EventManager {
     private final Map<Class<? extends Event>, EventTypeInfo> eventTypeRegistry = new ConcurrentHashMap<>();
     private final Map<Plugin, Set<Class<? extends Event>>> pluginEventTypes = new ConcurrentHashMap<>();
 
-    // Map: Event Type -> Priority -> List of RegisteredListeners
+    // Map: Event Type -> Priority -> List of RegisteredListeners.
+    // Listeners are registered on the main thread while events are fired from any thread (storage,
+    // async executor), so every level is safe for concurrent read/write; the lists are copy-on-write
+    // so fireEvent iterates a snapshot without copying.
     private final Map<Class<? extends Event>, Map<EventPriority, List<RegisteredListener>>> eventTypeMap = new ConcurrentHashMap<>();
+
+    // Concrete event class -> itself + every Event supertype, nearest first (see eventHierarchy)
+    private final Map<Class<? extends Event>, List<Class<? extends Event>>> eventHierarchyCache = new ConcurrentHashMap<>();
 
     // Map: Plugin -> Set of Listeners owned by that plugin
     private final Map<Plugin, Set<Object>> pluginListenersMap = new ConcurrentHashMap<>();
@@ -177,8 +184,8 @@ public class SimpleEventManager implements EventManager {
                     listener, method, eventType, priority, ignoreCancelled, plugin);
 
             // Add to the event type map
-            eventTypeMap.computeIfAbsent(eventType, k -> new EnumMap<>(EventPriority.class))
-                    .computeIfAbsent(priority, k -> new ArrayList<>())
+            eventTypeMap.computeIfAbsent(eventType, k -> new ConcurrentHashMap<>())
+                    .computeIfAbsent(priority, k -> new CopyOnWriteArrayList<>())
                     .add(registeredListener);
 
             // Add to the registered handlers
@@ -328,12 +335,18 @@ public class SimpleEventManager implements EventManager {
             throw new IllegalArgumentException("Event cannot be null");
         }
 
-        // Get the event type
         Class<? extends Event> eventType = event.getClass();
 
-        // Get the priority map for this event type
-        Map<EventPriority, List<RegisteredListener>> priorityMap = eventTypeMap.get(eventType);
-        if (priorityMap == null || priorityMap.isEmpty()) {
+        // Handlers registered for the concrete class first, then for each supertype (class or interface)
+        // that extends Event, so a handler on PluginEvent also receives PluginEnabledEvent.
+        List<Map<EventPriority, List<RegisteredListener>>> priorityMaps = new ArrayList<>();
+        for (Class<? extends Event> type : eventHierarchy(eventType)) {
+            Map<EventPriority, List<RegisteredListener>> priorityMap = eventTypeMap.get(type);
+            if (priorityMap != null && !priorityMap.isEmpty()) {
+                priorityMaps.add(priorityMap);
+            }
+        }
+        if (priorityMaps.isEmpty()) {
             return event;
         }
 
@@ -342,39 +355,64 @@ public class SimpleEventManager implements EventManager {
 
         // Call handlers in order of priority
         for (EventPriority priority : EventPriority.values()) {
-            List<RegisteredListener> handlers = priorityMap.get(priority);
-            if (handlers == null || handlers.isEmpty()) {
-                continue;
-            }
-
-            // Make a copy to avoid concurrent modification
-            List<RegisteredListener> handlersCopy = new ArrayList<>(handlers);
-
-            for (RegisteredListener handler : handlersCopy) {
-                // Skip if event is cancelled and handler doesn't ignore cancelled events
-                if (isCancelled && !handler.isIgnoreCancelled()) {
+            for (Map<EventPriority, List<RegisteredListener>> priorityMap : priorityMaps) {
+                List<RegisteredListener> handlers = priorityMap.get(priority);
+                if (handlers == null || handlers.isEmpty()) {
                     continue;
                 }
 
-                try {
-                    // Call the handler
-                    handler.callEvent(event);
-
-                    // Update cancellation status if changed
-                    if (event instanceof Cancellable) {
-                        isCancelled = ((Cancellable) event).isCancelled();
+                // Copy-on-write list: the iterator is a snapshot, registrations during dispatch are not seen
+                for (RegisteredListener handler : handlers) {
+                    // Bukkit semantics: ignoreCancelled = true means "don't call me once the event is cancelled"
+                    if (isCancelled && handler.isIgnoreCancelled()) {
+                        continue;
                     }
-                } catch (Throwable t) {
-                    logger.error("Error dispatching event {} to listener {} (owned by {})",
-                            eventType.getSimpleName(),
-                            handler.getListener().getClass().getSimpleName(),
-                            handler.getPlugin().getClass().getSimpleName(),
-                            t);
+
+                    try {
+                        // Call the handler
+                        handler.callEvent(event);
+
+                        // Update cancellation status if changed
+                        if (event instanceof Cancellable) {
+                            isCancelled = ((Cancellable) event).isCancelled();
+                        }
+                    } catch (Throwable t) {
+                        logger.error("Error dispatching event {} to listener {} (owned by {})",
+                                eventType.getSimpleName(),
+                                handler.getListener().getClass().getSimpleName(),
+                                handler.getPlugin().getClass().getSimpleName(),
+                                t);
+                    }
                 }
             }
         }
 
         return event;
+    }
+
+    /**
+     * The concrete event class followed by every superclass and interface that extends {@link Event},
+     * nearest first, without duplicates. Computed once per concrete class.
+     */
+    @SuppressWarnings("unchecked")
+    private List<Class<? extends Event>> eventHierarchy(Class<? extends Event> eventType) {
+        return eventHierarchyCache.computeIfAbsent(eventType, type -> {
+            List<Class<? extends Event>> result = new ArrayList<>();
+            Deque<Class<?>> queue = new ArrayDeque<>();
+            queue.add(type);
+            while (!queue.isEmpty()) {
+                Class<?> current = queue.poll();
+                if (!Event.class.isAssignableFrom(current) || result.contains(current)) {
+                    continue;
+                }
+                result.add((Class<? extends Event>) current);
+                if (current.getSuperclass() != null) {
+                    queue.add(current.getSuperclass());
+                }
+                queue.addAll(Arrays.asList(current.getInterfaces()));
+            }
+            return List.copyOf(result);
+        });
     }
 
     @Override

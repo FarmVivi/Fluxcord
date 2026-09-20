@@ -36,7 +36,10 @@ public interface EventManager extends EventRegistry {
     int unregisterAll(Plugin plugin);
 
     /**
-     * Fires an event synchronously.
+     * Fires an event synchronously on the calling thread. Handlers run by {@link EventPriority} from
+     * {@code LOWEST} to {@code MONITOR}; within a priority, handlers of the concrete event class run before
+     * handlers of its supertypes (a handler on a parent event type receives every subclass event).
+     * Exceptions thrown by handlers are logged and do not stop the dispatch.
      *
      * @param event the event to fire
      * @return the event that was fired (may have been modified by listeners)

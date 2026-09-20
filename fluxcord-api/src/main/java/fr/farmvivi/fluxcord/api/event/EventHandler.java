@@ -8,16 +8,19 @@ package fr.farmvivi.fluxcord.api.event;
 public @interface EventHandler {
     /**
      * The priority of the event handler.
-     * Higher priority event handlers are called first.
+     * Handlers run from {@link EventPriority#LOWEST} to {@link EventPriority#MONITOR}: a higher priority
+     * runs later and therefore has the final say (e.g. on cancellation); {@code MONITOR} should only observe.
      *
      * @return the priority
      */
     EventPriority priority() default EventPriority.NORMAL;
 
     /**
-     * Whether this event handler should be called even if the event is cancelled.
+     * When {@code true}, this handler is skipped once the event has been cancelled (same meaning as in
+     * Bukkit). The default {@code false} means the handler is always called and must check
+     * {@link Cancellable#isCancelled()} itself if it cares.
      *
-     * @return true if the handler should be called even if the event is cancelled
+     * @return true to skip the handler for cancelled events
      */
     boolean ignoreCancelled() default false;
 }

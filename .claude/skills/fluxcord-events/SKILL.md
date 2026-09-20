@@ -11,9 +11,9 @@ paths:
 
 ## Bus 1: internal `EventManager` (`core/event/SimpleEventManager.java`, ~620 lines)
 - Dispatches only subclasses of `fr.farmvivi.fluxcord.api.event.Event`. Families: `plugin/events` (Loading/Loaded/Enable/Enabled/Disable/Disabled/LifecycleChange), `storage/events`, `storage/binary/events`, `permissions/events`, `language/events` (`StringRetrievalEvent` can override a translation), `audio/events`, `command/event` (`CommandExecuteEvent` cancellable, `CommandExecutedEvent`).
-- Registration: `eventManager.registerListener(listenerObject, plugin)` scans `@EventHandler` methods with exactly one parameter that is an `Event` subclass. `@EventHandler(priority = EventPriority.X, ignoreCancelled = bool)`; priorities `LOWEST, LOW, NORMAL, HIGH, HIGHEST, MONITOR` are called in that order (so `LOWEST` first, `MONITOR` last — the Javadoc on `EventHandler` says "higher priority called first", which contradicts the loop in `fireEvent`; the loop wins).
-- `fireEvent(event)` is **synchronous on the caller's thread**, returns the event, and dispatches only to handlers registered for `event.getClass()` **exactly** — no polymorphism: a handler on `PluginEvent` does not receive `PluginEnabledEvent`. Handler exceptions are caught and logged (`Throwable`).
-- `fireEventAsync(event)` submits to an unbounded cached thread pool (`FluxEvent-*` threads); no ordering guarantees.
+- Registration: `eventManager.registerListener(listenerObject, plugin)` scans `@EventHandler` methods with exactly one parameter that is an `Event` subclass. `@EventHandler(priority = EventPriority.X, ignoreCancelled = bool)`; priorities run `LOWEST → LOW → NORMAL → HIGH → HIGHEST → MONITOR` (higher priority runs later and has the final say). `ignoreCancelled = true` = **skip me once the event is cancelled** (Bukkit semantics, since 2026-09-20); default `false` = always called. Only `public` methods are scanned (`getMethods()`); a listener with zero valid handlers is not tracked at all.
+- `fireEvent(event)` is **synchronous on the caller's thread** and returns the event. Dispatch is **polymorphic**: for each priority, handlers of the concrete class run first, then those of each supertype (class or interface extending `Event`, nearest first; hierarchy cached per class). Handler exceptions are caught and logged (`Throwable`). Handler lists are `CopyOnWriteArrayList` — a listener registered mid-dispatch is skipped for the priority being iterated but still sees the current event at later priorities.
+- `fireEventAsync(event)` submits to an unbounded cached daemon pool (threads named `EventManager-AsyncWorker`); no ordering guarantees.
 - Also an `EventRegistry` (`registerEventType`, `getEventTypeInfo`...) for declaring custom event types with a description; purely informational.
 - `unregisterAll(plugin)` is called by `PluginManager` on disable; `shutdown()` stops the executor.
 
@@ -33,22 +33,22 @@ Reference implementation: `plugins/music-plugin/.../MusicPlugin.java` (`onEnable
 **Stale docs**: `docs/core-features.md`, `docs/plugin-development.md`, `docs/plugins/template-quickstart.md`, `plugin-template/README.md` and `plugin-template/.../TemplatePlugin.java` / `events/ExampleEventListener.java` show `@EventHandler public void onMessageReceived(MessageReceivedEvent)`. That never fires. Fix them when you touch this area (plan item E2).
 
 ## Gotchas
-- Cancellable: `event instanceof Cancellable`; `fireEvent` re-reads `isCancelled()` after each handler and skips handlers without `ignoreCancelled = true`.
+- Cancellable: `event instanceof Cancellable`; `fireEvent` re-reads `isCancelled()` after each handler, so a later handler can un-cancel. `MONITOR` gets no special treatment (it can still cancel).
 - Registering the same listener object twice (even from another plugin) is refused with a warning.
+- `AudioExamplePlugin` and `AIAudioPlugin` declare `@EventHandler` methods but never call `registerListener` — and some of them take JDA events anyway. Dead code until E2 is done.
 - Events fired during `onLoad` (e.g. `PluginLoadingEvent`) can only be heard by plugins loaded earlier.
 - Intents: any JDA event needing a privileged intent (message content, members, presence) must be enabled on `getBuilder()` **before** connect, i.e. in `onPreEnable`.
 
 ## Testing
-No tests. `SimpleEventManager` is pure Java → easy unit tests (priority order, cancellation, exact-class dispatch, unregisterAll). Write them before changing dispatch (plan item E1).
+`SimpleEventManagerTest` (22 tests): registration rules, priority order, polymorphic dispatch, cancellation, unregister/unregisterAll, registry, async. Uses an inner `StubPlugin implements Plugin` (no Mockito needed); the auto-registration test relies on the stub living in the same package as the test events.
 
 ## Improvement loop (mandatory — see /skill-maintenance)
 Verify what you used against the code, fix or delete wrong lines, add dated **Learnings**, prune resolved **Known issues**. Keep < 300 lines.
 
 ## Learnings
 - 2026-09-19: Initial audit.
+- 2026-09-20: E1 done with the user: polymorphic dispatch + Bukkit `ignoreCancelled`. Handler storage was `EnumMap`+`ArrayList` mutated by `registerListener` while `fireEvent` copied it from other threads → now `ConcurrentHashMap`+`CopyOnWriteArrayList`. Walking a class hierarchy: `getSuperclass()` is `null` for interfaces and `ArrayDeque` rejects `null`.
 
 ## Known issues / open questions
-- E1: exact-class dispatch — decide with the user whether to support supertype handlers (walk `getSuperclass()`/interfaces up to `Event`, cache per type).
 - E2: fix stale docs/template showing `@EventHandler` on JDA events; consider a small `DiscordAPI.addListener(plugin, ListenerAdapter)` helper that also removes listeners on disable (would remove the biggest reload footgun).
-- Priority semantics documented backwards in `EventHandler` Javadoc.
 - Unbounded async pool with no naming/metrics; consider virtual threads (Java 25).
