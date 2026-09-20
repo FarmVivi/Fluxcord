@@ -36,7 +36,8 @@ Builds `JDABuilder.createDefault(token)` with intents `GUILD_MEMBERS, GUILD_PRES
 - `hasPermission(userId, guildId, name)`: explicit override from storage (user-guild then user scope, cached), else the permission's default: `TRUE`/`FALSE`, `OP` → `isOperator(userId, guildId)`, `NOT_OP` → inverse.
 - **`isOperator` reads a boolean `isOperator` from user(-guild) storage and nothing in the repo ever writes it** (no command, no config list, no Discord-role/ADMINISTRATOR mapping). So every `OP`-default permission (`music.volume`, `music.admin`) is denied to everyone except the console. Plan item B1.
 - Unregistered permission name → check `permissions.error.not_found` handling in `hasPermission` before relying on it.
-- Fires `PermissionCheckEvent` / `PermissionChangeEvent`; `unregisterPermissions(plugin)` on disable.
+- Fires `PermissionCheckEvent` (cancel + `setResult` to force an answer without storage) / `PermissionChangeEvent` (old/new value); `unregisterPermissions(plugin)` on disable.
+- Results are cached per user (and per user-guild for stored overrides) with no TTL; `setPermission`/`clearPermissions` update the cache, and since 2026-09-20 register/unregister invalidate the cached results of that permission (a reloaded plugin with another default was ignored before). External storage edits need `clearCaches()`. Tests: `SimplePermissionManagerTest` (12, in-memory `DataStorage`).
 
 ## Containers
 `Dockerfile` (multi-stage, `mvn -T1C -DskipTests package`, Ubuntu-based runtime for glibc ≥ 2.38), `Dockerfile.buildkit*`, `Dockerfile.optimized`; `entrypoint.sh` installs bundled plugin jars into `/app/plugins` according to `INSTALL_PLUGINS`, `INSTALL_EXAMPLES`, `AUTO_UPDATE_PLUGINS`. `docker-compose.yml` for local runs. Health probes should hit `/readyz`.
@@ -47,6 +48,7 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 ## Learnings
 - 2026-09-19: Initial audit.
 - 2026-09-20: Tests added: `YamlConfigurationTest`, `EnvAwareYamlConfigurationTest` (protected `lookupEnv`/`lookupEnvValues` seams replace the environment), `HealthServerTest` (`HealthServer(0)` + `getPort()` for an ephemeral port). snakeyaml resolves YAML 1.1 booleans (`yes`/`on`) itself; `getString` on a section returns `Map.toString()` instead of failing.
+- 2026-09-20: `SimplePermissionManagerTest` added; the guild-scoped check falls back to the *global* default resolution, so a user-guild `isOperator` flag is never consulted for OP defaults (only the user-scope one). Part of B1.
 
 ## Known issues / open questions
 - B1: operators are unreachable (see Permissions). Options to decide with the user: `permissions.operators: [userIds]` in config, map `OP` to Discord `ADMINISTRATOR`/guild owner, or an `op` console command. Probably all three.

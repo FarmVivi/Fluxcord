@@ -450,13 +450,14 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
                     }
 
                     ByteBuffer sourceAudio = handler.provide20MsAudio();
+                    // Avance le fade avant de lire le multiplicateur : un fade démarré dans canProvide()
+                    // est ainsi audible dès cette frame, pas 20 ms plus tard.
+                    priorityManager.updateFade(pluginName);
                     if (sourceAudio != null) {
                         float effectiveVolume = calculateEffectiveVolume(pluginName, sourceHandler);
                         mixer.addSource(sourceAudio, effectiveVolume);
                         activeSourceCount++;
                     }
-
-                    priorityManager.updateFade(pluginName);
                 }
 
                 audio = mixer.mix();

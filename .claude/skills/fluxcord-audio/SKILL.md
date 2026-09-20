@@ -28,7 +28,7 @@ paths:
 `MusicPlugin` (permissions in `onPreEnable`, commands + JDA listeners in `onEnable`) → `MusicManager` (per-guild `MusicPlayer`) → `player/MusicPlayer` + `TrackScheduler` (lavaplayer `AudioPlayer`, queue, repeat) → `audio/AudioPlayerManager` (lavaplayer sources; youtube via `dev.lavalink.youtube`), `ui/MusicPlayerMessage` + `ButtonHandler` (component interactions). Lavaplayer is shaded and relocated (see the plugin pom) because the plugin classloader is child-first and lavaplayer isn't in `CORE_PACKAGES`. Its `AudioSendHandler` is registered on the core service with a priority so an announcement plugin can duck it.
 
 ## Testing
-- Existing: `AudioMixerTest`, `PriorityManagerTest`, `AudioServiceImplTest` (mocks JDA `Guild`/`AudioManager`). `AudioPipeline` strategy selection (bypass vs mix, Opus rejection when mixing, fade) has no direct test — good characterization target before any refactor.
+- Existing: `AudioMixerTest`, `PriorityManagerTest`, `AudioServiceImplTest`, `AudioPipelineTest` (13; mocks `Guild`/`AudioManager`, scripted `AudioSendHandler`s, reads the first big-endian sample of each frame to check levels). Covers bypass vs mix, Opus relay, PCM-over-Opus, high-priority Opus choice, fade-out/threshold, deregister, close.
 - Real voice can only be checked with a smoke run + joining a channel (`/verify --smoke`, then a music `play` command).
 
 ## Improvement loop (mandatory — see /skill-maintenance)
@@ -36,8 +36,10 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 ## Learnings
 - 2026-09-19: Initial audit. Volume range is read from `AudioService` constants — verify actual numbers before documenting them.
+- 2026-09-20: Internal PCM convention is **little-endian** (docs/audio-api.md); `ensureBigEndianFrame` swaps at the JDA boundary, the mixer outputs LE. Fade fix: `updateFade` now runs before the multiplier is read, so ducking is audible on the first frame (was one frame late). Characterized, not changed: **bypass ignores the source volume and the fade multiplier** (a single PCM source always plays at 100 %, and a ducked source snaps back to full level as soon as it is alone); one PCM + one Opus active → PCM bypassed, Opus dropped for the frame.
 
 ## Known issues / open questions
 - A1: `AudioServiceImpl` keys by `plugin.getName()` while `PluginManager` keys by id; `closeAllConnectionsForPlugin` therefore depends on names being unique. Switch to id (part of the identity chantier).
+- Bypass ignores volume/fade (see Learnings) — decide with the user whether a single PCM source should go through the mixer when volume < 100 or a fade is in progress.
 - A2: `AudioPipeline` mixes frame strategy, mixing, fades, receive fan-out and JDA adapter in one class; extract `SendStrategy` (bypass/mix decision) to make it testable.
 - `plugins/ai-audio-plugin` is a stub full of TODOs (speech recognition / TTS services do nothing) — decide with the user whether to keep it in the reactor.

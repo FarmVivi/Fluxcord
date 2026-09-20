@@ -73,8 +73,20 @@ public class SimplePermissionManager implements PermissionManager {
         pluginPermissions.computeIfAbsent(owner, k -> ConcurrentHashMap.newKeySet())
                 .add(permission);
 
+        // Cached results may have been derived from "unregistered → false": drop them
+        invalidateCachedResults(permName);
+
         logger.debug("Registered permission {} owned by plugin {}",
                 permName, owner.getName());
+    }
+
+    /**
+     * Removes every cached result for one permission, in every user and user-guild cache. Called when the
+     * permission's default changes (register/unregister), since defaults are cached like overrides.
+     */
+    private void invalidateCachedResults(String permission) {
+        userPermissionCache.values().forEach(perms -> perms.remove(permission));
+        userGuildPermissionCache.values().forEach(guilds -> guilds.values().forEach(perms -> perms.remove(permission)));
     }
 
     @Override
@@ -93,7 +105,7 @@ public class SimplePermissionManager implements PermissionManager {
 
         // Check cache first
         Map<String, Boolean> userPerms = userPermissionCache.computeIfAbsent(userId,
-                id -> new HashMap<>());
+                id -> new ConcurrentHashMap<>());
 
         if (userPerms.containsKey(permission)) {
             return userPerms.get(permission);
@@ -138,10 +150,10 @@ public class SimplePermissionManager implements PermissionManager {
 
         // Check guild-specific permission first
         Map<String, Map<String, Boolean>> userGuilds = userGuildPermissionCache
-                .computeIfAbsent(userId, id -> new HashMap<>());
+                .computeIfAbsent(userId, id -> new ConcurrentHashMap<>());
 
         Map<String, Boolean> guildPerms = userGuilds
-                .computeIfAbsent(guildId, id -> new HashMap<>());
+                .computeIfAbsent(guildId, id -> new ConcurrentHashMap<>());
 
         if (guildPerms.containsKey(permission)) {
             return guildPerms.get(permission);
@@ -181,7 +193,7 @@ public class SimplePermissionManager implements PermissionManager {
 
         // Update cache
         Map<String, Boolean> userPerms = userPermissionCache.computeIfAbsent(userId,
-                id -> new HashMap<>());
+                id -> new ConcurrentHashMap<>());
         userPerms.put(permission, value);
 
         logger.debug("Set permission {} for user {} to {}", permission, userId, value);
@@ -207,10 +219,10 @@ public class SimplePermissionManager implements PermissionManager {
 
         // Update cache
         Map<String, Map<String, Boolean>> userGuilds = userGuildPermissionCache
-                .computeIfAbsent(userId, id -> new HashMap<>());
+                .computeIfAbsent(userId, id -> new ConcurrentHashMap<>());
 
         Map<String, Boolean> guildPerms = userGuilds
-                .computeIfAbsent(guildId, id -> new HashMap<>());
+                .computeIfAbsent(guildId, id -> new ConcurrentHashMap<>());
 
         guildPerms.put(permission, value);
 
@@ -362,6 +374,7 @@ public class SimplePermissionManager implements PermissionManager {
             String name = permission.getName();
             registeredPermissions.remove(name);
             permissionOwners.remove(name);
+            invalidateCachedResults(name);
             count++;
         }
 
