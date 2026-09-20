@@ -237,6 +237,11 @@ Command command = commandService.newCommand()
     .build();
 ```
 
+Routage : en slash, Discord sélectionne la sous-commande (`/admin kick`) ; en texte et en console, c'est le premier
+mot après la commande (`!admin kick @user`, alias acceptés). Un nom de sous-commande manquant ou inconnu renvoie une
+erreur d'utilisation. Une sous-commande sans `permission()` hérite de celle de sa commande parente, et elle est
+`guildOnly` si un parent l'est. Les cooldowns sont comptés par sous-commande (`admin/kick`).
+
 Vous pouvez également regrouper les sous-commandes :
 
 ```java

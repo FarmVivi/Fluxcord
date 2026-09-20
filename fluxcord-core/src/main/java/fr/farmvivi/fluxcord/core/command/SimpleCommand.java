@@ -25,7 +25,7 @@ public record SimpleCommand(
         boolean guildOnly,
         Set<String> guildIds,
         boolean isSubcommand,
-        Command parent,
+        ParentLink parent,
         boolean enabled,
         int cooldown,
         BiFunction<CommandContext, Command, CommandResult> executor
@@ -40,6 +40,7 @@ public record SimpleCommand(
         subcommands = subcommands != null ? List.copyOf(subcommands) : List.of();
         aliases = aliases != null ? Set.copyOf(aliases) : Set.of();
         guildIds = guildIds != null ? Set.copyOf(guildIds) : Set.of();
+        parent = parent != null ? parent : new ParentLink();
 
         // Default values for null parameters
         if (category == null) category = "General";
@@ -133,7 +134,24 @@ public record SimpleCommand(
 
     @Override
     public Command getParent() {
-        return parent;
+        return parent.get();
+    }
+
+    /**
+     * Mutable link from a subcommand to its parent. A parent and its subcommands reference each other, which an
+     * immutable record cannot express: the subcommands are built first with an empty link, then the builder points
+     * the link at the parent once it exists. Copies made by {@link #withEnabled(boolean)} share the link.
+     */
+    public static final class ParentLink {
+        private volatile Command command;
+
+        public Command get() {
+            return command;
+        }
+
+        void set(Command command) {
+            this.command = command;
+        }
     }
 
     @Override
@@ -170,7 +188,7 @@ public record SimpleCommand(
         private String translationKey;
         private boolean guildOnly = false;
         private boolean isSubcommand = false;
-        private Command parent;
+        private ParentLink parent;
         private boolean enabled = true;
         private int cooldown = 0;
         private BiFunction<CommandContext, Command, CommandResult> executor;
@@ -336,7 +354,8 @@ public record SimpleCommand(
          * @return this builder
          */
         public Builder parent(Command parent) {
-            this.parent = parent;
+            this.parent = new ParentLink();
+            this.parent.set(parent);
             this.isSubcommand = parent != null;
             return this;
         }

@@ -65,18 +65,19 @@ public class CommandExecutor {
         String userId = console ? CONSOLE_USER : context.getUser().getId();
 
         if (!console) {
-            if (command.isGuildOnly() && !context.isFromGuild()) {
+            if (isGuildOnly(command) && !context.isFromGuild()) {
                 return refuse(locale, "commands.messages.guild_only");
             }
-            if (command.getPermission() != null) {
+            String permission = effectivePermission(command);
+            if (permission != null) {
                 String guildId = context.getGuild().map(Guild::getId).orElse(null);
-                if (!hasPermission(userId, guildId, command.getPermission())) {
+                if (!hasPermission(userId, guildId, permission)) {
                     return refuse(locale, "commands.messages.permission_error",
                             "You don't have permission to use this command");
                 }
             }
-            if (isOnCooldown(userId, command.getName())) {
-                return refuse(locale, "commands.messages.cooldown", getRemainingCooldown(userId, command.getName()));
+            if (isOnCooldown(userId, command.getFullName())) {
+                return refuse(locale, "commands.messages.cooldown", getRemainingCooldown(userId, command.getFullName()));
             }
         }
 
@@ -91,7 +92,7 @@ public class CommandExecutor {
         try {
             result = command.execute(context);
             if (command.getCooldown() > 0 && !console) {
-                applyCooldown(userId, command.getName(), command.getCooldown());
+                applyCooldown(userId, command.getFullName(), command.getCooldown());
             }
         } catch (Exception e) {
             logger.error("Error executing command {}: {}", command.getName(), e.getMessage(), e);
@@ -105,6 +106,26 @@ public class CommandExecutor {
 
         eventManager.fireEvent(new CommandExecutedEvent(command, context, result, elapsedNs / 1_000_000));
         return result;
+    }
+
+    /** A subcommand without a permission of its own inherits the closest ancestor's. */
+    static String effectivePermission(Command command) {
+        for (Command c = command; c != null; c = c.getParent()) {
+            if (c.getPermission() != null) {
+                return c.getPermission();
+            }
+        }
+        return null;
+    }
+
+    /** A subcommand is guild-only when it or any ancestor is. */
+    static boolean isGuildOnly(Command command) {
+        for (Command c = command; c != null; c = c.getParent()) {
+            if (c.isGuildOnly()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean hasPermission(String userId, String guildId, String permission) {

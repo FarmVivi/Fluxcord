@@ -329,6 +329,15 @@ public class SimpleCommandBuilder implements CommandBuilder {
         return executor(executor);
     }
 
+    private static void linkParents(Command parent) {
+        for (Command subcommand : parent.getSubcommands()) {
+            if (subcommand instanceof SimpleCommand simple) {
+                simple.parent().set(parent);
+            }
+            linkParents(subcommand);
+        }
+    }
+
     @Override
     public Command build() {
         // Process subcommands first
@@ -339,47 +348,8 @@ public class SimpleCommandBuilder implements CommandBuilder {
 
         SimpleCommand command = builder.build();
 
-        // Set parent for all subcommands
-        for (Command subcommand : command.subcommands()) {
-            if (subcommand instanceof SimpleCommand) {
-                SimpleCommand simpleSubcommand = (SimpleCommand) subcommand;
-                SimpleCommand.Builder subcommandBuilder = new SimpleCommand.Builder()
-                        .name(simpleSubcommand.name())
-                        .description(simpleSubcommand.description())
-                        .category(simpleSubcommand.category());
-
-                // Copy all fields
-                for (CommandOption<?> option : simpleSubcommand.options()) {
-                    subcommandBuilder.option(option);
-                }
-                for (Command nestedSubcommand : simpleSubcommand.subcommands()) {
-                    subcommandBuilder.subcommand(nestedSubcommand);
-                }
-
-                subcommandBuilder
-                        .group(simpleSubcommand.group())
-                        .permission(simpleSubcommand.permission())
-                        .translationKey(simpleSubcommand.translationKey());
-
-                for (String alias : simpleSubcommand.aliases()) {
-                    subcommandBuilder.alias(alias);
-                }
-
-                subcommandBuilder
-                        .guildOnly(simpleSubcommand.isGuildOnly());
-
-                for (String guildId : simpleSubcommand.guildIds()) {
-                    subcommandBuilder.guildId(guildId);
-                }
-
-                subcommandBuilder
-                        .subcommand(true)
-                        .parent(command)
-                        .enabled(simpleSubcommand.isEnabled())
-                        .cooldown(simpleSubcommand.getCooldown())
-                        .executor(simpleSubcommand.executor());
-            }
-        }
+        // Subcommands were built before their parent existed: point their links at it now
+        linkParents(command);
 
         return command;
     }

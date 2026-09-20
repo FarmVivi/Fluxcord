@@ -61,6 +61,13 @@ public class ConsoleCommandParser implements CommandParser {
             throw new CommandParseException("Command name does not match");
         }
 
+        // Route to a subcommand: the next token names it
+        if (!command.getSubcommands().isEmpty()) {
+            String[] subParts = argsStr.split("\s+", 2);
+            command = CommandParser.selectSubcommand(command, subParts[0]);
+            argsStr = subParts.length > 1 ? subParts[1] : "";
+        }
+
         // Parse arguments for console (simplified - just string splitting)
         Map<String, Object> options = parseOptions(argsStr, command, consoleEvent.getJDA());
 

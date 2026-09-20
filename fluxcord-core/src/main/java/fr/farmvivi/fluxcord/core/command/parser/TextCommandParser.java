@@ -95,6 +95,13 @@ public class TextCommandParser implements CommandParser {
             throw new CommandParseException("Command name does not match");
         }
 
+        // Route to a subcommand: the next token names it
+        if (!command.getSubcommands().isEmpty()) {
+            String[] subParts = argsStr.split("\s+", 2);
+            command = CommandParser.selectSubcommand(command, subParts[0]);
+            argsStr = subParts.length > 1 ? subParts[1] : "";
+        }
+
         // Parse arguments
         Map<String, Object> options = parseOptions(argsStr, command, messageEvent);
 

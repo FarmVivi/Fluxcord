@@ -47,4 +47,31 @@ public interface CommandParser {
      * @return true if the event contains a command invocation
      */
     boolean isCommandInvocation(Event event);
+
+    /**
+     * Picks the subcommand of {@code parent} that {@code name} designates (by name or alias, case-insensitive).
+     *
+     * @param parent a command that has subcommands
+     * @param name   the token or interaction subcommand name; may be null
+     * @return the subcommand
+     * @throws CommandParseException when the name is missing or matches no subcommand
+     */
+    static Command selectSubcommand(Command parent, String name) throws CommandParseException {
+        if (name == null || name.isBlank()) {
+            throw new CommandParseException("Missing subcommand for '" + parent.getName() + "': "
+                    + subcommandNames(parent));
+        }
+        for (Command subcommand : parent.getSubcommands()) {
+            if (subcommand.getName().equalsIgnoreCase(name)
+                    || subcommand.getAliases().stream().anyMatch(alias -> alias.equalsIgnoreCase(name))) {
+                return subcommand;
+            }
+        }
+        throw new CommandParseException("Unknown subcommand '" + name + "' for '" + parent.getName() + "': "
+                + subcommandNames(parent));
+    }
+
+    private static String subcommandNames(Command parent) {
+        return parent.getSubcommands().stream().map(Command::getName).collect(java.util.stream.Collectors.joining(", "));
+    }
 }

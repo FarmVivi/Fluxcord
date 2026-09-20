@@ -565,8 +565,10 @@ public class SimpleCommandService implements CommandService {
             return;
         }
 
+        // The parser may have routed to a subcommand: execute what it resolved
+        command = context.getCommand();
         CommandResult result = executeCommand(command, context);
-        logger.debug("Command '{}' executed with success: {}", command.getName(), result.isSuccess());
+        logger.debug("Command '{}' executed with success: {}", command.getFullName(), result.isSuccess());
         if (!result.isSuccess() && result.getErrorMessage() != null && !context.hasReplied()) {
             // Refusals never touched the interaction, so this is the first (and only) reply; a deferred command
             // that failed gets its "thinking..." placeholder edited into the error. A command that already

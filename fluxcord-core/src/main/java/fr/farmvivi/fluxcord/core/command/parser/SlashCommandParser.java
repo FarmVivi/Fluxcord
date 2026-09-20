@@ -65,6 +65,11 @@ public class SlashCommandParser implements CommandParser {
             logger.debug("Falling back to default locale: {}", locale);
         }
 
+        // Route to the subcommand Discord selected (a parent with subcommands has no executor of its own)
+        if (!command.getSubcommands().isEmpty()) {
+            command = CommandParser.selectSubcommand(command, slashEvent.getSubcommandName());
+        }
+
         // Parse options
         Map<String, Object> options = new HashMap<>();
         for (CommandOption<?> option : command.getOptions()) {
