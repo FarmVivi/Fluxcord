@@ -60,6 +60,17 @@ public record SimpleCommand(
         }
     }
 
+    /**
+     * Copy of this command with another enabled flag (records are immutable).
+     */
+    public SimpleCommand withEnabled(boolean enabled) {
+        if (enabled == this.enabled) {
+            return this;
+        }
+        return new SimpleCommand(name, description, category, options, subcommands, group, permission,
+                translationKey, aliases, guildOnly, guildIds, isSubcommand, parent, enabled, cooldown, executor);
+    }
+
     @Override
     public String getName() {
         return name;

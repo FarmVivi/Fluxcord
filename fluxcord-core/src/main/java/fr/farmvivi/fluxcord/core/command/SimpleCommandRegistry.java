@@ -101,7 +101,7 @@ public class SimpleCommandRegistry implements CommandRegistry {
 
         // Remove aliases
         for (String alias : command.getAliases()) {
-            aliasMap.remove(alias.toLowerCase());
+            aliasMap.remove(alias.toLowerCase(), command); // only if this command owns the alias
         }
 
         logger.debug("Unregistered command '{}'", name);
@@ -119,7 +119,7 @@ public class SimpleCommandRegistry implements CommandRegistry {
 
                 // Remove aliases
                 for (String alias : command.getAliases()) {
-                    aliasMap.remove(alias.toLowerCase());
+                    aliasMap.remove(alias.toLowerCase(), command); // only if this command owns the alias
                 }
             }
 
@@ -142,7 +142,7 @@ public class SimpleCommandRegistry implements CommandRegistry {
 
             // Remove aliases
             for (String alias : command.getAliases()) {
-                aliasMap.remove(alias.toLowerCase());
+                aliasMap.remove(alias.toLowerCase(), command); // only if this command owns the alias
             }
         }
 
@@ -217,81 +217,30 @@ public class SimpleCommandRegistry implements CommandRegistry {
 
     @Override
     public boolean enableCommand(String name) {
-        Optional<Command> commandOpt = getCommand(name);
-        if (commandOpt.isEmpty() || commandOpt.get().isEnabled()) {
-            return false;
-        }
-
-        Command command = commandOpt.get();
-
-        // Since Command is immutable, we need to recreate it with the new enabled state
-        if (command instanceof SimpleCommand simpleCommand) {
-            SimpleCommand newCommand = new SimpleCommand(
-                    simpleCommand.name(),
-                    simpleCommand.description(),
-                    simpleCommand.category(),
-                    simpleCommand.options(),
-                    simpleCommand.subcommands(),
-                    simpleCommand.group(),
-                    simpleCommand.permission(),
-                    simpleCommand.translationKey(),
-                    simpleCommand.aliases(),
-                    simpleCommand.isGuildOnly(),
-                    simpleCommand.guildIds(),
-                    simpleCommand.isSubcommand(),
-                    simpleCommand.getParent(),
-                    true, // Set enabled to true
-                    simpleCommand.getCooldown(),
-                    simpleCommand.executor()
-            );
-
-            // Replace the command in all maps
-            Plugin plugin = commandPluginMap.get(command);
-            unregister(name);
-            register(newCommand, plugin);
-            return true;
-        }
-
-        return false;
+        return setEnabled(name, true);
     }
 
     @Override
     public boolean disableCommand(String name) {
+        return setEnabled(name, false);
+    }
+
+    /**
+     * Commands are immutable: the command is re-created with the new flag and swapped in every index
+     * (name, aliases, owner) under the same name.
+     */
+    private boolean setEnabled(String name, boolean enabled) {
         Optional<Command> commandOpt = getCommand(name);
-        if (commandOpt.isEmpty() || !commandOpt.get().isEnabled()) {
+        if (commandOpt.isEmpty() || commandOpt.get().isEnabled() == enabled) {
+            return false;
+        }
+        if (!(commandOpt.get() instanceof SimpleCommand simpleCommand)) {
             return false;
         }
 
-        Command command = commandOpt.get();
-
-        // Since Command is immutable, we need to recreate it with the new enabled state
-        if (command instanceof SimpleCommand simpleCommand) {
-            SimpleCommand newCommand = new SimpleCommand(
-                    simpleCommand.name(),
-                    simpleCommand.description(),
-                    simpleCommand.category(),
-                    simpleCommand.options(),
-                    simpleCommand.subcommands(),
-                    simpleCommand.group(),
-                    simpleCommand.permission(),
-                    simpleCommand.translationKey(),
-                    simpleCommand.aliases(),
-                    simpleCommand.isGuildOnly(),
-                    simpleCommand.guildIds(),
-                    simpleCommand.isSubcommand(),
-                    simpleCommand.getParent(),
-                    false, // Set enabled to false
-                    simpleCommand.getCooldown(),
-                    simpleCommand.executor()
-            );
-
-            // Replace the command in all maps
-            Plugin plugin = commandPluginMap.get(command);
-            unregister(name);
-            register(newCommand, plugin);
-            return true;
-        }
-
-        return false;
+        Plugin plugin = commandPluginMap.get(simpleCommand);
+        unregister(name);
+        register(simpleCommand.withEnabled(enabled), plugin);
+        return true;
     }
 }
