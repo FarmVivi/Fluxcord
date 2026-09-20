@@ -12,12 +12,12 @@ paths:
 - Contract: `api/storage/DataStorage` — `get(StorageKey, Class<T>)`, `set`, `exists`, `remove`, `getKeys(scope)`, `getAll(scope)`, `clear(scope)`, `save()`, `close()`. `StorageKey(scope, key)` record with factories `global(key)`, `user(userId, key)`, `guild(guildId, key)`, `userGuild(userId, guildId, key)` — scope is a string like `user:<id>`.
 - `api/storage/DataStorageManager` is an **interface** (impl `core/storage/SimpleDataStorageManager`, built by `StorageFactory`); `getGlobalStorage()/getUserStorage(id)/getGuildStorage(id)/getUserGuildStorage(u, g)` return one `api/storage/ScopedStorage` (final class: `DataStorage` + scope + key prefix), plus `saveAll()/close()`. Scope strings come from `StorageKey.globalScope()/userScope()/guildScope()/userGuildScope()` — the only place the formats live.
 - Plugin namespacing: `PluginDataStorageAdapter` (from `AbstractPlugin.getPluginDataStorage()`) returns `scopedView.namespaced(pluginId)`: keys are stored as `<pluginId>.<key>` in the same scope; `getKeys()/getAll()` strip the prefix and hide other keys, `clear()` removes only the namespaced keys (an un-namespaced `clear()` drops the whole scope). Core uses unprefixed views (`commands.prefix` in guild scope, `permission.*` in `SimplePermissionManager`).
-- Values are serialized with Gson (both backends); `get` deserializes to the requested class. Records / complex generics need care (Gson + Java records works since 2.10 but check `TypeToken` needs for lists).
+- Values are serialized with the one shared Gson in `core/storage/StorageJson` (`compact()` for DB, `pretty()` for files, `convert(value, type)` to re-type a cached/loaded object): records, enums, `List`/`Map`, `java.time` (`Instant`, `LocalDate`, `LocalDateTime`, `ZonedDateTime`, `Duration` as ISO strings), `LONG_OR_DOUBLE` number policy, no HTML escaping. Untyped reads return `Long`/`Double` from the backend but the *original* object while it sits in the `AbstractDataStorage` cache — consumers must use `instanceof Number`. Generic lists need a `TypeToken` (the API only takes `Class<T>`, so `List<Track>` comes back as `List<Map>`).
 
 ### Implementations (`core/storage`)
 - `AbstractDataStorage` — in-memory `cache` per scope (`ConcurrentHashMap`), fires `StorageGetEvent` (pre without value, post with value; cancelling the pre-event returns the listener's value) / `StorageSetEvent` (cancellable, value replaceable) / `StorageRemoveEvent`, delegates to `doGet/doSet/doExists/doRemove/doGetKeys/doGetAll/doClear`. Rules (tested in `AbstractDataStorageTest`): misses are not cached; a cached object of another type falls through to `doGet`; **`set` calls `doSet` first and caches only on success** (a rejected write is invisible); `null` values are not storable (NPE) — use `remove`.
 - `file/FileDataStorage(baseDirectory, eventManager, saveDebounceMs)` — one `data.json` per scope directory (`guild:1` → `guild/1/data.json`); `loadScopeData` lazily reads the file into the shared cache map (a `ConcurrentHashMap`, JSON nulls dropped); writes are debounced per scope (`Debouncer`), `save()` flushes, `close()` stops debouncers then saves. An empty scope is written back as `{}` when its file exists (removing the last key must stick); a malformed file is renamed `data.json.corrupt` and the scope starts empty.
-- `db/DatabaseDataStorage` — HikariCP pool; single table `<prefix>storage_data(scope, key_name, value_data)`; `db/SqlDialect` picks MySQL/MariaDB vs PostgreSQL from the JDBC URL prefix (upsert syntax, text column type). Tested by `SqlDialectTest`.
+- `db/DatabaseDataStorage` — HikariCP pool; single table `<prefix>storage_data(scope, key_name, value_data)`; `db/SqlDialect` picks MySQL/MariaDB vs PostgreSQL from the JDBC URL prefix (upsert syntax, text column type). Package-private constructor `(DataSource, SqlDialect, prefix, events)` for tests; `close()` only closes a `HikariDataSource`.
 - `StorageFactory.createStorageManager(config, eventManager)` — reads `data.storage.type` (`FILE`|`DB`), validates DB settings, and if `data.storage.fallback: true` degrades to FILE when the DB is unreachable at boot (otherwise throws → `Fluxcord` exits).
 
 ## Binary storage
@@ -31,7 +31,8 @@ paths:
 - Changing backend FILE → DB does **not** migrate existing data; there is no migration tool.
 
 ## Testing
-- Existing: `AbstractDataStorageTest` (fake backend, 13), `FileDataStorageTest` (9), `FileDataStorageColdStartTest`, `SqlDialectTest`, `ScopedStorageTest` (scope formats, plugin prefixing, binary paths — the on-disk layout contract). Missing: `DatabaseDataStorage` (could use H2 in MySQL mode, or Testcontainers — ask the user before adding a test dependency), fallback path of the factories, binary storages.
+- Existing: `AbstractDataStorageTest` (fake backend, 13), `FileDataStorageTest` (9), `FileDataStorageColdStartTest`, `SqlDialectTest`, `ScopedStorageTest` (scope formats, plugin prefixing, binary paths — the on-disk layout contract), `StorageJsonTest`, `DatabaseDataStorageTest` (H2 `MODE=MySQL`, in-memory, a second instance on the same URL gives cold reads). Missing: fallback path of the factories, binary storages.
+- H2 does **not** emulate PostgreSQL `INSERT ... ON CONFLICT DO UPDATE` (syntax error in `MODE=PostgreSQL`), so the PostgreSQL upsert is only pinned as text; verify against a real server via the dev bot when touching `SqlDialect`.
 - For file storage tests use `@TempDir` and a tiny `saveDebounceMs`.
 
 ## Improvement loop (mandatory — see /skill-maintenance)
@@ -46,5 +47,6 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 - 2026-09-20 (S1/S2): managers are interfaces; the 16 scoped-view classes were deleted in favour of `ScopedStorage`/`ScopedBinaryStorage` (`namespaced(id)` composes prefixes: `a.b.key`). Plugins that referenced `PluginGuildStorage` & co must switch to `ScopedStorage` (music plugin done). Tests for the storage layer live in `fluxcord-core` — `fluxcord-api` has no test module.
 
+- 2026-09-20 (S3/S4): the number model changed from Gson's default (`Double` for every JSON number on untyped reads) to `LONG_OR_DOUBLE`; typed reads were never affected. `PlaybackState.fromMap` already used `instanceof Number`.
+
 ## Known issues / open questions
-- Gson instances are static per class; a shared, configured `Gson` (records, `Instant`, enums) would avoid divergence between FILE and DB serialization.

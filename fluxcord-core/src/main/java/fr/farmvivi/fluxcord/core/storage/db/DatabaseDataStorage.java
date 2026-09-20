@@ -1,7 +1,6 @@
 package fr.farmvivi.fluxcord.core.storage.db;
 
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import fr.farmvivi.fluxcord.api.config.Configuration;
@@ -9,8 +8,11 @@ import fr.farmvivi.fluxcord.api.config.ConfigurationException;
 import fr.farmvivi.fluxcord.api.event.EventManager;
 import fr.farmvivi.fluxcord.api.storage.StorageKey;
 import fr.farmvivi.fluxcord.core.storage.AbstractDataStorage;
+import fr.farmvivi.fluxcord.core.storage.StorageJson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.sql.DataSource;
 
 import java.sql.*;
 import java.util.*;
@@ -21,11 +23,11 @@ import java.util.*;
  */
 public class DatabaseDataStorage extends AbstractDataStorage {
     private static final Logger logger = LoggerFactory.getLogger(DatabaseDataStorage.class);
-    private static final Gson gson = new GsonBuilder().create();
+    private static final Gson gson = StorageJson.compact();
 
     private static final String BASE_TABLE_NAME = "storage_data";
 
-    private final HikariDataSource dataSource;
+    private final DataSource dataSource;
     private final SqlDialect dialect;
     private final String tableName;
     private final String indexName;
@@ -52,6 +54,19 @@ public class DatabaseDataStorage extends AbstractDataStorage {
             logger.error("Missing required database configuration", e);
             throw new RuntimeException("Failed to initialize database connection", e);
         }
+        initializeSchema();
+    }
+
+    /**
+     * Storage over an existing pool with an explicit dialect (tests, embedded databases). {@link #close()} closes
+     * the pool only when it is a {@link HikariDataSource}.
+     */
+    DatabaseDataStorage(DataSource dataSource, SqlDialect dialect, String tablePrefix, EventManager eventManager) {
+        super("database", eventManager);
+        this.dataSource = dataSource;
+        this.dialect = dialect;
+        this.tableName = sanitizeTablePrefix(tablePrefix) + BASE_TABLE_NAME;
+        this.indexName = "idx_" + tableName + "_scope";
         initializeSchema();
     }
 
@@ -302,10 +317,15 @@ public class DatabaseDataStorage extends AbstractDataStorage {
         }
     }
 
+    /** The pool behind this storage (tests inspect stored rows through it). */
+    DataSource dataSource() {
+        return dataSource;
+    }
+
     @Override
     public boolean close() {
-        if (dataSource != null && !dataSource.isClosed()) {
-            dataSource.close();
+        if (dataSource instanceof HikariDataSource pool && !pool.isClosed()) {
+            pool.close();
             logger.info("Database connection pool closed");
         }
         return true;

@@ -124,8 +124,8 @@ class FileDataStorageTest {
         FileDataStorage second = new FileDataStorage(dir, null, 0);
         Track restored = second.get(key, Track.class).orElseThrow();
         assertEquals(new Track("song", 17500L, List.of("a", "b")), restored);
-        assertEquals(17500L, second.get(key, Map.class).orElseThrow().get("position") instanceof Double d ? d.longValue() : -1,
-                "untyped reads see Gson's raw model (numbers are Double)");
+        assertEquals(17500L, second.get(key, Map.class).orElseThrow().get("position"),
+                "untyped cold reads see the shared JSON model (integral numbers are Long)");
     }
 
     @Test

@@ -261,6 +261,13 @@ getPluginDataStorage().getUserGuildStorage(userId, guildId).set("xp", 1500);
 getPluginDataStorage().saveAll();
 ```
 
+**Value types**: values are stored as JSON with one shared model for the FILE and DB backends
+(`core/storage/StorageJson`). Supported: primitives and `String`, enums (by name), records and plain beans,
+`List`/`Map` of those, and `java.time` `Instant`, `LocalDate`, `LocalDateTime`, `ZonedDateTime`, `Duration`
+(ISO-8601 strings). `get(key, MyRecord.class)` re-types stored data; untyped reads (`getAll()`,
+`get(key, Map.class)`) return `Long`/`Double` for numbers when they come from the backend and the original
+object when it is still cached, so treat numbers as `Number`. `null` cannot be stored: use `remove(key)`.
+
 **Configuration**:
 
 - Storage backend selection (File, Database, etc.)

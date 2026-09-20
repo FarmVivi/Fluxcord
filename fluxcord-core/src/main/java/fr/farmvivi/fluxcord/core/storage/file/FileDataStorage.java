@@ -1,11 +1,11 @@
 package fr.farmvivi.fluxcord.core.storage.file;
 
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import fr.farmvivi.fluxcord.api.event.EventManager;
 import fr.farmvivi.fluxcord.api.storage.StorageKey;
 import fr.farmvivi.fluxcord.core.storage.AbstractDataStorage;
+import fr.farmvivi.fluxcord.core.storage.StorageJson;
 import fr.farmvivi.fluxcord.core.util.Debouncer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,7 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class FileDataStorage extends AbstractDataStorage {
     private static final Logger logger = LoggerFactory.getLogger(FileDataStorage.class);
     private static final String DATA_FILENAME = "data.json";
-    private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
+    private static final Gson gson = StorageJson.pretty();
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
     }.getType();
 
@@ -61,10 +61,8 @@ public class FileDataStorage extends AbstractDataStorage {
         Map<String, Object> scopeData = loadScopeData(scope);
         if (scopeData.containsKey(keyName)) {
             try {
-                // Convert object to the requested type using Gson
-                String json = gson.toJson(scopeData.get(keyName));
-                T value = gson.fromJson(json, type);
-                return Optional.ofNullable(value);
+                // Re-type the cached/loaded object (a Map/Long/Double after a JSON load) into the requested type
+                return Optional.ofNullable(StorageJson.convert(scopeData.get(keyName), type));
             } catch (Exception e) {
                 logger.error("[{}] Error converting data for key {} in scope {}: {}",
                         storageType, keyName, scope, e.getMessage());

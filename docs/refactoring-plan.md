@@ -41,8 +41,8 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 
 - [x] **S1 — Managers as interfaces.** Done 2026-09-20: `DataStorageManager` / `BinaryStorageManager` are api interfaces, implemented by `core/storage/SimpleDataStorageManager` and `core/storage/binary/SimpleBinaryStorageManager` (created by the factories).
 - [x] **S2 — Collapse the scoped views.** Done 2026-09-20: the 16 view classes are replaced by `api/storage/ScopedStorage` and `api/storage/binary/ScopedBinaryStorage` (scope + optional namespace prefix via `namespaced(id)`; `StorageKey.*Scope()` factories own the scope formats). Storage layout unchanged (`ScopedStorageTest`). API break: plugins that named `PluginGuildStorage` & co now use `ScopedStorage`.
-- [ ] **S3 — Shared Gson configuration** (records, `Instant`, enums) for FILE and DB backends; document what value types are supported.
-- [ ] **S4 — DB tests.** H2 (MySQL/PostgreSQL modes) or Testcontainers for `DatabaseDataStorage`; ask before adding the dependency.
+- [x] **S3 — Shared Gson configuration.** Done 2026-09-20: `core/storage/StorageJson` (`compact()`/`pretty()`/`convert()`; `java.time` as ISO-8601, integral numbers read as `Long`, no HTML escaping) used by both backends; supported value types documented in `docs/core-features.md`; `StorageJsonTest`.
+- [x] **S4 — DB tests.** Done 2026-09-20 with H2 (test scope) in MySQL mode: `DatabaseDataStorageTest` (upsert, scopes, JSON payloads, table prefix) through a new package-private `DatabaseDataStorage(DataSource, SqlDialect, prefix, events)` constructor. H2 cannot emulate PostgreSQL's `ON CONFLICT ... DO UPDATE`; the PostgreSQL upsert stays covered by `SqlDialectTest` only — a real-server check belongs to the in-cluster dev bot.
 
 ## 6. i18n
 
