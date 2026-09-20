@@ -51,7 +51,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 ## 7. Audio
 
 - [ ] **A1 — Key by plugin id** (see P2).
-- [ ] **A2 — Extract the send strategy** (bypass vs mix, Opus rejection, priority fades) from `AudioPipeline` into a testable class; translate the French comments while there. Decided 2026-09-20: bypass now applies volume × fade in its existing LE→BE pass (no extra pass; Opus untouched).
+- [x] **A2 — Extract the send strategy** (done 2026-09-20: `SendStrategy`, one-pass BE mixer, `AudioSettings` fade/ducking, frame event opt-in) (bypass vs mix, Opus rejection, priority fades) from `AudioPipeline` into a testable class; translate the French comments while there. Decided 2026-09-20: bypass now applies volume × fade in its existing LE→BE pass (no extra pass; Opus untouched).
 - [ ] **A3 — `ai-audio-plugin`** is a stub of TODOs; remove from the reactor or make it a real example — user decision.
 
 ## 8. Hygiene (do opportunistically inside the chantiers above, never as drive-by commits)

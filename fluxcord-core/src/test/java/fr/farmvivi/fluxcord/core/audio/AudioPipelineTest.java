@@ -75,7 +75,7 @@ class AudioPipelineTest {
         when(guild.getName()).thenReturn("g");
         when(guild.getAudioManager()).thenReturn(audioManager);
         when(events.hasListeners(any())).thenReturn(true); // frame events are opt-in
-        pipeline = new AudioPipeline(guild, events);
+        pipeline = new AudioPipeline(guild, events, new AudioSettings(200, 0)); // full mute: levels are easy to assert
     }
 
     @Test
@@ -306,6 +306,27 @@ class AudioPipelineTest {
         // from rounding; check the sign path and the exact swap on a negative sample.
         pipeline.setVolume(music, 50);
         assertEquals(-15000, firstSampleBigEndian(frame()));
+    }
+
+    @Test
+    void partialDuckingAndFadeDurationComeFromSettings() {
+        // 40 ms fade (2 frames) down to 25 % instead of silence
+        AudioPipeline configured = new AudioPipeline(guild, events, new AudioSettings(40, 25));
+        FakeSource musicSource = new FakeSource(false, (short) 1000);
+        FakeSource announcement = new FakeSource(false, (short) 0);
+        configured.registerSendHandler(music, musicSource, 100, 10);
+        configured.registerSendHandler(tts, announcement, 100, AudioService.DEFAULT_PRIORITY_THRESHOLD);
+
+        assertTrue(configured.canProvide());
+        short first = firstSampleBigEndian(configured.provide20MsAudio());
+        assertTrue(configured.canProvide());
+        short second = firstSampleBigEndian(configured.provide20MsAudio());
+        assertTrue(configured.canProvide());
+        short third = firstSampleBigEndian(configured.provide20MsAudio());
+
+        assertTrue(first < 1000 && first > 250, "half way after one frame: " + first);
+        assertEquals(250, second, "floor reached after 2 frames");
+        assertEquals(250, third, "and held there");
     }
 
     @Test

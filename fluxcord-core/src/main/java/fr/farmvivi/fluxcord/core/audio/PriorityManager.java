@@ -7,8 +7,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * Gère les priorités et les fondus (fades) pour l'audio.
  */
 public class PriorityManager {
-    private static final float FADE_MIN = 0.0f;
     private static final float FADE_MAX = 1.0f;
+
+    // Niveau plancher d'un fade-out (0 = muet, 0.2 = ducking partiel à 20 %)
+    private final float fadeMin;
 
     // Cartes de l'état des fondus
     private final Map<String, Float> fadeMultipliers = new ConcurrentHashMap<>();
@@ -24,8 +26,23 @@ public class PriorityManager {
      * @param fadeSteps nombre de pas pour un fondu complet
      */
     public PriorityManager(int fadeSteps) {
+        this(fadeSteps, 0.0f);
+    }
+
+    /**
+     * @param fadeSteps nombre de frames d'un fondu complet (>= 1)
+     * @param fadeMin   multiplicateur atteint en fin de fade-out, entre 0 (muet) et 1
+     */
+    public PriorityManager(int fadeSteps, float fadeMin) {
+        if (fadeSteps < 1) {
+            throw new IllegalArgumentException("fadeSteps must be >= 1");
+        }
+        if (fadeMin < 0.0f || fadeMin > FADE_MAX) {
+            throw new IllegalArgumentException("fadeMin must be between 0 and 1");
+        }
         this.fadeSteps = fadeSteps;
-        this.fadeStepSize = (FADE_MAX - FADE_MIN) / fadeSteps;
+        this.fadeMin = fadeMin;
+        this.fadeStepSize = (FADE_MAX - fadeMin) / fadeSteps;
     }
 
     /**
@@ -49,7 +66,7 @@ public class PriorityManager {
      */
     public void startFadeIn(String sourceName) {
         // Initialise le multiplicateur de fondu s'il n'existe pas
-        fadeMultipliers.putIfAbsent(sourceName, FADE_MIN);
+        fadeMultipliers.putIfAbsent(sourceName, fadeMin);
 
         // Calcule le pas d'augmentation pour atteindre 1 en fadeSteps pas
         float increment = fadeStepSize;
@@ -75,8 +92,8 @@ public class PriorityManager {
         multiplier += increment;
 
         // Limite le multiplicateur
-        if (multiplier <= FADE_MIN) {
-            multiplier = FADE_MIN;
+        if (multiplier <= fadeMin) {
+            multiplier = fadeMin;
             fadeIncrements.remove(sourceName);  // Arrête le fondu
         } else if (multiplier >= FADE_MAX) {
             multiplier = FADE_MAX;

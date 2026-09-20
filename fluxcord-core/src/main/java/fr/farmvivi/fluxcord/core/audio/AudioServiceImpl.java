@@ -25,6 +25,7 @@ public class AudioServiceImpl implements AudioService {
     private static final Logger logger = LoggerFactory.getLogger(AudioServiceImpl.class);
 
     private final EventManager eventManager;
+    private final AudioSettings settings;
     private final Map<String, AudioPipeline> pipelines = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> pluginGuilds = new ConcurrentHashMap<>();
 
@@ -34,7 +35,12 @@ public class AudioServiceImpl implements AudioService {
      * @param eventManager le gestionnaire d'événements
      */
     public AudioServiceImpl(EventManager eventManager) {
+        this(eventManager, AudioSettings.DEFAULTS);
+    }
+
+    public AudioServiceImpl(EventManager eventManager, AudioSettings settings) {
         this.eventManager = eventManager;
+        this.settings = settings;
     }
 
     @Override
@@ -268,7 +274,7 @@ public class AudioServiceImpl implements AudioService {
      * @return le pipeline audio
      */
     private AudioPipeline getOrCreatePipeline(Guild guild) {
-        return pipelines.computeIfAbsent(guild.getId(), k -> new AudioPipeline(guild, eventManager));
+        return pipelines.computeIfAbsent(guild.getId(), k -> new AudioPipeline(guild, eventManager, settings));
     }
 
     /**

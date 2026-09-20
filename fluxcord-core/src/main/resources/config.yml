@@ -51,3 +51,11 @@ data:
         # Use path-style access (endpoint/bucket/key) instead of virtual-host style
         # (bucket.endpoint/key).
         path_style_access: false
+
+# Audio pipeline settings (voice send side)
+audio:
+  # Duration of the fade-out/fade-in when a high-priority source (e.g. an announcement) starts or stops.
+  fade-duration-ms: 200
+  # Volume (0-100) the other sources are lowered to while a high-priority source plays.
+  # 0 mutes them; 20 (default) keeps the music audible in the background.
+  ducking-level: 20

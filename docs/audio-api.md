@@ -133,6 +133,18 @@ Vous pouvez modifier le seuil de priorité pour une guilde :
 audioService.setPriorityThreshold(guild, 80);
 ```
 
+L'atténuation (ducking) est configurable dans `config.yml`, section `audio` :
+
+```yaml
+audio:
+  fade-duration-ms: 200   # durée du fondu quand une source prioritaire démarre / s'arrête
+  ducking-level: 20       # volume (0-100) des autres sources pendant ce temps ; 0 = muettes
+```
+
+Une source seule (PCM ou Opus) est relayée sans mixage ; son volume et le fondu sont appliqués pendant la
+conversion vers le format JDA, sans passe supplémentaire. Le volume ne s'applique pas aux sources Opus
+(déjà encodées).
+
 ### 6. Nettoyage des ressources
 
 Le service audio nettoie automatiquement les handlers lorsqu'un plugin est désactivé, mais vous pouvez le faire

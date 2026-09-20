@@ -28,10 +28,6 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
     private static final Logger logger = LoggerFactory.getLogger(AudioPipeline.class);
     private static final int FRAME_SIZE_BYTES = 3840; // 20ms @ 48kHz, 2ch, 16-bit
 
-    // Constantes pour le fondu audio
-    private static final int FADE_DURATION_MS = 200;
-    private static final int FRAME_DURATION_MS = 20;
-    private static final int FADE_STEPS = FADE_DURATION_MS / FRAME_DURATION_MS;
     private final Guild guild;
     private final EventManager eventManager;
     // Gestionnaires pour les handlers et les priorités
@@ -56,10 +52,14 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
      * @param eventManager le gestionnaire d'événements
      */
     public AudioPipeline(Guild guild, EventManager eventManager) {
+        this(guild, eventManager, AudioSettings.DEFAULTS);
+    }
+
+    public AudioPipeline(Guild guild, EventManager eventManager, AudioSettings settings) {
         this.guild = guild;
         this.eventManager = eventManager;
         this.mixer = new AudioMixer();
-        this.priorityManager = new PriorityManager(FADE_STEPS);
+        this.priorityManager = new PriorityManager(settings.fadeSteps(), settings.duckingFloor());
 
         // Connecte ce pipeline au AudioManager de la guilde
         guild.getAudioManager().setSendingHandler(this);

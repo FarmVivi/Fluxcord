@@ -9,6 +9,7 @@ import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
 import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
 import fr.farmvivi.fluxcord.api.storage.binary.BinaryStorageManager;
 import fr.farmvivi.fluxcord.core.audio.AudioServiceImpl;
+import fr.farmvivi.fluxcord.core.audio.AudioSettings;
 import fr.farmvivi.fluxcord.core.command.SimpleCommandService;
 import fr.farmvivi.fluxcord.core.config.CoreConfiguration;
 import fr.farmvivi.fluxcord.core.console.ConsoleCommandService;
@@ -206,7 +207,7 @@ public class Fluxcord {
         dataStorageManager = StorageFactory.createStorageManager(coreConfig, eventManager);
         binaryStorageManager = BinaryStorageFactory.createBinaryStorageManager(coreConfig, eventManager);
         permissionManager = new SimplePermissionManager(eventManager, dataStorageManager);
-        audioService = new AudioServiceImpl(eventManager);
+        audioService = new AudioServiceImpl(eventManager, AudioSettings.fromConfig(coreConfig));
     }
 
     private static void createCommandAndPluginManagers(File pluginsFolder, String defaultPrefix) {
