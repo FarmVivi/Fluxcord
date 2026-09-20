@@ -297,9 +297,9 @@ Le système fournit plusieurs commandes système :
 - `help` : Affiche des informations sur les commandes disponibles
 - `version` : Affiche la version du bot
 - `shutdown` : Arrête le bot (réservé aux opérateurs)
-- `op <add|remove|list> [userId]` : Gère les opérateurs (console, ou un opérateur depuis Discord)
+- `perm <set|unset|list|nodes> [permission] [userId] [value] [scope]` : Gère les surcharges de permissions des utilisateurs, persistées dans le storage (console, ou un opérateur depuis Discord). `scope` = `guild` (défaut depuis un serveur) ou `global`. `perm nodes` liste les permissions enregistrées par les plugins et leur défaut.
 
-Les **opérateurs** reçoivent toutes les permissions dont le défaut est `OP` (ex. volume et actions admin du plugin musique). Sont opérateurs : les IDs de `permissions.operators` dans `config.yml`, les utilisateurs ajoutés avec `op add`, et — dans un serveur — son propriétaire et les membres ayant la permission Discord `ADMINISTRATOR`.
+Les **opérateurs** reçoivent toutes les permissions dont le défaut est `OP` (ex. volume et actions admin du plugin musique). Sont opérateurs : les IDs de `permissions.operators` dans `config.yml`, et — dans un serveur — son propriétaire et les membres ayant la permission Discord `ADMINISTRATOR`.
 
 ## Gestion des permissions
 

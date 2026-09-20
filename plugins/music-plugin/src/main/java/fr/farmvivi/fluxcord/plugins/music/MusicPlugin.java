@@ -8,6 +8,7 @@ import fr.farmvivi.fluxcord.api.plugin.AbstractPlugin;
 import fr.farmvivi.fluxcord.plugins.music.commands.*;
 import fr.farmvivi.fluxcord.plugins.music.events.MusicButtonListener;
 import fr.farmvivi.fluxcord.plugins.music.events.MusicModalListener;
+import fr.farmvivi.fluxcord.plugins.music.player.MusicPlayer;
 import fr.farmvivi.fluxcord.plugins.music.events.MusicReadyListener;
 import fr.farmvivi.fluxcord.plugins.music.events.MusicVoiceListener;
 import fr.farmvivi.fluxcord.plugins.music.playlist.PlaylistManager;

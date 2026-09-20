@@ -8,7 +8,6 @@ import fr.farmvivi.fluxcord.api.permissions.events.PermissionChangeEvent;
 import fr.farmvivi.fluxcord.api.permissions.events.PermissionCheckEvent;
 import fr.farmvivi.fluxcord.api.plugin.Plugin;
 import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
-import fr.farmvivi.fluxcord.api.storage.GlobalStorage;
 import fr.farmvivi.fluxcord.api.storage.UserGuildStorage;
 import fr.farmvivi.fluxcord.api.storage.UserStorage;
 import org.slf4j.Logger;
@@ -25,16 +24,13 @@ import java.util.function.BiPredicate;
  * <p>Only the stored overrides are cached (a storage read each); defaults are evaluated on every check so
  * that operator changes and plugin re-registrations apply immediately.
  *
- * <p>Operators: the IDs listed in the core configuration ({@code permissions.operators}) plus those promoted
- * at runtime ({@link #setOperator}, persisted in global storage under {@value #OPERATORS_KEY}). Within a guild,
+ * <p>Operators: the IDs listed in the core configuration ({@code permissions.operators}). Within a guild,
  * a {@link #setGuildOperatorResolver resolver} (wired by the core once Discord is connected) can also grant
  * operator status to the guild owner and administrators.
  */
 public class SimplePermissionManager implements PermissionManager {
     private static final Logger logger = LoggerFactory.getLogger(SimplePermissionManager.class);
     private static final String PERMISSION_KEY_PREFIX = "permission.";
-    /** Global storage key holding the runtime operator IDs (a list of strings). */
-    static final String OPERATORS_KEY = "permissions.operators";
 
     private final EventManager eventManager;
     private final DataStorageManager dataStorageManager;
@@ -269,6 +265,32 @@ public class SimplePermissionManager implements PermissionManager {
     }
 
     @Override
+    public boolean unsetPermission(String userId, String permission) {
+        if (userId == null || permission == null) {
+            return false;
+        }
+        boolean removed = userStorage(userId).remove(PERMISSION_KEY_PREFIX + permission);
+        Map<String, Optional<Boolean>> perms = userOverrides.get(userId);
+        if (perms != null) {
+            perms.remove(permission);
+        }
+        return removed;
+    }
+
+    @Override
+    public boolean unsetPermission(String userId, String guildId, String permission) {
+        if (userId == null || guildId == null || permission == null) {
+            return false;
+        }
+        boolean removed = userGuildStorage(userId, guildId).remove(PERMISSION_KEY_PREFIX + permission);
+        Map<String, Map<String, Optional<Boolean>>> guilds = userGuildOverrides.get(userId);
+        if (guilds != null && guilds.get(guildId) != null) {
+            guilds.get(guildId).remove(permission);
+        }
+        return removed;
+    }
+
+    @Override
     public Map<String, Boolean> getUserPermissions(String userId) {
         if (userId == null) {
             return Collections.emptyMap();
@@ -299,7 +321,7 @@ public class SimplePermissionManager implements PermissionManager {
 
     @Override
     public boolean isOperator(String userId) {
-        return userId != null && (configuredOperators.contains(userId) || runtimeOperators().contains(userId));
+        return userId != null && configuredOperators.contains(userId);
     }
 
     @Override
@@ -318,34 +340,6 @@ public class SimplePermissionManager implements PermissionManager {
         }
     }
 
-    @Override
-    public synchronized boolean setOperator(String userId, boolean operator) {
-        if (userId == null) {
-            return false;
-        }
-        Set<String> operators = new LinkedHashSet<>(runtimeOperators());
-        boolean changed = operator ? operators.add(userId) : operators.remove(userId);
-        if (changed) {
-            globalStorage().set(OPERATORS_KEY, new ArrayList<>(operators));
-            logger.info("{} operator status for user {}", operator ? "Granted" : "Revoked", userId);
-        }
-        return changed;
-    }
-
-    @Override
-    public Set<String> getOperators() {
-        Set<String> all = new LinkedHashSet<>(configuredOperators);
-        all.addAll(runtimeOperators());
-        return Collections.unmodifiableSet(all);
-    }
-
-    /** Runtime operators live in global storage as a list (never cached: DataStorage already caches). */
-    @SuppressWarnings("unchecked")
-    private List<String> runtimeOperators() {
-        return globalStorage().get(OPERATORS_KEY, List.class)
-                .map(list -> (List<String>) list.stream().map(String::valueOf).toList())
-                .orElse(List.of());
-    }
 
     // --- misc -----------------------------------------------------------------------------------
 
@@ -364,7 +358,4 @@ public class SimplePermissionManager implements PermissionManager {
         return dataStorageManager.getUserGuildStorage(userId, guildId);
     }
 
-    private GlobalStorage globalStorage() {
-        return dataStorageManager.getGlobalStorage();
-    }
 }

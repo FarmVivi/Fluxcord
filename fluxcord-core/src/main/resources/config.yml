@@ -16,13 +16,13 @@ commands:
     help: true      # Enable/disable help command
     version: true   # Enable/disable version command
     shutdown: true  # Enable/disable shutdown command
-    op: true        # Enable/disable op command (manage operators)
+    perm: true      # Enable/disable perm command (user permission overrides)
 
 # Permissions
 permissions:
   # Discord user IDs that are operators everywhere: they get every permission whose default is OP
   # (e.g. music volume/admin commands, shutdown). In a server, its owner and members with the
-  # ADMINISTRATOR permission are operators of that server automatically. Runtime changes: `op add <id>`.
+  # ADMINISTRATOR permission are operators of that server automatically.
   operators: []
 
 # Data storage settings

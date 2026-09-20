@@ -122,8 +122,7 @@ public interface PermissionManager {
     int unregisterPermissions(Plugin plugin);
 
     /**
-     * Whether the user is a global operator: listed in the core configuration ({@code permissions.operators})
-     * or promoted at runtime with {@link #setOperator(String, boolean)}. Operators get every permission whose
+     * Whether the user is a global operator: listed in the core configuration ({@code permissions.operators}). Operators get every permission whose
      * default is {@link PermissionDefault#OP}.
      *
      * @param userId the user ID
@@ -142,17 +141,21 @@ public interface PermissionManager {
     boolean isOperator(String userId, String guildId);
 
     /**
-     * Grants or revokes the runtime global operator status of a user (persisted). Users listed in the core
-     * configuration stay operators regardless of this call.
+     * Removes the stored user-level override of a permission, so the default (or a guild override) applies again.
      *
-     * @param userId   the user ID
-     * @param operator true to grant, false to revoke
-     * @return true if the status changed
+     * @param userId     the user ID
+     * @param permission the permission name
+     * @return true if an override was removed
      */
-    boolean setOperator(String userId, boolean operator);
+    boolean unsetPermission(String userId, String permission);
 
     /**
-     * @return the IDs of every global operator (configured and runtime)
+     * Removes the stored user-guild override of a permission.
+     *
+     * @param userId     the user ID
+     * @param guildId    the guild ID
+     * @param permission the permission name
+     * @return true if an override was removed
      */
-    Set<String> getOperators();
+    boolean unsetPermission(String userId, String guildId, String permission);
 }

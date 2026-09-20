@@ -138,29 +138,25 @@ class SimplePermissionManagerTest {
         assertTrue(withOps.hasPermission("1", "g", "p.op"));
         assertFalse(withOps.hasPermission("1", "p.notop"));
         assertFalse(withOps.hasPermission("2", "p.op"));
-        assertEquals(Set.of("1"), withOps.getOperators());
-        assertFalse(withOps.setOperator("1", false), "configured operators cannot be revoked at runtime");
-        assertTrue(withOps.isOperator("1"));
+        assertTrue(withOps.isOperator("1", "any-guild"));
     }
 
     @Test
-    void runtimeOperatorsArePersistedAndApplyImmediately() {
-        register("p.op", PermissionDefault.OP);
-        assertFalse(manager.hasPermission("1", "p.op"));
+    void unsetRemovesOneOverrideAndRestoresTheDefault() {
+        register("p", PermissionDefault.TRUE);
+        manager.setPermission("1", "p", false);
+        manager.setPermission("1", "g", "p", false);
+        manager.setPermission("1", "q", false);
 
-        assertTrue(manager.setOperator("1", true));
-        assertFalse(manager.setOperator("1", true), "already an operator");
-        assertTrue(manager.hasPermission("1", "p.op"), "no stale cached default");
-        assertTrue(manager.hasPermission("1", "g", "p.op"));
-        assertEquals(Set.of("1"), manager.getOperators());
-        assertTrue(storage.get(StorageKey.global("permissions.operators"), List.class).orElseThrow().contains("1"));
+        assertTrue(manager.unsetPermission("1", "g", "p"));
+        assertFalse(manager.unsetPermission("1", "g", "p"), "nothing left to remove");
+        assertFalse(manager.hasPermission("1", "g", "p"), "user-level override still applies");
 
-        SimplePermissionManager restarted = new SimplePermissionManager(events, new DataStorageManager(storage));
-        assertTrue(restarted.isOperator("1"), "read back from storage");
-
-        assertTrue(manager.setOperator("1", false));
-        assertFalse(manager.hasPermission("1", "p.op"));
-        assertTrue(manager.getOperators().isEmpty());
+        assertTrue(manager.unsetPermission("1", "p"));
+        assertTrue(manager.hasPermission("1", "p"), "back to the default");
+        assertTrue(manager.hasPermission("1", "g", "p"));
+        assertEquals(Map.of("q", false), manager.getUserPermissions("1"), "other overrides untouched");
+        assertFalse(manager.unsetPermission(null, "p"));
     }
 
     @Test
@@ -180,10 +176,10 @@ class SimplePermissionManagerTest {
 
     @Test
     void explicitOverrideBeatsOperatorStatus() {
-        register("p.op", PermissionDefault.OP);
-        manager.setOperator("1", true);
-        manager.setPermission("1", "p.op", false);
-        assertFalse(manager.hasPermission("1", "p.op"));
+        SimplePermissionManager withOps = new SimplePermissionManager(events, new DataStorageManager(storage), List.of("1"));
+        withOps.registerPermission(new Perm("p.op", "", PermissionDefault.OP), plugin);
+        withOps.setPermission("1", "p.op", false);
+        assertFalse(withOps.hasPermission("1", "p.op"));
     }
 
     // --- overrides ------------------------------------------------------------------------------

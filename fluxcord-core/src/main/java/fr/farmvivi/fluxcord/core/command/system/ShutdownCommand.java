@@ -60,7 +60,7 @@ public class ShutdownCommand {
             String guildId = context.getGuild().map(g -> g.getId()).orElse(null);
             if (!permissionManager.isOperator(context.getUser().getId(), guildId)) {
                 context.setEphemeral(true);
-                context.replyError(languageManager.getString(context.getLocale(), "commands.op.not_operator"));
+                context.replyError(languageManager.getString(context.getLocale(), "commands.perm.not_operator"));
                 return CommandResult.error("not an operator");
             }
         }
