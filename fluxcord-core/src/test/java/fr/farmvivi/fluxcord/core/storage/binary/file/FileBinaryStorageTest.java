@@ -129,6 +129,11 @@ class FileBinaryStorageTest {
         assertEquals("application/json", storage.getContentType(BinaryStorageKey.global("x.json")));
         assertEquals("application/zip", storage.getContentType(BinaryStorageKey.global("x.zip")));
         assertEquals("application/octet-stream", storage.getContentType(BinaryStorageKey.global("x.unknown")));
+        assertEquals("application/octet-stream", storage.getContentType(BinaryStorageKey.global("noext")));
+        assertEquals("application/octet-stream", storage.getContentType(BinaryStorageKey.global("dir.v2/noext")),
+                "a dot in a directory name is not an extension");
+        assertEquals("text/plain", storage.getContentType(BinaryStorageKey.global("dir.v2/readme.txt")));
+        assertEquals("application/gzip", storage.getContentType(BinaryStorageKey.global("dump.tar.gz")));
     }
 
     // ---- events ---------------------------------------------------------------------------------------------------

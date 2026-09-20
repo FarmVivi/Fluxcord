@@ -16,16 +16,43 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Abstract implementation of BinaryStorage with common functionality.
  */
 public abstract class AbstractBinaryStorage implements BinaryStorage {
     protected static final Logger logger = LoggerFactory.getLogger(AbstractBinaryStorage.class);
+
+    private static final String DEFAULT_CONTENT_TYPE = "application/octet-stream";
+
+    /** Content type by lower-case file extension; anything else is {@link #DEFAULT_CONTENT_TYPE}. */
+    private static final Map<String, String> CONTENT_TYPES = Map.ofEntries(
+            // Images
+            Map.entry("jpg", "image/jpeg"), Map.entry("jpeg", "image/jpeg"), Map.entry("png", "image/png"),
+            Map.entry("gif", "image/gif"), Map.entry("webp", "image/webp"), Map.entry("svg", "image/svg+xml"),
+            Map.entry("ico", "image/x-icon"),
+            // Audio
+            Map.entry("mp3", "audio/mpeg"), Map.entry("wav", "audio/wav"), Map.entry("ogg", "audio/ogg"),
+            Map.entry("flac", "audio/flac"),
+            // Video
+            Map.entry("mp4", "video/mp4"), Map.entry("webm", "video/webm"), Map.entry("avi", "video/x-msvideo"),
+            Map.entry("mov", "video/quicktime"),
+            // Documents
+            Map.entry("pdf", "application/pdf"), Map.entry("doc", "application/msword"),
+            Map.entry("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            Map.entry("xls", "application/vnd.ms-excel"),
+            Map.entry("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+            Map.entry("ppt", "application/vnd.ms-powerpoint"),
+            Map.entry("pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+            // Text
+            Map.entry("txt", "text/plain"), Map.entry("html", "text/html"), Map.entry("htm", "text/html"),
+            Map.entry("css", "text/css"), Map.entry("js", "application/javascript"),
+            Map.entry("json", "application/json"), Map.entry("xml", "application/xml"),
+            // Archives
+            Map.entry("zip", "application/zip"), Map.entry("gz", "application/gzip"),
+            Map.entry("gzip", "application/gzip"), Map.entry("tar", "application/x-tar"),
+            Map.entry("rar", "application/x-rar-compressed"), Map.entry("7z", "application/x-7z-compressed"));
     protected static final int BUFFER_SIZE = 8192;
-    // Cache for content types to avoid repeated computation
-    private static final Map<String, String> contentTypeCache = new ConcurrentHashMap<>();
     protected final String storageName;
     protected final EventManager eventManager;
 
@@ -175,7 +202,7 @@ public abstract class AbstractBinaryStorage implements BinaryStorage {
         String path = key.path();
 
         // Check cache first
-        return contentTypeCache.computeIfAbsent(path, this::determineContentType);
+        return determineContentType(path);
     }
 
     /**
@@ -185,92 +212,12 @@ public abstract class AbstractBinaryStorage implements BinaryStorage {
      * @return the content type
      */
     protected String determineContentType(String path) {
-        String lowerPath = path.toLowerCase();
-
-        // Image types
-        if (lowerPath.endsWith(".jpg") || lowerPath.endsWith(".jpeg")) {
-            return "image/jpeg";
-        } else if (lowerPath.endsWith(".png")) {
-            return "image/png";
-        } else if (lowerPath.endsWith(".gif")) {
-            return "image/gif";
-        } else if (lowerPath.endsWith(".webp")) {
-            return "image/webp";
-        } else if (lowerPath.endsWith(".svg")) {
-            return "image/svg+xml";
-        } else if (lowerPath.endsWith(".ico")) {
-            return "image/x-icon";
+        int dot = path.lastIndexOf('.');
+        int slash = path.lastIndexOf('/');
+        if (dot < 0 || dot < slash) {
+            return DEFAULT_CONTENT_TYPE;
         }
-
-        // Audio types
-        if (lowerPath.endsWith(".mp3")) {
-            return "audio/mpeg";
-        } else if (lowerPath.endsWith(".wav")) {
-            return "audio/wav";
-        } else if (lowerPath.endsWith(".ogg")) {
-            return "audio/ogg";
-        } else if (lowerPath.endsWith(".flac")) {
-            return "audio/flac";
-        }
-
-        // Video types
-        if (lowerPath.endsWith(".mp4")) {
-            return "video/mp4";
-        } else if (lowerPath.endsWith(".webm")) {
-            return "video/webm";
-        } else if (lowerPath.endsWith(".avi")) {
-            return "video/x-msvideo";
-        } else if (lowerPath.endsWith(".mov")) {
-            return "video/quicktime";
-        }
-
-        // Document types
-        if (lowerPath.endsWith(".pdf")) {
-            return "application/pdf";
-        } else if (lowerPath.endsWith(".doc")) {
-            return "application/msword";
-        } else if (lowerPath.endsWith(".docx")) {
-            return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-        } else if (lowerPath.endsWith(".xls")) {
-            return "application/vnd.ms-excel";
-        } else if (lowerPath.endsWith(".xlsx")) {
-            return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-        } else if (lowerPath.endsWith(".ppt")) {
-            return "application/vnd.ms-powerpoint";
-        } else if (lowerPath.endsWith(".pptx")) {
-            return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-        }
-
-        // Text types
-        if (lowerPath.endsWith(".txt")) {
-            return "text/plain";
-        } else if (lowerPath.endsWith(".html") || lowerPath.endsWith(".htm")) {
-            return "text/html";
-        } else if (lowerPath.endsWith(".css")) {
-            return "text/css";
-        } else if (lowerPath.endsWith(".js")) {
-            return "application/javascript";
-        } else if (lowerPath.endsWith(".json")) {
-            return "application/json";
-        } else if (lowerPath.endsWith(".xml")) {
-            return "application/xml";
-        }
-
-        // Archive types
-        if (lowerPath.endsWith(".zip")) {
-            return "application/zip";
-        } else if (lowerPath.endsWith(".gz") || lowerPath.endsWith(".gzip")) {
-            return "application/gzip";
-        } else if (lowerPath.endsWith(".tar")) {
-            return "application/x-tar";
-        } else if (lowerPath.endsWith(".rar")) {
-            return "application/x-rar-compressed";
-        } else if (lowerPath.endsWith(".7z")) {
-            return "application/x-7z-compressed";
-        }
-
-        // Default
-        return "application/octet-stream";
+        return CONTENT_TYPES.getOrDefault(path.substring(dot + 1).toLowerCase(), DEFAULT_CONTENT_TYPE);
     }
 
     /**

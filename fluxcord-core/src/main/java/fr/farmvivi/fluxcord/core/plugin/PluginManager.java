@@ -653,12 +653,11 @@ public class PluginManager implements PluginLoader, Closeable {
                 .count();
         int failedPlugins = totalPlugins - enabledPlugins;
 
-        long endTime = System.currentTimeMillis();
-        double reloadTime = (endTime - startTime) / 1000.0;
+        long reloadMillis = System.currentTimeMillis() - startTime;
 
-        logger.info(
-                "Plugin reload completed in {:.2f} seconds: {} total plugins, {} enabled, {} failed",
-                reloadTime, totalPlugins, enabledPlugins, failedPlugins);
+        logger.info("Plugin reload completed in {} ms: {} total plugins, {} enabled, {} failed (Discord {})",
+                reloadMillis, totalPlugins, enabledPlugins, failedPlugins,
+                discordConnected ? "connected" : "NOT connected");
     }
 
     /**

@@ -65,6 +65,7 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 - 2026-09-20: text commands — the last STRING option now absorbs the remaining words (`!play never gonna give you up`); before, only the first word was taken unless quoted.
 
+- 2026-09-20 (sonar pass): slash sync is covered by `CommandSynchronizationTest` (mock `CommandListUpdateAction`, explicit stubs on `addCommands(anyCollection())` and `submit()`); `SlashCommandParserTest` reads every option type from mocked `OptionMapping`s. `DiscordLocale.UNKNOWN` must be compared as the enum (its `Locale` has language `unknown`).
 - 2026-09-20 (coverage): text/console options are positional, so a command whose first option is not the one users type first breaks (`perm list <id>`, `help <category>`); both commands now reinterpret the first slot. `SimpleCommandRegistry.getCategories()` keeps the plugin's spelling (case-insensitive set).
 
 ## Known issues / open questions

@@ -33,10 +33,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 /**
  * Engine tests with real jars built on the fly ({@link PluginJars}) and a real fixture plugin that records
@@ -50,6 +50,7 @@ class PluginManagerTest {
     private SimpleEventManager events;
     private SimplePermissionManager permissions;
     private SimpleCommandRegistry registry;
+    private DiscordAPI discord;
     private PluginManager manager;
     private String previousPluginsDir;
 
@@ -71,7 +72,11 @@ class PluginManagerTest {
         CommandService commandService = mock(CommandService.class);
         when(commandService.getRegistry()).thenReturn(registry);
 
-        manager = new PluginManager(pluginsFolder, events, mock(DiscordAPI.class), language, storage,
+        discord = mock(DiscordAPI.class);
+        when(discord.connect()).thenReturn(CompletableFuture.completedFuture(null));
+        when(discord.disconnect()).thenReturn(CompletableFuture.completedFuture(null));
+
+        manager = new PluginManager(pluginsFolder, events, discord, language, storage,
                 mock(BinaryStorageManager.class), permissions, mock(AudioService.class), commandService);
     }
 
@@ -321,6 +326,51 @@ class PluginManagerTest {
     @Test
     void reloadOfAnUnknownPluginFails() {
         assertFalse(manager.reloadPlugin("nope"));
+    }
+
+    // --- full reload (disconnects and reconnects Discord) ---------------------------------------
+
+    @Test
+    void reloadPluginsRescansTheFolderAroundADiscordReconnection() throws Exception {
+        PluginJars.plugin(pluginsFolder.toPath(), "alpha");
+        boot();
+        Plugin first = manager.getPlugin("alpha");
+        permissions.registerPermission(new Perm("alpha.x", PermissionDefault.TRUE), first);
+        PluginJars.plugin(pluginsFolder.toPath(), "beta"); // dropped in while running
+        PluginCalls.reset();
+
+        assertTrue(manager.reloadPlugins());
+
+        assertEquals(List.of("alpha:onPreDisable", "alpha:onDisable", "alpha:onPostDisable",
+                "alpha:onLoad", "beta:onLoad", "alpha:onPreEnable", "beta:onPreEnable",
+                "alpha:onEnable", "beta:onEnable", "alpha:onPostEnable", "beta:onPostEnable"), PluginCalls.all());
+        assertEquals(PluginLifecycle.DISABLED, first.getLifecycle());
+        assertNotSame(first, manager.getPlugin("alpha"));
+        assertEquals(PluginLifecycle.ENABLED, manager.getPlugin("alpha").getLifecycle());
+        assertEquals(PluginLifecycle.ENABLED, manager.getPlugin("beta").getLifecycle());
+        assertNull(permissions.getPermission("alpha.x"), "old registrations released");
+
+        var order = inOrder(discord);
+        order.verify(discord).setShutdownPresence();
+        order.verify(discord).disconnect();
+        order.verify(discord).connect();
+        order.verify(discord).setStartupPresence();
+        order.verify(discord).setDefaultPresence();
+    }
+
+    @Test
+    void reloadPluginsWithoutDiscordLeavesThePluginsPreEnabledOnly() throws Exception {
+        PluginJars.plugin(pluginsFolder.toPath(), "alpha");
+        boot();
+        when(discord.connect()).thenReturn(CompletableFuture.failedFuture(new IllegalStateException("gateway down")));
+        PluginCalls.reset();
+
+        assertFalse(manager.reloadPlugins());
+
+        assertEquals(List.of("alpha:onPreDisable", "alpha:onDisable", "alpha:onPostDisable", "alpha:onLoad",
+                "alpha:onPreEnable"), PluginCalls.all(), "enable phases skipped");
+        assertNotEquals(PluginLifecycle.ENABLED, manager.getPlugin("alpha").getLifecycle());
+        verify(discord, never()).setDefaultPresence();
     }
 
     // --- helpers --------------------------------------------------------------------------------

@@ -14,6 +14,7 @@ import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.events.Event;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
+import net.dv8tion.jda.api.interactions.DiscordLocale;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,13 +58,10 @@ public class SlashCommandParser implements CommandParser {
         Guild guild = slashEvent.getGuild();
 
         // Get locale
-        Locale locale = slashEvent.getUserLocale().toLocale();
-        logger.debug("User locale from interaction: {}", locale);
-        // Fallback to default if locale is not set or invalid
-        if (locale.getLanguage().isEmpty()) {
-            locale = languageManager.getDefaultLocale();
-            logger.debug("Falling back to default locale: {}", locale);
-        }
+        // DiscordLocale.UNKNOWN maps to a Locale whose language is "unknown", not "" - test the enum, not the Locale
+        DiscordLocale userLocale = slashEvent.getUserLocale();
+        Locale locale = userLocale == DiscordLocale.UNKNOWN ? languageManager.getDefaultLocale() : userLocale.toLocale();
+        logger.debug("Locale for interaction: {} (user locale {})", locale, userLocale);
 
         // Route to the subcommand Discord selected (a parent with subcommands has no executor of its own)
         if (!command.getSubcommands().isEmpty()) {
@@ -144,11 +142,14 @@ public class SlashCommandParser implements CommandParser {
                         yield channel;
                     }
 
-                    yield mapping.getAsString();
+                    // A raw string would fail the IMentionable type check in validateOptions anyway
+                    throw new CommandParseException("Mentionable option could not be resolved: " + mapping.getAsString());
                 }
                 case NUMBER -> mapping.getAsDouble();
                 case ATTACHMENT -> mapping.getAsAttachment();
             };
+        } catch (CommandParseException e) {
+            throw e;
         } catch (Exception e) {
             logger.error("Failed to parse option value for type {}: {}", type, e.getMessage());
             throw new CommandParseException("Failed to parse option value: " + e.getMessage());
