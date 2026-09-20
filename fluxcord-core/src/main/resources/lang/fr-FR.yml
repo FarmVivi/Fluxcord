@@ -47,6 +47,15 @@ commands:
     os: "Système d'exploitation"
     gateway_ping: "Latence Gateway"
     shard: "Shard"
+  op:
+    not_operator: "Seuls les opérateurs peuvent gérer les opérateurs"
+    invalid_user: "Merci d'indiquer un identifiant Discord valide"
+    added: "L'utilisateur {0} est maintenant opérateur"
+    removed: "L'utilisateur {0} n'est plus opérateur"
+    already: "L'utilisateur {0} est déjà opérateur"
+    not_found: "L'utilisateur {0} n'est pas un opérateur ajouté à chaud (les opérateurs configurés ne se retirent pas ici)"
+    none: "Aucun opérateur défini"
+    list: "Opérateurs : {0}"
   shutdown:
     restarting: "Le bot redémarre..."
     shutting_down: "Le bot s'arrête..."

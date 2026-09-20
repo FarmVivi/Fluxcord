@@ -20,7 +20,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 
 ## 2. Boot & permissions
 
-- [ ] **B1 — Operators are unreachable.** `PermissionDefault.OP` resolves through `SimplePermissionManager.isOperator`, which reads an `isOperator` flag that nothing writes. Result: `music.volume`, `music.admin` are denied to everyone except the console. Add (decide with the user): `permissions.operators` list in `config.yml`, `OP` ⇒ guild owner / `ADMINISTRATOR` mapping, an `op`/`deop` console+slash command.
+- [x] **B1 — Operators.** Done 2026-09-20: `permissions.operators` in config.yml, guild owner/ADMINISTRATOR mapping via a resolver installed after connect, `op add|remove|list` command (console or operators), runtime list persisted in global storage; `shutdown` gated on operator status. Defaults evaluated live, only stored overrides cached.
 - [ ] **B2 — `Fluxcord` bootstrapper → instance.** Replace the static fields/getters (unused outside the class) with a `FluxcordRuntime` object built by a small `main`; remove `System.exit` from helper methods (throw, exit only in `main`). Makes boot testable and reload (`PluginManager.reloadPlugins` reconnecting JDA) reviewable.
 - [ ] **B3 — Configuration typing.** `CoreConfiguration` is read with string keys all over (`Fluxcord`, `StorageFactory`, `SimpleCommandService`...). Introduce typed config records (`DiscordConfig`, `StorageConfig`, `CommandsConfig`) parsed once, with validation in one place.
 
@@ -74,3 +74,4 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 | 2026-09-20 | T0 done as a dedicated workflow + JaCoCo report-only (no threshold), CI also on Dependabot PRs. Keep working on `develop`; branches optional. | user |
 | 2026-09-20 | E1: polymorphic dispatch and Bukkit `ignoreCancelled` semantics (API behaviour change; no plugin in the repo used `ignoreCancelled`). | user |
 | 2026-09-20 | i18n fallback: configured default locale before en-US. Audio: lone PCM source keeps the bypass path but gets volume/fade applied in the byte-swap pass. | user |
+| 2026-09-20 | B1: operators = config list + guild owner/ADMINISTRATOR + `op` command (all three). Ducking default 20 %. | user |

@@ -6,6 +6,10 @@ import fr.farmvivi.fluxcord.api.config.Configuration;
 import fr.farmvivi.fluxcord.api.discord.DiscordAPI;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
+import net.dv8tion.jda.api.JDA;
+import net.dv8tion.jda.api.Permission;
+import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.Member;
 import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
 import fr.farmvivi.fluxcord.api.storage.binary.BinaryStorageManager;
 import fr.farmvivi.fluxcord.core.audio.AudioServiceImpl;
@@ -206,7 +210,8 @@ public class Fluxcord {
     private static void createStorageManagers() {
         dataStorageManager = StorageFactory.createStorageManager(coreConfig, eventManager);
         binaryStorageManager = BinaryStorageFactory.createBinaryStorageManager(coreConfig, eventManager);
-        permissionManager = new SimplePermissionManager(eventManager, dataStorageManager);
+        permissionManager = new SimplePermissionManager(eventManager, dataStorageManager,
+                coreConfig.getStringList("permissions.operators", java.util.List.of()));
         audioService = new AudioServiceImpl(eventManager, AudioSettings.fromConfig(coreConfig));
     }
 
@@ -272,6 +277,20 @@ public class Fluxcord {
 
             // Set JDA instance for console command service
             consoleCommandService.setJDA(discordAPI.getJDA());
+
+            // Guild-level operators: the owner and ADMINISTRATOR members of a guild (resolved from the JDA cache)
+            JDA jda = discordAPI.getJDA();
+            permissionManager.setGuildOperatorResolver((userId, guildId) -> {
+                Guild guild = jda.getGuildById(guildId);
+                if (guild == null) {
+                    return false;
+                }
+                if (guild.getOwnerId().equals(userId)) {
+                    return true;
+                }
+                Member member = guild.getMemberById(userId);
+                return member != null && member.hasPermission(Permission.ADMINISTRATOR);
+            });
         } catch (Exception e) {
             logger.error("Failed to connect to Discord", e);
             System.exit(1);

@@ -120,4 +120,39 @@ public interface PermissionManager {
      * @return the number of permissions unregistered
      */
     int unregisterPermissions(Plugin plugin);
+
+    /**
+     * Whether the user is a global operator: listed in the core configuration ({@code permissions.operators})
+     * or promoted at runtime with {@link #setOperator(String, boolean)}. Operators get every permission whose
+     * default is {@link PermissionDefault#OP}.
+     *
+     * @param userId the user ID
+     * @return true if the user is a global operator
+     */
+    boolean isOperator(String userId);
+
+    /**
+     * Whether the user is an operator in the given guild: a global operator, or a guild-level operator (the
+     * guild owner and members with the Discord ADMINISTRATOR permission, when the core can resolve them).
+     *
+     * @param userId  the user ID
+     * @param guildId the guild ID
+     * @return true if the user is an operator in that guild
+     */
+    boolean isOperator(String userId, String guildId);
+
+    /**
+     * Grants or revokes the runtime global operator status of a user (persisted). Users listed in the core
+     * configuration stay operators regardless of this call.
+     *
+     * @param userId   the user ID
+     * @param operator true to grant, false to revoke
+     * @return true if the status changed
+     */
+    boolean setOperator(String userId, boolean operator);
+
+    /**
+     * @return the IDs of every global operator (configured and runtime)
+     */
+    Set<String> getOperators();
 }

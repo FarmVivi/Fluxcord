@@ -22,6 +22,7 @@ import fr.farmvivi.fluxcord.core.command.parser.ConsoleCommandParser;
 import fr.farmvivi.fluxcord.core.command.parser.SlashCommandParser;
 import fr.farmvivi.fluxcord.core.command.parser.TextCommandParser;
 import fr.farmvivi.fluxcord.core.command.system.HelpCommand;
+import fr.farmvivi.fluxcord.core.command.system.OpCommand;
 import fr.farmvivi.fluxcord.core.command.system.ShutdownCommand;
 import fr.farmvivi.fluxcord.core.command.system.VersionCommand;
 import fr.farmvivi.fluxcord.core.util.Debouncer;
@@ -733,7 +734,12 @@ public class SimpleCommandService implements CommandService {
 
         // Register shutdown command if enabled
         if (configuration.getBoolean("commands.system.shutdown", true)) {
-            registerCommand(new ShutdownCommand(languageManager).getCommand());
+            registerCommand(new ShutdownCommand(languageManager, permissionManager).getCommand());
+        }
+
+        // Register op command if enabled
+        if (configuration.getBoolean("commands.system.op", true)) {
+            registerCommand(new OpCommand(languageManager, permissionManager).getCommand());
         }
     }
 

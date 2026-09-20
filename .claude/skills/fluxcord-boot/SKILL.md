@@ -34,8 +34,8 @@ Builds `JDABuilder.createDefault(token)` with intents `GUILD_MEMBERS, GUILD_PRES
 ## Permissions (`core/permissions/SimplePermissionManager`, api `permissions/*`)
 - `Permission(name, description, PermissionDefault)`; plugins register in `onPreEnable` via `getPluginPermissionManager().registerPermission(...)` (name convention `<pluginId>.<node>`, see `MusicPlugin.permissionKey`).
 - `hasPermission(userId, guildId, name)`: explicit override from storage (user-guild then user scope, cached), else the permission's default: `TRUE`/`FALSE`, `OP` → `isOperator(userId, guildId)`, `NOT_OP` → inverse.
-- **`isOperator` reads a boolean `isOperator` from user(-guild) storage and nothing in the repo ever writes it** (no command, no config list, no Discord-role/ADMINISTRATOR mapping). So every `OP`-default permission (`music.volume`, `music.admin`) is denied to everyone except the console. Plan item B1.
-- Unregistered permission name → check `permissions.error.not_found` handling in `hasPermission` before relying on it.
+- Operators (B1, done 2026-09-20): global = `permissions.operators` in config.yml ∪ runtime list in global storage key `permissions.operators` (`op add/remove/list <id>`, console or an operator on Discord); guild-level = owner or `ADMINISTRATOR` member, via `setGuildOperatorResolver` installed by `Fluxcord` after connect (JDA cache, no REST). `OP`/`NOT_OP` defaults are evaluated live with the guild id; only stored overrides are cached (`Optional` per key). `shutdown` is gated on `isOperator` (its old unregistered `discobocor.admin.shutdown` permission made it console-only).
+- Unregistered permission name → `false` unless a stored override exists.
 - Fires `PermissionCheckEvent` (cancel + `setResult` to force an answer without storage) / `PermissionChangeEvent` (old/new value); `unregisterPermissions(plugin)` on disable.
 - Results are cached per user (and per user-guild for stored overrides) with no TTL; `setPermission`/`clearPermissions` update the cache, and since 2026-09-20 register/unregister invalidate the cached results of that permission (a reloaded plugin with another default was ignored before). External storage edits need `clearCaches()`. Tests: `SimplePermissionManagerTest` (12, in-memory `DataStorage`).
 
@@ -48,10 +48,9 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 ## Learnings
 - 2026-09-19: Initial audit.
 - 2026-09-20: Tests added: `YamlConfigurationTest`, `EnvAwareYamlConfigurationTest` (protected `lookupEnv`/`lookupEnvValues` seams replace the environment), `HealthServerTest` (`HealthServer(0)` + `getPort()` for an ephemeral port). snakeyaml resolves YAML 1.1 booleans (`yes`/`on`) itself; `getString` on a section returns `Map.toString()` instead of failing.
-- 2026-09-20: `SimplePermissionManagerTest` added; the guild-scoped check falls back to the *global* default resolution, so a user-guild `isOperator` flag is never consulted for OP defaults (only the user-scope one). Part of B1.
+- 2026-09-20: `SimplePermissionManagerTest` (14). Earlier the guild-scoped check fell back to the global default resolution (guild id lost) and default-derived results were cached forever; both gone with the B1 rewrite.
 
 ## Known issues / open questions
-- B1: operators are unreachable (see Permissions). Options to decide with the user: `permissions.operators: [userIds]` in config, map `OP` to Discord `ADMINISTRATOR`/guild owner, or an `op` console command. Probably all three.
 - Hygiene: `YamlConfiguration.save()` (snakeyaml dump) drops every comment of `config.yml`; it runs on core migration and on `SimpleCommandService.setPrefix` (global prefix). Characterized by `YamlConfigurationTest.saveDropsComments`. Decision 2026-09-20: fix later (probably stop writing config.yml from code).
 - B2: `Fluxcord` static fields + getters are dead API; replace with an instance `FluxcordRuntime` (constructor-wired services, `start()/stop()`), which also makes boot testable.
 - Presence config keys and intent list are hardcoded in `JDADiscordAPI`; plugins needing extra intents must add them in `onPreEnable`.

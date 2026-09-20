@@ -128,24 +128,62 @@ class SimplePermissionManagerTest {
     }
 
     @Test
-    void operatorFlagInStorageUnlocksOpDefaults() {
-        register("p.op", PermissionDefault.OP);
-        register("p.notop", PermissionDefault.NOT_OP);
-        storage.set(StorageKey.user("1", "isOperator"), true);
+    void configuredOperatorsUnlockOpDefaults() {
+        SimplePermissionManager withOps = new SimplePermissionManager(events, new DataStorageManager(storage), List.of("1"));
+        withOps.registerPermission(new Perm("p.op", "", PermissionDefault.OP), plugin);
+        withOps.registerPermission(new Perm("p.notop", "", PermissionDefault.NOT_OP), plugin);
 
-        assertTrue(manager.hasPermission("1", "p.op"));
-        assertFalse(manager.hasPermission("1", "p.notop"));
-        assertFalse(manager.hasPermission("2", "p.op"));
+        assertTrue(withOps.isOperator("1"));
+        assertTrue(withOps.hasPermission("1", "p.op"));
+        assertTrue(withOps.hasPermission("1", "g", "p.op"));
+        assertFalse(withOps.hasPermission("1", "p.notop"));
+        assertFalse(withOps.hasPermission("2", "p.op"));
+        assertEquals(Set.of("1"), withOps.getOperators());
+        assertFalse(withOps.setOperator("1", false), "configured operators cannot be revoked at runtime");
+        assertTrue(withOps.isOperator("1"));
     }
 
     @Test
-    void guildOperatorFlagIsNotConsultedForOpDefaults() {
-        // Characterization (B1): the guild-scoped check falls back to the *global* default resolution,
-        // so a user flagged operator only in a guild does not get OP permissions there.
+    void runtimeOperatorsArePersistedAndApplyImmediately() {
         register("p.op", PermissionDefault.OP);
-        storage.set(StorageKey.userGuild("1", "g", "isOperator"), true);
+        assertFalse(manager.hasPermission("1", "p.op"));
 
-        assertFalse(manager.hasPermission("1", "g", "p.op"));
+        assertTrue(manager.setOperator("1", true));
+        assertFalse(manager.setOperator("1", true), "already an operator");
+        assertTrue(manager.hasPermission("1", "p.op"), "no stale cached default");
+        assertTrue(manager.hasPermission("1", "g", "p.op"));
+        assertEquals(Set.of("1"), manager.getOperators());
+        assertTrue(storage.get(StorageKey.global("permissions.operators"), List.class).orElseThrow().contains("1"));
+
+        SimplePermissionManager restarted = new SimplePermissionManager(events, new DataStorageManager(storage));
+        assertTrue(restarted.isOperator("1"), "read back from storage");
+
+        assertTrue(manager.setOperator("1", false));
+        assertFalse(manager.hasPermission("1", "p.op"));
+        assertTrue(manager.getOperators().isEmpty());
+    }
+
+    @Test
+    void guildOperatorResolverGrantsOpDefaultsInThatGuildOnly() {
+        register("p.op", PermissionDefault.OP);
+        manager.setGuildOperatorResolver((userId, guildId) -> userId.equals("1") && guildId.equals("g"));
+
+        assertTrue(manager.isOperator("1", "g"));
+        assertTrue(manager.hasPermission("1", "g", "p.op"));
+        assertFalse(manager.hasPermission("1", "other", "p.op"));
+        assertFalse(manager.hasPermission("1", "p.op"), "not a global operator");
+        assertFalse(manager.hasPermission("2", "g", "p.op"));
+
+        manager.setGuildOperatorResolver((userId, guildId) -> { throw new IllegalStateException("jda down"); });
+        assertFalse(manager.hasPermission("1", "g", "p.op"), "resolver failure denies instead of throwing");
+    }
+
+    @Test
+    void explicitOverrideBeatsOperatorStatus() {
+        register("p.op", PermissionDefault.OP);
+        manager.setOperator("1", true);
+        manager.setPermission("1", "p.op", false);
+        assertFalse(manager.hasPermission("1", "p.op"));
     }
 
     // --- overrides ------------------------------------------------------------------------------

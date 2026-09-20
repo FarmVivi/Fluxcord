@@ -4,6 +4,7 @@ import fr.farmvivi.fluxcord.api.command.Command;
 import fr.farmvivi.fluxcord.api.command.CommandContext;
 import fr.farmvivi.fluxcord.api.command.CommandResult;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
+import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
 import fr.farmvivi.fluxcord.core.command.SimpleCommandBuilder;
 import fr.farmvivi.fluxcord.core.util.DiscordColor;
 import net.dv8tion.jda.api.EmbedBuilder;
@@ -22,15 +23,17 @@ public class ShutdownCommand {
      *
      * @param languageManager the language manager for translations
      */
-    public ShutdownCommand(LanguageManager languageManager) {
+    private final PermissionManager permissionManager;
+
+    public ShutdownCommand(LanguageManager languageManager, PermissionManager permissionManager) {
         this.languageManager = languageManager;
+        this.permissionManager = permissionManager;
 
         command = new SimpleCommandBuilder()
                 .name("shutdown")
                 .description("Shuts down the bot")
                 .category("System")
                 .aliases("stop", "exit", "quit")
-                .permission("discobocor.admin.shutdown")
                 .executor(this::execute)
                 .build();
     }
@@ -52,6 +55,15 @@ public class ShutdownCommand {
      * @return the command result
      */
     private CommandResult execute(CommandContext context, Command command) {
+        // Console has no user; from Discord only an operator may stop the bot (permission default OP semantics)
+        if (context.getUser() != null) {
+            String guildId = context.getGuild().map(g -> g.getId()).orElse(null);
+            if (!permissionManager.isOperator(context.getUser().getId(), guildId)) {
+                context.setEphemeral(true);
+                context.replyError(languageManager.getString(context.getLocale(), "commands.op.not_operator"));
+                return CommandResult.error("not an operator");
+            }
+        }
         // Réponses administratives en éphémère
         context.setEphemeral(true);
 

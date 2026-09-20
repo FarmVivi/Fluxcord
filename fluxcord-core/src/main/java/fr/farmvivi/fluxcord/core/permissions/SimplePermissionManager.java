@@ -8,47 +8,77 @@ import fr.farmvivi.fluxcord.api.permissions.events.PermissionChangeEvent;
 import fr.farmvivi.fluxcord.api.permissions.events.PermissionCheckEvent;
 import fr.farmvivi.fluxcord.api.plugin.Plugin;
 import fr.farmvivi.fluxcord.api.storage.DataStorageManager;
+import fr.farmvivi.fluxcord.api.storage.GlobalStorage;
+import fr.farmvivi.fluxcord.api.storage.UserGuildStorage;
+import fr.farmvivi.fluxcord.api.storage.UserStorage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
+import java.util.function.BiPredicate;
 
 /**
- * Implementation of the PermissionManager interface.
- * This manages permissions for users globally and per-guild.
+ * Permission resolution: explicit user-guild override → explicit user override → the registered default
+ * ({@code TRUE}/{@code FALSE}/{@code OP}/{@code NOT_OP}) → {@code false} for unknown permissions.
+ *
+ * <p>Only the stored overrides are cached (a storage read each); defaults are evaluated on every check so
+ * that operator changes and plugin re-registrations apply immediately.
+ *
+ * <p>Operators: the IDs listed in the core configuration ({@code permissions.operators}) plus those promoted
+ * at runtime ({@link #setOperator}, persisted in global storage under {@value #OPERATORS_KEY}). Within a guild,
+ * a {@link #setGuildOperatorResolver resolver} (wired by the core once Discord is connected) can also grant
+ * operator status to the guild owner and administrators.
  */
 public class SimplePermissionManager implements PermissionManager {
     private static final Logger logger = LoggerFactory.getLogger(SimplePermissionManager.class);
     private static final String PERMISSION_KEY_PREFIX = "permission.";
+    /** Global storage key holding the runtime operator IDs (a list of strings). */
+    static final String OPERATORS_KEY = "permissions.operators";
 
     private final EventManager eventManager;
     private final DataStorageManager dataStorageManager;
+    private final Set<String> configuredOperators;
+    private volatile BiPredicate<String, String> guildOperatorResolver = (userId, guildId) -> false;
 
     // Maps permission name to Permission object
     private final Map<String, Permission> registeredPermissions = new ConcurrentHashMap<>();
-
     // Maps permission name to owning plugin
     private final Map<String, Plugin> permissionOwners = new ConcurrentHashMap<>();
-
     // Maps plugin to its permissions
     private final Map<Plugin, Set<Permission>> pluginPermissions = new ConcurrentHashMap<>();
 
-    // Cache for performance
-    private final Map<String, Map<String, Boolean>> userPermissionCache = new ConcurrentHashMap<>();
-    private final Map<String, Map<String, Map<String, Boolean>>> userGuildPermissionCache = new ConcurrentHashMap<>();
+    // Caches of the *stored* overrides: userId -> permission -> Optional(value) (empty = nothing stored)
+    private final Map<String, Map<String, Optional<Boolean>>> userOverrides = new ConcurrentHashMap<>();
+    // userId -> guildId -> permission -> Optional(value)
+    private final Map<String, Map<String, Map<String, Optional<Boolean>>>> userGuildOverrides = new ConcurrentHashMap<>();
+
+    public SimplePermissionManager(EventManager eventManager, DataStorageManager dataStorageManager) {
+        this(eventManager, dataStorageManager, Set.of());
+    }
 
     /**
-     * Creates a new permission manager.
-     *
-     * @param eventManager       the event manager
-     * @param dataStorageManager the data storage manager
+     * @param configuredOperators user IDs that are operators for the whole process (from the core config)
      */
-    public SimplePermissionManager(EventManager eventManager, DataStorageManager dataStorageManager) {
+    public SimplePermissionManager(EventManager eventManager, DataStorageManager dataStorageManager,
+                                   Collection<String> configuredOperators) {
         this.eventManager = eventManager;
         this.dataStorageManager = dataStorageManager;
+        this.configuredOperators = Set.copyOf(configuredOperators);
+        if (!this.configuredOperators.isEmpty()) {
+            logger.info("{} operator(s) configured", this.configuredOperators.size());
+        }
     }
+
+    /**
+     * Installs the guild-level operator check (e.g. "is guild owner or has ADMINISTRATOR"). The core calls
+     * this once Discord is connected; until then only global operators exist.
+     */
+    public void setGuildOperatorResolver(BiPredicate<String, String> resolver) {
+        this.guildOperatorResolver = resolver != null ? resolver : (userId, guildId) -> false;
+    }
+
+    // --- registry -------------------------------------------------------------------------------
 
     @Override
     public void registerPermission(Permission permission, Plugin owner) {
@@ -68,281 +98,14 @@ public class SimplePermissionManager implements PermissionManager {
 
         registeredPermissions.put(permName, permission);
         permissionOwners.put(permName, owner);
+        pluginPermissions.computeIfAbsent(owner, k -> ConcurrentHashMap.newKeySet()).add(permission);
 
-        // Add to plugin permissions map
-        pluginPermissions.computeIfAbsent(owner, k -> ConcurrentHashMap.newKeySet())
-                .add(permission);
-
-        // Cached results may have been derived from "unregistered → false": drop them
-        invalidateCachedResults(permName);
-
-        logger.debug("Registered permission {} owned by plugin {}",
-                permName, owner.getName());
-    }
-
-    /**
-     * Removes every cached result for one permission, in every user and user-guild cache. Called when the
-     * permission's default changes (register/unregister), since defaults are cached like overrides.
-     */
-    private void invalidateCachedResults(String permission) {
-        userPermissionCache.values().forEach(perms -> perms.remove(permission));
-        userGuildPermissionCache.values().forEach(guilds -> guilds.values().forEach(perms -> perms.remove(permission)));
-    }
-
-    @Override
-    public boolean hasPermission(String userId, String permission) {
-        if (userId == null || permission == null) {
-            return false;
-        }
-
-        // Fire event to allow interception (one per command: skip the allocation when nobody listens)
-        if (eventManager.hasListeners(PermissionCheckEvent.class)) {
-            PermissionCheckEvent event = new PermissionCheckEvent(userId, null, permission, false);
-            eventManager.fireEvent(event);
-            if (event.isCancelled()) {
-                return event.getResult();
-            }
-        }
-
-        // Check cache first
-        Map<String, Boolean> userPerms = userPermissionCache.computeIfAbsent(userId,
-                id -> new ConcurrentHashMap<>());
-
-        if (userPerms.containsKey(permission)) {
-            return userPerms.get(permission);
-        }
-
-        // Check storage
-        Boolean storedValue = dataStorageManager.getUserStorage(userId)
-                .get(PERMISSION_KEY_PREFIX + permission, Boolean.class)
-                .orElse(null);
-
-        boolean result;
-        if (storedValue != null) {
-            result = storedValue;
-        } else {
-            // Check default
-            Permission registeredPerm = registeredPermissions.get(permission);
-            if (registeredPerm != null) {
-                result = getDefaultValueFor(registeredPerm.getDefault(), userId, null);
-            } else {
-                result = false;
-            }
-        }
-
-        // Cache result
-        userPerms.put(permission, result);
-        return result;
-    }
-
-    @Override
-    public boolean hasPermission(String userId, String guildId, String permission) {
-        if (userId == null || guildId == null || permission == null) {
-            return false;
-        }
-
-        // Fire event to allow interception (one per command: skip the allocation when nobody listens)
-        if (eventManager.hasListeners(PermissionCheckEvent.class)) {
-            PermissionCheckEvent event = new PermissionCheckEvent(userId, guildId, permission, false);
-            eventManager.fireEvent(event);
-            if (event.isCancelled()) {
-                return event.getResult();
-            }
-        }
-
-        // Check guild-specific permission first
-        Map<String, Map<String, Boolean>> userGuilds = userGuildPermissionCache
-                .computeIfAbsent(userId, id -> new ConcurrentHashMap<>());
-
-        Map<String, Boolean> guildPerms = userGuilds
-                .computeIfAbsent(guildId, id -> new ConcurrentHashMap<>());
-
-        if (guildPerms.containsKey(permission)) {
-            return guildPerms.get(permission);
-        }
-
-        // Check storage
-        Boolean storedValue = dataStorageManager.getUserGuildStorage(userId, guildId)
-                .get(PERMISSION_KEY_PREFIX + permission, Boolean.class)
-                .orElse(null);
-
-        if (storedValue != null) {
-            guildPerms.put(permission, storedValue);
-            return storedValue;
-        }
-
-        // Fall back to global permission
-        return hasPermission(userId, permission);
-    }
-
-    @Override
-    public void setPermission(String userId, String permission, boolean value) {
-        if (userId == null || permission == null) {
-            return;
-        }
-
-        // Get current value for event
-        boolean oldValue = hasPermission(userId, permission);
-
-        // Fire event
-        PermissionChangeEvent event = new PermissionChangeEvent(
-                userId, null, permission, oldValue, value);
-        eventManager.fireEvent(event);
-
-        // Store new value
-        dataStorageManager.getUserStorage(userId)
-                .set(PERMISSION_KEY_PREFIX + permission, value);
-
-        // Update cache
-        Map<String, Boolean> userPerms = userPermissionCache.computeIfAbsent(userId,
-                id -> new ConcurrentHashMap<>());
-        userPerms.put(permission, value);
-
-        logger.debug("Set permission {} for user {} to {}", permission, userId, value);
-    }
-
-    @Override
-    public void setPermission(String userId, String guildId, String permission, boolean value) {
-        if (userId == null || guildId == null || permission == null) {
-            return;
-        }
-
-        // Get current value for event
-        boolean oldValue = hasPermission(userId, guildId, permission);
-
-        // Fire event
-        PermissionChangeEvent event = new PermissionChangeEvent(
-                userId, guildId, permission, oldValue, value);
-        eventManager.fireEvent(event);
-
-        // Store new value
-        dataStorageManager.getUserGuildStorage(userId, guildId)
-                .set(PERMISSION_KEY_PREFIX + permission, value);
-
-        // Update cache
-        Map<String, Map<String, Boolean>> userGuilds = userGuildPermissionCache
-                .computeIfAbsent(userId, id -> new ConcurrentHashMap<>());
-
-        Map<String, Boolean> guildPerms = userGuilds
-                .computeIfAbsent(guildId, id -> new ConcurrentHashMap<>());
-
-        guildPerms.put(permission, value);
-
-        logger.debug("Set permission {} for user {} in guild {} to {}",
-                permission, userId, guildId, value);
-    }
-
-    @Override
-    public void clearPermissions(String userId) {
-        if (userId == null) {
-            return;
-        }
-
-        // Get all permission keys for this user
-        Set<String> keys = dataStorageManager.getUserStorage(userId).getKeys();
-        List<String> permKeys = keys.stream()
-                .filter(key -> key.startsWith(PERMISSION_KEY_PREFIX))
-                .collect(Collectors.toList());
-
-        // Remove each permission
-        for (String key : permKeys) {
-            dataStorageManager.getUserStorage(userId).remove(key);
-        }
-
-        // Clear cache
-        userPermissionCache.remove(userId);
-
-        logger.debug("Cleared all permissions for user {}", userId);
-    }
-
-    @Override
-    public void clearPermissions(String userId, String guildId) {
-        if (userId == null || guildId == null) {
-            return;
-        }
-
-        // Get all permission keys for this user in this guild
-        Set<String> keys = dataStorageManager.getUserGuildStorage(userId, guildId)
-                .getKeys();
-
-        List<String> permKeys = keys.stream()
-                .filter(key -> key.startsWith(PERMISSION_KEY_PREFIX))
-                .collect(Collectors.toList());
-
-        // Remove each permission
-        for (String key : permKeys) {
-            dataStorageManager.getUserGuildStorage(userId, guildId)
-                    .remove(key);
-        }
-
-        // Clear cache
-        Map<String, Map<String, Boolean>> userGuilds = userGuildPermissionCache.get(userId);
-        if (userGuilds != null) {
-            userGuilds.remove(guildId);
-        }
-
-        logger.debug("Cleared all permissions for user {} in guild {}", userId, guildId);
+        logger.debug("Registered permission {} owned by plugin {}", permName, owner.getName());
     }
 
     @Override
     public Set<Permission> getRegisteredPermissions() {
         return new HashSet<>(registeredPermissions.values());
-    }
-
-    @Override
-    public Map<String, Boolean> getUserPermissions(String userId) {
-        if (userId == null) {
-            return Collections.emptyMap();
-        }
-
-        // Get from storage
-        Set<String> keys = dataStorageManager.getUserStorage(userId).getKeys();
-        Map<String, Boolean> permissions = new HashMap<>();
-
-        // Process only permission keys
-        for (String key : keys) {
-            if (key.startsWith(PERMISSION_KEY_PREFIX)) {
-                String permName = key.substring(PERMISSION_KEY_PREFIX.length());
-                Boolean value = dataStorageManager.getUserStorage(userId)
-                        .get(key, Boolean.class)
-                        .orElse(null);
-
-                if (value != null) {
-                    permissions.put(permName, value);
-                }
-            }
-        }
-
-        return permissions;
-    }
-
-    @Override
-    public Map<String, Boolean> getUserGuildPermissions(String userId, String guildId) {
-        if (userId == null || guildId == null) {
-            return Collections.emptyMap();
-        }
-
-        // Get from storage
-        Set<String> keys = dataStorageManager.getUserGuildStorage(userId, guildId)
-                .getKeys();
-
-        Map<String, Boolean> permissions = new HashMap<>();
-
-        // Process only permission keys
-        for (String key : keys) {
-            if (key.startsWith(PERMISSION_KEY_PREFIX)) {
-                String permName = key.substring(PERMISSION_KEY_PREFIX.length());
-                Boolean value = dataStorageManager.getUserGuildStorage(userId, guildId)
-                        .get(key, Boolean.class)
-                        .orElse(null);
-
-                if (value != null) {
-                    permissions.put(permName, value);
-                }
-            }
-        }
-
-        return permissions;
     }
 
     @Override
@@ -355,7 +118,6 @@ public class SimplePermissionManager implements PermissionManager {
         if (plugin == null) {
             return Collections.emptySet();
         }
-
         Set<Permission> permissions = pluginPermissions.get(plugin);
         return permissions != null ? Collections.unmodifiableSet(permissions) : Collections.emptySet();
     }
@@ -365,79 +127,244 @@ public class SimplePermissionManager implements PermissionManager {
         if (plugin == null) {
             return 0;
         }
-
-        Set<Permission> permissions = pluginPermissions.get(plugin);
+        Set<Permission> permissions = pluginPermissions.remove(plugin);
         if (permissions == null || permissions.isEmpty()) {
             return 0;
         }
-
-        int count = 0;
-        for (Permission permission : new HashSet<>(permissions)) {
-            String name = permission.getName();
-            registeredPermissions.remove(name);
-            permissionOwners.remove(name);
-            invalidateCachedResults(name);
-            count++;
+        for (Permission permission : permissions) {
+            registeredPermissions.remove(permission.getName());
+            permissionOwners.remove(permission.getName());
         }
-
-        pluginPermissions.remove(plugin);
-        logger.debug("Unregistered {} permissions for plugin {}", count, plugin.getName());
-
-        return count;
+        logger.debug("Unregistered {} permissions for plugin {}", permissions.size(), plugin.getName());
+        return permissions.size();
     }
 
-    /**
-     * Helper method to resolve default permission values.
-     *
-     * @param defaultValue the default permission value
-     * @param userId       the user ID
-     * @param guildId      the guild ID (may be null)
-     * @return the resolved boolean value
-     */
-    private boolean getDefaultValueFor(PermissionDefault defaultValue, String userId, String guildId) {
-        // In a more advanced implementation, we'd check if users are "operators"
-        // For now, we just use the TRUE/FALSE values directly
-        switch (defaultValue) {
-            case TRUE:
-                return true;
-            case OP:
-                return isOperator(userId, guildId);
-            case NOT_OP:
-                return !isOperator(userId, guildId);
-            case FALSE:
-            default:
-                return false;
+    // --- checks ---------------------------------------------------------------------------------
+
+    @Override
+    public boolean hasPermission(String userId, String permission) {
+        if (userId == null || permission == null) {
+            return false;
         }
+        return check(userId, null, permission);
     }
 
-    /**
-     * Checks if a user is an operator.
-     * In a more advanced implementation, this would check against a list of operators.
-     *
-     * @param userId  the user ID
-     * @param guildId the guild ID (may be null)
-     * @return true if the user is an operator
-     */
-    private boolean isOperator(String userId, String guildId) {
-        // For now, we'll use a simple check against the storage
+    @Override
+    public boolean hasPermission(String userId, String guildId, String permission) {
+        if (userId == null || guildId == null || permission == null) {
+            return false;
+        }
+        return check(userId, guildId, permission);
+    }
+
+    private boolean check(String userId, String guildId, String permission) {
+        // Fire event to allow interception (one per command: skip the allocation when nobody listens)
+        if (eventManager.hasListeners(PermissionCheckEvent.class)) {
+            PermissionCheckEvent event = new PermissionCheckEvent(userId, guildId, permission, false);
+            eventManager.fireEvent(event);
+            if (event.isCancelled()) {
+                return event.getResult();
+            }
+        }
+        return resolve(userId, guildId, permission);
+    }
+
+    /** Override chain then default, without events. */
+    private boolean resolve(String userId, String guildId, String permission) {
         if (guildId != null) {
-            return dataStorageManager.getUserGuildStorage(userId, guildId)
-                    .get("isOperator", Boolean.class)
-                    .orElse(false);
-        } else {
-            return dataStorageManager.getUserStorage(userId)
-                    .get("isOperator", Boolean.class)
-                    .orElse(false);
+            Optional<Boolean> guildValue = storedUserGuildValue(userId, guildId, permission);
+            if (guildValue.isPresent()) {
+                return guildValue.get();
+            }
+        }
+        Optional<Boolean> userValue = storedUserValue(userId, permission);
+        if (userValue.isPresent()) {
+            return userValue.get();
+        }
+        Permission registered = registeredPermissions.get(permission);
+        return registered != null && getDefaultValueFor(registered.getDefault(), userId, guildId);
+    }
+
+    private Optional<Boolean> storedUserValue(String userId, String permission) {
+        return userOverrides.computeIfAbsent(userId, id -> new ConcurrentHashMap<>())
+                .computeIfAbsent(permission, p -> userStorage(userId).get(PERMISSION_KEY_PREFIX + p, Boolean.class));
+    }
+
+    private Optional<Boolean> storedUserGuildValue(String userId, String guildId, String permission) {
+        return userGuildOverrides.computeIfAbsent(userId, id -> new ConcurrentHashMap<>())
+                .computeIfAbsent(guildId, id -> new ConcurrentHashMap<>())
+                .computeIfAbsent(permission, p -> userGuildStorage(userId, guildId).get(PERMISSION_KEY_PREFIX + p, Boolean.class));
+    }
+
+    private boolean getDefaultValueFor(PermissionDefault defaultValue, String userId, String guildId) {
+        return switch (defaultValue) {
+            case TRUE -> true;
+            case OP -> guildId != null ? isOperator(userId, guildId) : isOperator(userId);
+            case NOT_OP -> !(guildId != null ? isOperator(userId, guildId) : isOperator(userId));
+            case FALSE -> false;
+        };
+    }
+
+    // --- overrides ------------------------------------------------------------------------------
+
+    @Override
+    public void setPermission(String userId, String permission, boolean value) {
+        if (userId == null || permission == null) {
+            return;
+        }
+        boolean oldValue = resolve(userId, null, permission);
+        eventManager.fireEvent(new PermissionChangeEvent(userId, null, permission, oldValue, value));
+
+        userStorage(userId).set(PERMISSION_KEY_PREFIX + permission, value);
+        userOverrides.computeIfAbsent(userId, id -> new ConcurrentHashMap<>()).put(permission, Optional.of(value));
+        logger.debug("Set permission {} for user {} to {}", permission, userId, value);
+    }
+
+    @Override
+    public void setPermission(String userId, String guildId, String permission, boolean value) {
+        if (userId == null || guildId == null || permission == null) {
+            return;
+        }
+        boolean oldValue = resolve(userId, guildId, permission);
+        eventManager.fireEvent(new PermissionChangeEvent(userId, guildId, permission, oldValue, value));
+
+        userGuildStorage(userId, guildId).set(PERMISSION_KEY_PREFIX + permission, value);
+        userGuildOverrides.computeIfAbsent(userId, id -> new ConcurrentHashMap<>())
+                .computeIfAbsent(guildId, id -> new ConcurrentHashMap<>())
+                .put(permission, Optional.of(value));
+        logger.debug("Set permission {} for user {} in guild {} to {}", permission, userId, guildId, value);
+    }
+
+    @Override
+    public void clearPermissions(String userId) {
+        if (userId == null) {
+            return;
+        }
+        UserStorage storage = userStorage(userId);
+        for (String key : storage.getKeys()) {
+            if (key.startsWith(PERMISSION_KEY_PREFIX)) {
+                storage.remove(key);
+            }
+        }
+        userOverrides.remove(userId);
+        logger.debug("Cleared all permissions for user {}", userId);
+    }
+
+    @Override
+    public void clearPermissions(String userId, String guildId) {
+        if (userId == null || guildId == null) {
+            return;
+        }
+        UserGuildStorage storage = userGuildStorage(userId, guildId);
+        for (String key : storage.getKeys()) {
+            if (key.startsWith(PERMISSION_KEY_PREFIX)) {
+                storage.remove(key);
+            }
+        }
+        Map<String, Map<String, Optional<Boolean>>> guilds = userGuildOverrides.get(userId);
+        if (guilds != null) {
+            guilds.remove(guildId);
+        }
+        logger.debug("Cleared all permissions for user {} in guild {}", userId, guildId);
+    }
+
+    @Override
+    public Map<String, Boolean> getUserPermissions(String userId) {
+        if (userId == null) {
+            return Collections.emptyMap();
+        }
+        return storedPermissions(userStorage(userId).getKeys(), key -> userStorage(userId).get(key, Boolean.class));
+    }
+
+    @Override
+    public Map<String, Boolean> getUserGuildPermissions(String userId, String guildId) {
+        if (userId == null || guildId == null) {
+            return Collections.emptyMap();
+        }
+        return storedPermissions(userGuildStorage(userId, guildId).getKeys(),
+                key -> userGuildStorage(userId, guildId).get(key, Boolean.class));
+    }
+
+    private static Map<String, Boolean> storedPermissions(Set<String> keys, java.util.function.Function<String, Optional<Boolean>> reader) {
+        Map<String, Boolean> permissions = new HashMap<>();
+        for (String key : keys) {
+            if (key.startsWith(PERMISSION_KEY_PREFIX)) {
+                reader.apply(key).ifPresent(value -> permissions.put(key.substring(PERMISSION_KEY_PREFIX.length()), value));
+            }
+        }
+        return permissions;
+    }
+
+    // --- operators ------------------------------------------------------------------------------
+
+    @Override
+    public boolean isOperator(String userId) {
+        return userId != null && (configuredOperators.contains(userId) || runtimeOperators().contains(userId));
+    }
+
+    @Override
+    public boolean isOperator(String userId, String guildId) {
+        if (isOperator(userId)) {
+            return true;
+        }
+        if (userId == null || guildId == null) {
+            return false;
+        }
+        try {
+            return guildOperatorResolver.test(userId, guildId);
+        } catch (RuntimeException e) {
+            logger.warn("Guild operator resolver failed for user {} in guild {}", userId, guildId, e);
+            return false;
         }
     }
 
-    /**
-     * Clears all permission caches.
-     * This can be used to force a reload of permissions from storage.
-     */
+    @Override
+    public synchronized boolean setOperator(String userId, boolean operator) {
+        if (userId == null) {
+            return false;
+        }
+        Set<String> operators = new LinkedHashSet<>(runtimeOperators());
+        boolean changed = operator ? operators.add(userId) : operators.remove(userId);
+        if (changed) {
+            globalStorage().set(OPERATORS_KEY, new ArrayList<>(operators));
+            logger.info("{} operator status for user {}", operator ? "Granted" : "Revoked", userId);
+        }
+        return changed;
+    }
+
+    @Override
+    public Set<String> getOperators() {
+        Set<String> all = new LinkedHashSet<>(configuredOperators);
+        all.addAll(runtimeOperators());
+        return Collections.unmodifiableSet(all);
+    }
+
+    /** Runtime operators live in global storage as a list (never cached: DataStorage already caches). */
+    @SuppressWarnings("unchecked")
+    private List<String> runtimeOperators() {
+        return globalStorage().get(OPERATORS_KEY, List.class)
+                .map(list -> (List<String>) list.stream().map(String::valueOf).toList())
+                .orElse(List.of());
+    }
+
+    // --- misc -----------------------------------------------------------------------------------
+
+    /** Drops the cached overrides; needed only after the storage was modified behind the manager's back. */
     public void clearCaches() {
-        userPermissionCache.clear();
-        userGuildPermissionCache.clear();
+        userOverrides.clear();
+        userGuildOverrides.clear();
         logger.debug("Cleared permission caches");
+    }
+
+    private UserStorage userStorage(String userId) {
+        return dataStorageManager.getUserStorage(userId);
+    }
+
+    private UserGuildStorage userGuildStorage(String userId, String guildId) {
+        return dataStorageManager.getUserGuildStorage(userId, guildId);
+    }
+
+    private GlobalStorage globalStorage() {
+        return dataStorageManager.getGlobalStorage();
     }
 }

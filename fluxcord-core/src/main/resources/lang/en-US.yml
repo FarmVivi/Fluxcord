@@ -47,6 +47,15 @@ commands:
     os: "OS"
     gateway_ping: "Gateway Ping"
     shard: "Shard"
+  op:
+    not_operator: "Only operators can manage operators"
+    invalid_user: "Please provide a valid Discord user ID"
+    added: "User {0} is now an operator"
+    removed: "User {0} is no longer an operator"
+    already: "User {0} is already an operator"
+    not_found: "User {0} is not a runtime operator (configured operators cannot be removed here)"
+    none: "No operator is defined"
+    list: "Operators: {0}"
   shutdown:
     restarting: "Bot is restarting..."
     shutting_down: "Bot is shutting down..."
