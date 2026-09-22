@@ -16,6 +16,9 @@ import java.util.Map;
  * {@link #fromMap(Map)} so they can be persisted through the generic data storage API.
  */
 public class PlaybackState {
+    /** Volume used when a stored state predates the volume field; kept in sync with {@code MusicPlayer.DEFAULT_VOLUME}. */
+    private static final int DEFAULT_VOLUME = 100;
+
     private String voiceChannelId;
     private String textChannelId;
     private String currentTrack;      // Base64-encoded, may be null
@@ -50,7 +53,7 @@ public class PlaybackState {
                 }
             }
         }
-        state.volume = map.get("volume") instanceof Number n ? n.intValue() : 50;
+        state.volume = map.get("volume") instanceof Number n ? n.intValue() : DEFAULT_VOLUME;
         state.paused = Boolean.TRUE.equals(map.get("paused"));
         state.loopMode = Boolean.TRUE.equals(map.get("loopMode"));
         state.loopQueueMode = Boolean.TRUE.equals(map.get("loopQueueMode"));

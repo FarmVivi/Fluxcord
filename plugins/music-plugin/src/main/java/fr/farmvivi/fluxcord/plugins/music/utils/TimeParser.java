@@ -16,16 +16,17 @@ public class TimeParser {
      * Parses a time string (e.g., "1h30m", "45s", "2m30s") to milliseconds.
      *
      * @param input the time string
-     * @return the time in milliseconds, or -1 if invalid
+     * @return the time in milliseconds (0 is a valid position), or -1 if invalid or negative
      */
     public static long parseTime(String input) {
         if (input == null || input.isEmpty()) {
             return -1;
         }
 
-        // Try parsing as plain number (seconds)
+        // Try parsing as plain number (seconds); a negative position is not a valid target
         try {
-            return Long.parseLong(input) * 1000;
+            long seconds = Long.parseLong(input);
+            return seconds >= 0 ? seconds * 1000 : -1;
         } catch (NumberFormatException ignored) {
         }
 
@@ -35,11 +36,16 @@ public class TimeParser {
             return -1;
         }
 
-        long totalMs = 0;
-
         String hours = matcher.group(1);
         String minutes = matcher.group(2);
         String seconds = matcher.group(3);
+
+        // The pattern makes every group optional, so it also matches an input with no unit at all.
+        if (hours == null && minutes == null && seconds == null) {
+            return -1;
+        }
+
+        long totalMs = 0;
 
         if (hours != null) {
             totalMs += Long.parseLong(hours) * 3600000;
@@ -51,7 +57,7 @@ public class TimeParser {
             totalMs += Long.parseLong(seconds) * 1000;
         }
 
-        return totalMs > 0 ? totalMs : -1;
+        return totalMs;
     }
 
     /**
