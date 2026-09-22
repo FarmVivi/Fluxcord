@@ -43,7 +43,7 @@ public class ExampleEventListener extends ListenerAdapter {
         // Example: Log messages in debug mode
         if (plugin.getConfiguration().getBoolean("debug.log_messages", false)) {
             plugin.getLogger().debug("Message received from {}: {}",
-                    event.getAuthor().getAsTag(),
+                    event.getAuthor().getName(),
                     event.getMessage().getContentRaw());
         }
 

@@ -1,55 +1,54 @@
-commands:
-  # Descriptions des commandes
-  ping:
-    description: "Vérifier si le bot répond"
-    response: "🏓 Pong ! Le bot est en ligne et réactif."
+# Descriptions des commandes
+ping:
+  description: "Vérifier si le bot répond"
+  response: "🏓 Pong ! Le bot est en ligne et réactif."
 
-  echo:
-    description: "Répéter votre message"
-    response: "📢 Vous avez dit : {0}"
-    no_message: "Veuillez fournir un message à répéter !"
-    too_long: "Message trop long ! Maximum {0} caractères autorisés."
+echo:
+  description: "Répéter votre message"
+  response: "📢 Vous avez dit : {0}"
+  no_message: "Veuillez fournir un message à répéter !"
+  too_long: "Message trop long ! Maximum {0} caractères autorisés."
 
-  info:
-    description: "Afficher les informations du bot et du plugin"
-    title: "Plugin d'Exemple de Commandes"
-    version: "Version : {0}"
-    uptime: "Temps de fonctionnement : {0}"
-    commands_executed: "Commandes exécutées : {0}"
-    memory_usage: "Utilisation mémoire : {0}MB"
+info:
+  description: "Afficher les informations du bot et du plugin"
+  title: "Plugin d'Exemple de Commandes"
+  version: "Version : {0}"
+  uptime: "Temps de fonctionnement : {0}"
+  commands_executed: "Commandes exécutées : {0}"
+  memory_usage: "Utilisation mémoire : {0}MB"
 
-  admin:
-    description: "Commande administrative (admin seulement)"
-    response: "🔧 Commande admin exécutée avec succès !"
-    no_permission: "❌ Vous avez besoin des permissions d'administrateur pour cette commande."
+admin:
+  description: "Commande administrative (admin seulement)"
+  response: "🔧 Commande admin exécutée avec succès !"
+  no_permission: "❌ Vous avez besoin des permissions d'administrateur pour cette commande."
 
-  # Messages généraux
-  general:
-    cooldown: "⏳ Veuillez attendre {0} secondes avant d'utiliser cette commande à nouveau."
-    error: "❌ Une erreur s'est produite lors de l'exécution de la commande."
-    disabled: "🚫 Cette commande est actuellement désactivée."
-    loading: "⌛ Traitement de votre commande..."
-    success: "✅ Commande exécutée avec succès !"
+# Messages généraux
+general:
+  cooldown: "⏳ Veuillez attendre {0} secondes avant d'utiliser cette commande à nouveau."
+  error: "❌ Une erreur s'est produite lors de l'exécution de la commande."
+  disabled: "🚫 Cette commande est actuellement désactivée."
+  loading: "⌛ Traitement de votre commande..."
+  success: "✅ Commande exécutée avec succès !"
 
-  # Messages d'aide
-  help:
-    title: "Plugin d'Exemple de Commandes - Aide"
-    description: "Ce plugin démontre diverses fonctionnalités du système de commandes."
-    available_commands: "Commandes Disponibles :"
-    command_format: "`/{0}` - {1}"
-    footer: "Utilisez /{0} <commande> pour des informations détaillées sur une commande spécifique."
+# Messages d'aide
+help:
+  title: "Plugin d'Exemple de Commandes - Aide"
+  description: "Ce plugin démontre diverses fonctionnalités du système de commandes."
+  available_commands: "Commandes Disponibles :"
+  command_format: "`/{0}` - {1}"
+  footer: "Utilisez /{0} <commande> pour des informations détaillées sur une commande spécifique."
 
-  # Messages d'erreur
-  errors:
-    not_found: "❌ Commande introuvable."
-    permission_denied: "❌ Vous n'avez pas la permission d'utiliser cette commande."
-    invalid_arguments: "❌ Arguments invalides fournis."
-    execution_failed: "❌ Échec de l'exécution de la commande : {0}"
-    cooldown_active: "⏳ Commande en cooldown. Réessayez dans {0} secondes."
+# Messages d'erreur
+errors:
+  not_found: "❌ Commande introuvable."
+  permission_denied: "❌ Vous n'avez pas la permission d'utiliser cette commande."
+  invalid_arguments: "❌ Arguments invalides fournis."
+  execution_failed: "❌ Échec de l'exécution de la commande : {0}"
+  cooldown_active: "⏳ Commande en cooldown. Réessayez dans {0} secondes."
 
-  # Messages de statut
-  status:
-    enabled: "✅ Le plugin est activé et prêt !"
-    disabled: "🚫 Le plugin est désactivé dans la configuration."
-    commands_loaded: "📝 {0} commandes chargées avec succès."
-    ready: "🚀 Le système de commandes est prêt !"
+# Messages de statut
+status:
+  enabled: "✅ Le plugin est activé et prêt !"
+  disabled: "🚫 Le plugin est désactivé dans la configuration."
+  commands_loaded: "📝 {0} commandes chargées avec succès."
+  ready: "🚀 Le système de commandes est prêt !"

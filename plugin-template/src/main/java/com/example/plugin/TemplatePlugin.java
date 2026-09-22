@@ -205,7 +205,7 @@ public class TemplatePlugin extends AbstractPlugin {
 
             // Log the interaction
             logger.debug("Reacted to message mentioning template from user: {}",
-                    event.getAuthor().getAsTag());
+                    event.getAuthor().getName());
         }
     }
 

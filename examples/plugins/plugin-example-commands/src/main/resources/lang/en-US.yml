@@ -1,55 +1,54 @@
-commands:
-  # Command descriptions
-  ping:
-    description: "Check if the bot is responsive"
-    response: "🏓 Pong! Bot is online and responsive."
+# Command descriptions
+ping:
+  description: "Check if the bot is responsive"
+  response: "🏓 Pong! Bot is online and responsive."
 
-  echo:
-    description: "Echo back your message"
-    response: "📢 You said: {0}"
-    no_message: "Please provide a message to echo!"
-    too_long: "Message too long! Maximum {0} characters allowed."
+echo:
+  description: "Echo back your message"
+  response: "📢 You said: {0}"
+  no_message: "Please provide a message to echo!"
+  too_long: "Message too long! Maximum {0} characters allowed."
 
-  info:
-    description: "Display bot and plugin information"
-    title: "Command Example Plugin"
-    version: "Version: {0}"
-    uptime: "Uptime: {0}"
-    commands_executed: "Commands executed: {0}"
-    memory_usage: "Memory usage: {0}MB"
+info:
+  description: "Display bot and plugin information"
+  title: "Command Example Plugin"
+  version: "Version: {0}"
+  uptime: "Uptime: {0}"
+  commands_executed: "Commands executed: {0}"
+  memory_usage: "Memory usage: {0}MB"
 
-  admin:
-    description: "Administrative command (admin only)"
-    response: "🔧 Admin command executed successfully!"
-    no_permission: "❌ You need administrator permissions to use this command."
+admin:
+  description: "Administrative command (admin only)"
+  response: "🔧 Admin command executed successfully!"
+  no_permission: "❌ You need administrator permissions to use this command."
 
-  # General messages
-  general:
-    cooldown: "⏳ Please wait {0} seconds before using this command again."
-    error: "❌ An error occurred while executing the command."
-    disabled: "🚫 This command is currently disabled."
-    loading: "⌛ Processing your command..."
-    success: "✅ Command executed successfully!"
+# General messages
+general:
+  cooldown: "⏳ Please wait {0} seconds before using this command again."
+  error: "❌ An error occurred while executing the command."
+  disabled: "🚫 This command is currently disabled."
+  loading: "⌛ Processing your command..."
+  success: "✅ Command executed successfully!"
 
-  # Help messages
-  help:
-    title: "Command Example Plugin - Help"
-    description: "This plugin demonstrates various command system features."
-    available_commands: "Available Commands:"
-    command_format: "`/{0}` - {1}"
-    footer: "Use /{0} <command> for detailed information about a specific command."
+# Help messages
+help:
+  title: "Command Example Plugin - Help"
+  description: "This plugin demonstrates various command system features."
+  available_commands: "Available Commands:"
+  command_format: "`/{0}` - {1}"
+  footer: "Use /{0} <command> for detailed information about a specific command."
 
-  # Error messages
-  errors:
-    not_found: "❌ Command not found."
-    permission_denied: "❌ You don't have permission to use this command."
-    invalid_arguments: "❌ Invalid arguments provided."
-    execution_failed: "❌ Command execution failed: {0}"
-    cooldown_active: "⏳ Command is on cooldown. Try again in {0} seconds."
+# Error messages
+errors:
+  not_found: "❌ Command not found."
+  permission_denied: "❌ You don't have permission to use this command."
+  invalid_arguments: "❌ Invalid arguments provided."
+  execution_failed: "❌ Command execution failed: {0}"
+  cooldown_active: "⏳ Command is on cooldown. Try again in {0} seconds."
 
-  # Status messages  
-  status:
-    enabled: "✅ Plugin is enabled and ready!"
-    disabled: "🚫 Plugin is disabled in configuration."
-    commands_loaded: "📝 Loaded {0} commands successfully."
-    ready: "🚀 Command system is ready!"
+# Status messages  
+status:
+  enabled: "✅ Plugin is enabled and ready!"
+  disabled: "🚫 Plugin is disabled in configuration."
+  commands_loaded: "📝 Loaded {0} commands successfully."
+  ready: "🚀 Command system is ready!"

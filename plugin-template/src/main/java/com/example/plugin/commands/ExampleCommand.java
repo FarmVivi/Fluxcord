@@ -26,9 +26,11 @@ public class ExampleCommand {
             return CommandResult.error("Commands are disabled");
         }
 
-        // Check permissions (example)
+        // Check permissions. The name must match what the plugin registered, which is namespaced
+        // by the plugin id (see TemplatePlugin.pluginPrefix) — a hardcoded "template.use" would
+        // never match and the command would always be refused.
         if (!plugin.getPermissions().hasPermission(
-                context.getUser().getId(), "template.use")) {
+                context.getUser().getId(), plugin.getId() + ".use")) {
             String message = plugin.getLanguage()
                     .getString("errors.no_permission");
             context.reply(message);
@@ -41,7 +43,7 @@ public class ExampleCommand {
 
         context.reply(response);
         plugin.getLogger().info("Example command executed by user: {}",
-                context.getUser().getAsTag());
+                context.getUser().getName());
 
         return CommandResult.success();
     }

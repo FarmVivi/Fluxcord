@@ -54,6 +54,12 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 ## Learnings
 - 2026-09-19: Initial audit.
 
+- 2026-09-22 (examples/template tested, 0 % → ~90/74 %): three traps found by writing those tests, all worth checking in any new plugin.
+  1. **Language keys**: the adapter already namespaces by plugin id, so a top-level wrapper in `lang/*.yml` (`template:`, `commands:`) makes every lookup miss — and a miss silently returns the key itself. Copy `LanguageFilesTest` (loads both locales with snakeyaml, asserts the keys the code uses exist and that the placeholders match).
+  2. **Cooldowns and permissions are declarative**: `.cooldown(seconds)` / `.permission(name)` on the builder. Checking them by hand in the executor duplicates the core, and `getCommands().isOnCooldown(...)` answers about the cooldown the *core* applies — always false if nothing declared one.
+  3. **Permission names are namespaced by the plugin id**; a hardcoded name that does not match what was registered can never pass.
+- 2026-09-22: A plugin's own classes are far easier to test as top-level classes than as `private static` inner ones (`WavFileSendHandler` / `WavRecordingReceiveHandler` in the audio example). Plugin modules need `junit-jupiter`, `mockito-core`, and `logback-classic` in test scope — without a binding JDA prints "missing SLF4J implementation" in the build output.
+
 ## Known issues / open questions
 - P3: add `fr.farmvivi.fluxcord.api` to `CORE_PACKAGES`; fix template scope; consider failing fast in `loadPlugin` when a plugin jar contains `fr/farmvivi/fluxcord/api/` classes.
 - No helper for "register a JDA listener bound to this plugin" — every plugin re-implements the builder/JDA dual registration and often forgets removal.
