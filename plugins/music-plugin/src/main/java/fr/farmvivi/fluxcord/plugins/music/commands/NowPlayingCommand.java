@@ -7,45 +7,35 @@ import fr.farmvivi.fluxcord.plugins.music.MusicPlugin;
 import fr.farmvivi.fluxcord.plugins.music.player.MusicPlayer;
 import fr.farmvivi.fluxcord.plugins.music.utils.TimeParser;
 import net.dv8tion.jda.api.EmbedBuilder;
-import net.dv8tion.jda.api.entities.Guild;
 
 import java.awt.*;
-import java.util.Locale;
-import java.util.Optional;
 
 /**
  * Command to display the currently playing track.
  */
-public class NowPlayingCommand {
-    private final MusicPlugin plugin;
-
+public class NowPlayingCommand extends MusicCommand {
     public NowPlayingCommand(MusicPlugin plugin) {
-        this.plugin = plugin;
+        super(plugin);
     }
 
     public void execute(CommandContext ctx) {
-        Optional<Guild> optGuild = ctx.getGuild();
-        if (optGuild.isEmpty()) {
-            PluginLanguageAdapter lm = plugin.getLanguage();
-            ctx.replyError(lm.getString(ctx.getLocale(), "music.error.guild_only"));
+        MusicPlayer player = player(ctx).orElse(null);
+        if (player == null) {
             return;
         }
-        Guild guild = optGuild.get();
-        MusicPlayer player = plugin.getMusicManager().getPlayer(guild);
         AudioTrack track = player.getPlayingTrack();
 
         if (track == null) {
             PluginLanguageAdapter lm = plugin.getLanguage();
-            ctx.replyError(lm.getString(ctx.getLocale(), "music.error.nothing_playing"));
+            ctx.replyError(text(ctx, "music.error.nothing_playing"));
             return;
         }
 
         PluginLanguageAdapter lm = plugin.getLanguage();
-        Locale locale = ctx.getLocale();
 
         EmbedBuilder embed = new EmbedBuilder()
                 .setColor(player.isPaused() ? Color.ORANGE : Color.GREEN)
-                .setTitle(lm.getString(locale, "music.nowplaying.title"));
+                .setTitle(text(ctx, "music.nowplaying.title"));
 
         // Thumbnail
         if (track.getInfo().artworkUrl != null) {
@@ -54,7 +44,7 @@ public class NowPlayingCommand {
 
         // Track info
         embed.addField(
-                lm.getString(locale, "music.nowplaying.track"),
+                text(ctx, "music.nowplaying.track"),
                 String.format("[%s](%s)", track.getInfo().title, track.getInfo().uri),
                 false
         );
@@ -62,7 +52,7 @@ public class NowPlayingCommand {
         // Author/Artist
         if (track.getInfo().author != null && !track.getInfo().author.isEmpty()) {
             embed.addField(
-                    lm.getString(locale, "music.nowplaying.author"),
+                    text(ctx, "music.nowplaying.author"),
                     track.getInfo().author,
                     true
             );
@@ -77,21 +67,21 @@ public class NowPlayingCommand {
             );
 
             embed.addField(
-                    lm.getString(locale, "music.nowplaying.progress"),
+                    text(ctx, "music.nowplaying.progress"),
                     progressBar + "\n" + timeInfo,
                     false
             );
         } else {
             embed.addField(
-                    lm.getString(locale, "music.nowplaying.duration"),
-                    lm.getString(locale, "music.nowplaying.live"),
+                    text(ctx, "music.nowplaying.duration"),
+                    text(ctx, "music.nowplaying.live"),
                     true
             );
         }
 
         // Volume
         embed.addField(
-                lm.getString(locale, "music.nowplaying.volume"),
+                text(ctx, "music.nowplaying.volume"),
                 player.getVolume() + "%",
                 true
         );
@@ -99,8 +89,8 @@ public class NowPlayingCommand {
         // Status
         if (player.isPaused()) {
             embed.addField(
-                    lm.getString(locale, "music.nowplaying.status"),
-                    lm.getString(locale, "music.nowplaying.paused"),
+                    text(ctx, "music.nowplaying.status"),
+                    text(ctx, "music.nowplaying.paused"),
                     true
             );
         }

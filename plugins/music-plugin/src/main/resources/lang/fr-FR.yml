@@ -44,8 +44,45 @@ music:
       option:
         time: "Temps (ex: 1:30, 90s, 1m30s)"
     playlist:
-      description: "Gérer les playlists"
+      description: "Sauvegarder, charger et gérer des playlists nommées"
+      option:
+        action: "Ce qu'il faut faire avec la playlist"
+        name: "Nom de la playlist"
+        scope: "Playlist personnelle ou playlist du serveur"
+      action:
+        save: "sauvegarder la file actuelle"
+        load: "charger dans la file"
+        list: "lister les playlists"
+        show: "afficher les pistes"
+        delete: "supprimer"
+      scope:
+        personal: "personnelle"
+        server: "serveur"
   
+  # Playlists
+  playlist:
+    scope:
+      personal: "personnelles"
+      server: "du serveur"
+    saved: "💾 Playlist **{0}** sauvegardée ({1} pistes)"
+    replaced: "💾 Playlist **{0}** mise à jour ({1} pistes)"
+    deleted: "🗑️ Playlist **{0}** supprimée"
+    loaded: "Playlist {0} ajoutée à la file d''attente"
+    load_failed: "Aucune piste de **{0}** n''a pu être chargée"
+    unavailable: "Indisponibles"
+    not_found: "Aucune playlist nommée **{0}**"
+    none: "Vous n'avez encore aucune playlist sauvegardée"
+    list_title: "{0} playlists {1}"
+    list_entry: "• **{0}** - {1} pistes ({2})"
+    and_more: "...et {0} de plus"
+    nothing_to_save: "Il n'y a rien en lecture à sauvegarder"
+    invalid_name: "Un nom de playlist fait au maximum {0} caractères : lettres, chiffres, espaces, - et _"
+    too_many: "Vous avez déjà le maximum de {0} playlists, supprimez-en une d''abord"
+    too_many_tracks: "Une playlist contient au maximum {0} pistes"
+    admin_only: "Seul un administrateur musique peut modifier les playlists du serveur"
+    discord_only: "Cette commande doit être utilisée depuis Discord"
+    usage: "Usage : playlist <save|load|list|show|delete> [nom] [personal|server]"
+
   # Messages de succès
   track_added: "Piste ajoutée à la file d'attente"
   playlist_added: "Playlist ajoutée à la file d'attente"

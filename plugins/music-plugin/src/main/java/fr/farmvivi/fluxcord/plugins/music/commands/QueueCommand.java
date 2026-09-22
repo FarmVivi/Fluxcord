@@ -2,58 +2,46 @@ package fr.farmvivi.fluxcord.plugins.music.commands;
 
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import fr.farmvivi.fluxcord.api.command.CommandContext;
-import fr.farmvivi.fluxcord.api.language.PluginLanguageAdapter;
 import fr.farmvivi.fluxcord.plugins.music.MusicPlugin;
 import fr.farmvivi.fluxcord.plugins.music.player.MusicPlayer;
 import fr.farmvivi.fluxcord.plugins.music.utils.TimeParser;
 import net.dv8tion.jda.api.EmbedBuilder;
-import net.dv8tion.jda.api.entities.Guild;
 
 import java.awt.*;
 import java.util.List;
-import java.util.Locale;
-import java.util.Optional;
 
 /**
  * Command to display the music queue.
  */
-public class QueueCommand {
+public class QueueCommand extends MusicCommand {
     private static final int TRACKS_PER_PAGE = 10;
-    private final MusicPlugin plugin;
-
     public QueueCommand(MusicPlugin plugin) {
-        this.plugin = plugin;
+        super(plugin);
     }
 
     public void execute(CommandContext ctx, int page) {
-        Optional<Guild> optGuild = ctx.getGuild();
-        if (optGuild.isEmpty()) {
-            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.error.guild_only"));
+        MusicPlayer player = player(ctx).orElse(null);
+        if (player == null) {
             return;
         }
-        Guild guild = optGuild.get();
-
-        MusicPlayer player = plugin.getMusicManager().getPlayer(guild);
         List<AudioTrack> queue = player.getTrackScheduler().getQueue();
 
         if (queue.isEmpty() && player.getPlayingTrack() == null) {
-            ctx.replyError(plugin.getLanguage().getString(ctx.getLocale(), "music.queue.empty"));
+            ctx.replyError(text(ctx, "music.queue.empty"));
             return;
         }
 
-        PluginLanguageAdapter lm = plugin.getLanguage();
-        Locale locale = ctx.getLocale();
 
         EmbedBuilder embed = new EmbedBuilder()
                 .setColor(Color.BLUE)
-                .setTitle(lm.getString(locale, "music.queue.title"));
+                .setTitle(text(ctx, "music.queue.title"));
 
         // Add current track
         AudioTrack current = player.getPlayingTrack();
         if (current != null) {
             String status = player.isPaused() ? "⏸️" : "▶️";
             embed.addField(
-                    lm.getString(locale, "music.queue.now_playing"),
+                    text(ctx, "music.queue.now_playing"),
                     String.format("%s [%s](%s) - %s",
                             status,
                             current.getInfo().title,
@@ -83,14 +71,14 @@ public class QueueCommand {
             }
 
             embed.addField(
-                    lm.getString(locale, "music.queue.upcoming", queue.size()),
+                    text(ctx, "music.queue.upcoming", queue.size()),
                     queueList.toString(),
                     false
             );
 
             // Add page info
             if (totalPages > 1) {
-                embed.setFooter(lm.getString(locale, "music.queue.page", page, totalPages));
+                embed.setFooter(text(ctx, "music.queue.page", page, totalPages));
             }
 
             // Add total duration
@@ -101,7 +89,7 @@ public class QueueCommand {
 
             if (totalDuration > 0) {
                 embed.addField(
-                        lm.getString(locale, "music.queue.duration"),
+                        text(ctx, "music.queue.duration"),
                         TimeParser.formatTime(totalDuration),
                         true
                 );
@@ -125,7 +113,7 @@ public class QueueCommand {
             }
 
             embed.addField(
-                    lm.getString(locale, "music.queue.modes"),
+                    text(ctx, "music.queue.modes"),
                     modes.toString(),
                     true
             );

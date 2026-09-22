@@ -1,66 +1,117 @@
 package fr.farmvivi.fluxcord.plugins.music.playlist;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
- * Represents a music playlist.
+ * A named playlist saved by a user or by a guild.
+ *
+ * <p>Tracks are stored as plain metadata (source URL, title, author, duration), not as encoded
+ * LavaPlayer tracks: loading a playlist re-resolves each URL, so a playlist keeps working after a
+ * restart and across source-manager updates.
+ *
+ * <p>Instances travel through the generic data storage as JSON-friendly {@link Map}s
+ * ({@link #toMap()} / {@link #fromMap(Map)}).
  */
 public class Playlist {
     private final String name;
     private final String ownerId;
-    private final boolean isGuildPlaylist;
+    private final PlaylistScope scope;
     private final List<PlaylistTrack> tracks;
     private final long createdAt;
     private long updatedAt;
 
-    public Playlist(String name, String ownerId, boolean isGuildPlaylist) {
+    public Playlist(String name, String ownerId, PlaylistScope scope) {
+        this(name, ownerId, scope, System.currentTimeMillis(), System.currentTimeMillis());
+    }
+
+    public Playlist(String name, String ownerId, PlaylistScope scope, long createdAt, long updatedAt) {
         this.name = name;
         this.ownerId = ownerId;
-        this.isGuildPlaylist = isGuildPlaylist;
+        this.scope = scope;
         this.tracks = new ArrayList<>();
-        this.createdAt = System.currentTimeMillis();
-        this.updatedAt = createdAt;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
     }
 
     /**
-     * Creates a playlist from a stored map.
+     * Rebuilds a playlist from a stored map. Missing fields fall back to safe defaults so a
+     * partially written entry never breaks the whole listing.
+     *
+     * @param map the stored map
+     * @return the playlist
      */
+    @SuppressWarnings("unchecked")
     public static Playlist fromMap(Map<String, Object> map) {
-        String name = (String) map.get("name");
-        String ownerId = (String) map.get("ownerId");
-        boolean isGuildPlaylist = (Boolean) map.get("isGuildPlaylist");
+        String name = map.get("name") instanceof String s ? s : "";
+        String ownerId = map.get("ownerId") instanceof String s ? s : null;
+        PlaylistScope scope = Boolean.TRUE.equals(map.get("isGuildPlaylist")) ? PlaylistScope.GUILD : PlaylistScope.USER;
+        long createdAt = map.get("createdAt") instanceof Number n ? n.longValue() : 0L;
+        long updatedAt = map.get("updatedAt") instanceof Number n ? n.longValue() : createdAt;
 
-        Playlist playlist = new Playlist(name, ownerId, isGuildPlaylist);
+        Playlist playlist = new Playlist(name, ownerId, scope, createdAt, updatedAt);
 
-        // Restore timestamps
-        if (map.containsKey("createdAt")) {
-            // Use reflection or make fields package-private if needed
-        }
-        if (map.containsKey("updatedAt")) {
-            playlist.updatedAt = ((Number) map.get("updatedAt")).longValue();
-        }
-
-        // Restore tracks
-        List<Map<String, Object>> trackList = (List<Map<String, Object>>) map.get("tracks");
-        if (trackList != null) {
-            for (Map<String, Object> trackMap : trackList) {
-                playlist.tracks.add(PlaylistTrack.fromMap(trackMap));
+        if (map.get("tracks") instanceof List<?> list) {
+            for (Object entry : list) {
+                if (entry instanceof Map<?, ?> trackMap) {
+                    playlist.tracks.add(PlaylistTrack.fromMap((Map<String, Object>) trackMap));
+                }
             }
         }
-
         return playlist;
     }
 
     /**
-     * Adds a track to the playlist.
+     * Converts this playlist to a JSON-friendly map for storage.
+     *
+     * @return the map representation
      */
-    public void addTrack(String url, String title, String author, long duration) {
-        tracks.add(new PlaylistTrack(url, title, author, duration));
+    public Map<String, Object> toMap() {
+        Map<String, Object> map = new HashMap<>();
+        map.put("name", name);
+        map.put("ownerId", ownerId);
+        map.put("isGuildPlaylist", scope == PlaylistScope.GUILD);
+        map.put("createdAt", createdAt);
+        map.put("updatedAt", updatedAt);
+
+        List<Map<String, Object>> trackList = new ArrayList<>();
+        for (PlaylistTrack track : tracks) {
+            trackList.add(track.toMap());
+        }
+        map.put("tracks", trackList);
+        return map;
+    }
+
+    /** Appends a track and refreshes the update timestamp. */
+    public void addTrack(PlaylistTrack track) {
+        if (track == null) {
+            return;
+        }
+        tracks.add(track);
+        updatedAt = System.currentTimeMillis();
+    }
+
+    /** Replaces every track of this playlist. */
+    public void setTracks(List<PlaylistTrack> newTracks) {
+        tracks.clear();
+        if (newTracks != null) {
+            for (PlaylistTrack track : newTracks) {
+                if (track != null) {
+                    tracks.add(track);
+                }
+            }
+        }
         updatedAt = System.currentTimeMillis();
     }
 
     /**
-     * Removes a track at the specified index.
+     * Removes the track at the given zero-based index.
+     *
+     * @param index the index
+     * @return true when a track was removed
      */
     public boolean removeTrack(int index) {
         if (index < 0 || index >= tracks.size()) {
@@ -71,35 +122,21 @@ public class Playlist {
         return true;
     }
 
-    /**
-     * Clears all tracks from the playlist.
-     */
+    /** Removes every track. */
     public void clear() {
         tracks.clear();
         updatedAt = System.currentTimeMillis();
     }
 
-    /**
-     * Converts the playlist to a map for storage.
-     */
-    public Map<String, Object> toMap() {
-        Map<String, Object> map = new HashMap<>();
-        map.put("name", name);
-        map.put("ownerId", ownerId);
-        map.put("isGuildPlaylist", isGuildPlaylist);
-        map.put("createdAt", createdAt);
-        map.put("updatedAt", updatedAt);
-
-        List<Map<String, Object>> trackList = new ArrayList<>();
+    /** @return the total duration of the playlist in milliseconds */
+    public long getTotalDuration() {
+        long total = 0;
         for (PlaylistTrack track : tracks) {
-            trackList.add(track.toMap());
+            total += Math.max(0, track.duration());
         }
-        map.put("tracks", trackList);
-
-        return map;
+        return total;
     }
 
-    // Getters
     public String getName() {
         return name;
     }
@@ -108,8 +145,12 @@ public class Playlist {
         return ownerId;
     }
 
+    public PlaylistScope getScope() {
+        return scope;
+    }
+
     public boolean isGuildPlaylist() {
-        return isGuildPlaylist;
+        return scope == PlaylistScope.GUILD;
     }
 
     public List<PlaylistTrack> getTracks() {
@@ -129,28 +170,22 @@ public class Playlist {
     }
 
     /**
-     * Represents a track in a playlist.
+     * One entry of a playlist: enough metadata to display it without resolving it, plus the URL
+     * used to load it again.
+     *
+     * @param url      the source URL, used to re-resolve the track
+     * @param title    the track title
+     * @param author   the track author
+     * @param duration the track duration in milliseconds
      */
-    public static class PlaylistTrack {
-        private final String url;
-        private final String title;
-        private final String author;
-        private final long duration;
-
-        public PlaylistTrack(String url, String title, String author, long duration) {
-            this.url = url;
-            this.title = title;
-            this.author = author;
-            this.duration = duration;
-        }
+    public record PlaylistTrack(String url, String title, String author, long duration) {
 
         public static PlaylistTrack fromMap(Map<String, Object> map) {
             return new PlaylistTrack(
-                    (String) map.get("url"),
-                    (String) map.get("title"),
-                    (String) map.get("author"),
-                    ((Number) map.get("duration")).longValue()
-            );
+                    map.get("url") instanceof String s ? s : null,
+                    map.get("title") instanceof String s ? s : "?",
+                    map.get("author") instanceof String s ? s : "?",
+                    map.get("duration") instanceof Number n ? n.longValue() : 0L);
         }
 
         public Map<String, Object> toMap() {
@@ -160,23 +195,6 @@ public class Playlist {
             map.put("author", author);
             map.put("duration", duration);
             return map;
-        }
-
-        // Getters
-        public String getUrl() {
-            return url;
-        }
-
-        public String getTitle() {
-            return title;
-        }
-
-        public String getAuthor() {
-            return author;
-        }
-
-        public long getDuration() {
-            return duration;
         }
     }
 }

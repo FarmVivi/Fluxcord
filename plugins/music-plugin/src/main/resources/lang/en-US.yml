@@ -44,8 +44,45 @@ music:
       option:
         time: "Time (e.g. 1:30, 90s, 1m30s)"
     playlist:
-      description: "Manage playlists"
+      description: "Save, load and manage named playlists"
+      option:
+        action: "What to do with the playlist"
+        name: "Playlist name"
+        scope: "Personal playlist or server playlist"
+      action:
+        save: "save the current queue"
+        load: "load into the queue"
+        list: "list playlists"
+        show: "show the tracks"
+        delete: "delete"
+      scope:
+        personal: "personal"
+        server: "server"
   
+  # Playlists
+  playlist:
+    scope:
+      personal: "personal"
+      server: "server"
+    saved: "💾 Playlist **{0}** saved ({1} tracks)"
+    replaced: "💾 Playlist **{0}** updated ({1} tracks)"
+    deleted: "🗑️ Playlist **{0}** deleted"
+    loaded: "Playlist {0} added to the queue"
+    load_failed: "None of the tracks of **{0}** could be loaded"
+    unavailable: "Unavailable"
+    not_found: "No playlist named **{0}**"
+    none: "You have no saved playlist yet"
+    list_title: "{0} {1} playlists"
+    list_entry: "• **{0}** - {1} tracks ({2})"
+    and_more: "...and {0} more"
+    nothing_to_save: "There is nothing playing to save"
+    invalid_name: "A playlist name must be at most {0} characters, letters, digits, spaces, - and _ only"
+    too_many: "You already have the maximum of {0} playlists, delete one first"
+    too_many_tracks: "A playlist holds at most {0} tracks"
+    admin_only: "Only a music administrator can change the server playlists"
+    discord_only: "This command must be used from Discord"
+    usage: "Usage: playlist <save|load|list|show|delete> [name] [personal|server]"
+
   # Success messages
   track_added: "Track Added to Queue"
   playlist_added: "Playlist Added to Queue"

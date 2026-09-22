@@ -9,6 +9,7 @@ import fr.farmvivi.fluxcord.api.command.CommandContext;
 import fr.farmvivi.fluxcord.api.language.PluginLanguageAdapter;
 import fr.farmvivi.fluxcord.plugins.music.audio.AudioPlayerManager;
 import fr.farmvivi.fluxcord.plugins.music.player.MusicPlayer;
+import fr.farmvivi.fluxcord.plugins.music.playlist.Playlist;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
@@ -27,6 +28,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Manages music players for different guilds.
@@ -117,26 +119,26 @@ public class MusicManager {
     }
 
     /**
-     * Loads and plays a track.
+     * Resolves the player for the command's guild and makes sure the bot is in a voice channel.
+     *
+     * <p>Replies with the matching error and returns empty when the command was not sent from a
+     * guild, or when the bot is not connected and the caller is not in a voice channel either.
+     *
+     * @param ctx the command context
+     * @return the ready-to-use player, or empty when playback cannot start
      */
-    public void loadTrack(CommandContext ctx, String query, boolean playNow) {
+    private Optional<MusicPlayer> preparePlayback(CommandContext ctx) {
+        PluginLanguageAdapter lm = plugin.getLanguage();
         Optional<Guild> optGuild = ctx.getGuild();
         if (optGuild.isEmpty()) {
-            // This command must be used in a guild context
-            PluginLanguageAdapter lm = plugin.getLanguage();
-            Locale locale = ctx.getLocale();
-            ctx.replyError(lm.getString(locale, "music.error.guild_only"));
-            return;
+            ctx.replyError(lm.getString(ctx.getLocale(), "music.error.guild_only"));
+            return Optional.empty();
         }
 
         Guild guild = optGuild.get();
         MusicPlayer player = getPlayer(guild);
-        MessageChannel channel = ctx.getChannel();
+        player.setMessageChannel(ctx.getChannel());
 
-        // Set the message channel for the player
-        player.setMessageChannel(channel);
-
-        // Connect to voice channel if not connected
         AudioManager audioManager = guild.getAudioManager();
         if (!audioManager.isConnected()) {
             Member member = null;
@@ -151,12 +153,105 @@ public class MusicManager {
                     : null;
 
             if (voiceChannel == null) {
-                PluginLanguageAdapter lm = plugin.getLanguage();
                 ctx.replyError(lm.getString(ctx.getLocale(), "music.error.not_in_voice"));
-                return;
+                return Optional.empty();
             }
             audioManager.openAudioConnection(voiceChannel);
         }
+        return Optional.of(player);
+    }
+
+    /**
+     * Queues every track of a saved playlist, resolving the stored URLs one by one.
+     *
+     * <p>Tracks are loaded with {@code loadItemOrdered} keyed on the player, so they are queued in
+     * the order they were saved. A single summary is sent once every track has been resolved.
+     *
+     * @param ctx      the command context
+     * @param playlist the playlist to queue
+     */
+    public void loadPlaylist(CommandContext ctx, Playlist playlist) {
+        Optional<MusicPlayer> optPlayer = preparePlayback(ctx);
+        if (optPlayer.isEmpty()) {
+            return;
+        }
+        MusicPlayer player = optPlayer.get();
+        Guild guild = player.getGuild();
+        PluginLanguageAdapter lm = plugin.getLanguage();
+        Locale locale = ctx.getLocale();
+
+        List<Playlist.PlaylistTrack> entries = playlist.getTracks();
+        ctx.deferReply();
+
+        AtomicInteger loaded = new AtomicInteger();
+        AtomicInteger remaining = new AtomicInteger(entries.size());
+        Runnable summary = () -> {
+            if (remaining.decrementAndGet() > 0) {
+                return;
+            }
+            int success = loaded.get();
+            int failed = entries.size() - success;
+            if (success == 0) {
+                ctx.replyError(lm.getString(locale, "music.playlist.load_failed", playlist.getName()));
+                return;
+            }
+            EmbedBuilder embed = new EmbedBuilder()
+                    .setColor(Color.GREEN)
+                    .setTitle(lm.getString(locale, "music.playlist.loaded", playlist.getName()))
+                    .addField(lm.getString(locale, "music.tracks"), String.valueOf(success), true);
+            if (failed > 0) {
+                embed.addField(lm.getString(locale, "music.playlist.unavailable"), String.valueOf(failed), true);
+            }
+            ctx.replyEmbed(embed);
+        };
+
+        for (Playlist.PlaylistTrack entry : entries) {
+            audioPlayerManager.getPlayerManager().loadItemOrdered(player, entry.url(), new AudioLoadResultHandler() {
+                @Override
+                public void trackLoaded(AudioTrack track) {
+                    remember(guild, track);
+                    player.playTrack(track);
+                    loaded.incrementAndGet();
+                    summary.run();
+                }
+
+                @Override
+                public void playlistLoaded(AudioPlaylist audioPlaylist) {
+                    // A stored URL should resolve to a single track; keep the first match if it does not.
+                    List<AudioTrack> tracks = audioPlaylist.getTracks();
+                    if (tracks.isEmpty()) {
+                        noMatches();
+                        return;
+                    }
+                    trackLoaded(tracks.get(0));
+                }
+
+                @Override
+                public void noMatches() {
+                    logger.warn("[{}] Playlist '{}': no match for {}", guild.getName(), playlist.getName(), entry.url());
+                    summary.run();
+                }
+
+                @Override
+                public void loadFailed(FriendlyException exception) {
+                    logger.warn("[{}] Playlist '{}': failed to load {}: {}", guild.getName(), playlist.getName(),
+                            entry.url(), exception.getMessage());
+                    summary.run();
+                }
+            });
+        }
+    }
+
+    /**
+     * Loads and plays a track.
+     */
+    public void loadTrack(CommandContext ctx, String query, boolean playNow) {
+        Optional<MusicPlayer> optPlayer = preparePlayback(ctx);
+        if (optPlayer.isEmpty()) {
+            return;
+        }
+        MusicPlayer player = optPlayer.get();
+        Guild guild = player.getGuild();
 
         // Defer reply for long loading
         ctx.deferReply();
