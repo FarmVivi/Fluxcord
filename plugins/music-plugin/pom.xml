@@ -104,6 +104,13 @@
         </dependency>
 
         <!-- Test dependencies -->
+        <!-- slf4j-api is provided at runtime by the core; the tests need an actual binding,
+             otherwise JDA prints its "missing SLF4J implementation" fallback warnings. -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
@@ -169,6 +176,13 @@
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
+                                        <!-- A shaded jar is a plain classpath jar: the module descriptors of the
+                                             bundled libraries cannot apply and shade warns about each one. -->
+                                        <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/versions/*/module-info.class</exclude>
+                                        <!-- Rewritten by ManifestResourceTransformer / informational only -->
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
+                                        <exclude>META-INF/DEPENDENCIES</exclude>
                                     </excludes>
                                 </filter>
                             </filters>

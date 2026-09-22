@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logging during tests.
+
+  Many tests deliberately exercise error paths (a plugin that fails to load, an unreachable S3
+  bucket, a malformed language file...), and the production code logs a WARN or an ERROR for each
+  one. Printed to the build output they are pure noise: a real failure becomes hard to spot, and
+  grepping the CI log for "ERROR" returns dozens of expected lines.
+
+  Logging is therefore off by default and can be turned back on for a debugging session:
+      mvn test -Dfluxcord.test.log.level=DEBUG
+-->
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level [%logger{0}] %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="${fluxcord.test.log.level:-OFF}">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>
