@@ -43,7 +43,7 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
     // Buffer BE réutilisable unique pour 20ms (simplifié)
     private final byte[] beFrameBuffer = new byte[FRAME_SIZE_BYTES];
     private int priorityThreshold = AudioService.DEFAULT_PRIORITY_THRESHOLD;
-    // Source prioritaire de la frame précédente (pour ne démarrer les fades qu'"'"'aux transitions)
+    // Source prioritaire de la frame précédente (pour ne démarrer les fades qu'aux transitions)
     private String lastActivePluginName = null;
 
     /**

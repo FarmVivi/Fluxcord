@@ -30,6 +30,11 @@ public class TimeParser {
         } catch (NumberFormatException ignored) {
         }
 
+        // Clock notation (what /seek suggests and what the option description advertises)
+        if (input.indexOf(':') >= 0) {
+            return parseClock(input);
+        }
+
         // Try parsing with time units
         Matcher matcher = TIME_PATTERN.matcher(input.toLowerCase());
         if (!matcher.matches()) {
@@ -58,6 +63,33 @@ public class TimeParser {
         }
 
         return totalMs;
+    }
+
+    /**
+     * Parses {@code m:ss} or {@code h:mm:ss}, the form {@link #formatTime(long)} produces and
+     * {@code /seek} suggests.
+     *
+     * @param input the clock string
+     * @return the time in milliseconds, or -1 when it is not a valid clock
+     */
+    private static long parseClock(String input) {
+        String[] parts = input.split(":", -1);
+        if (parts.length < 2 || parts.length > 3) {
+            return -1;
+        }
+        long total = 0;
+        for (int i = 0; i < parts.length; i++) {
+            String part = parts[i];
+            if (part.isEmpty() || !part.chars().allMatch(Character::isDigit)) {
+                return -1;
+            }
+            long value = Long.parseLong(part);
+            if (i > 0 && value > 59) {
+                return -1;
+            }
+            total = total * 60 + value;
+        }
+        return total * 1000;
     }
 
     /**

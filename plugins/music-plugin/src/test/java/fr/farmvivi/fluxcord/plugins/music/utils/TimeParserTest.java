@@ -30,10 +30,24 @@ class TimeParserTest {
         assertEquals(-1, TimeParser.parseTime(null));
         assertEquals(-1, TimeParser.parseTime(""));
         assertEquals(-1, TimeParser.parseTime("abc"));
-        assertEquals(-1, TimeParser.parseTime("1:30"), "colon notation is not supported");
         assertEquals(-1, TimeParser.parseTime("30m1h"), "units must be in order");
         assertEquals(-1, TimeParser.parseTime("  "), "whitespace is not a duration");
         assertEquals(-1, TimeParser.parseTime("h"), "a unit without a number matches nothing");
+    }
+
+    @Test
+    void clockNotationIsAccepted() {
+        // What formatTime produces and what /seek suggests must be readable back.
+        assertEquals(90_000, TimeParser.parseTime("1:30"));
+        assertEquals(3_723_000, TimeParser.parseTime("1:02:03"));
+        assertEquals(0, TimeParser.parseTime("0:00"));
+        assertEquals(TimeParser.parseTime("1:02:03"), TimeParser.parseTime(TimeParser.formatTime(3_723_000)));
+
+        assertEquals(-1, TimeParser.parseTime("1:60"), "60 seconds is not a valid field");
+        assertEquals(-1, TimeParser.parseTime("1:2:3:4"));
+        assertEquals(-1, TimeParser.parseTime("1:"));
+        assertEquals(-1, TimeParser.parseTime(":30"));
+        assertEquals(-1, TimeParser.parseTime("a:30"));
     }
 
     @Test

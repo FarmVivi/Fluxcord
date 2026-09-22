@@ -14,7 +14,6 @@ import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.channel.middleman.AudioChannel;
-import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.events.guild.voice.GuildVoiceUpdateEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
@@ -44,8 +43,19 @@ public class MusicManager {
     private static final int RECENT_TRACKS = 25;
 
     public MusicManager(MusicPlugin plugin) {
+        this(plugin, new AudioPlayerManager(plugin));
+    }
+
+    /**
+     * Test seam: reuses an already configured source registry instead of building one (the real
+     * one instantiates every YouTube/Spotify/Deezer client from the plugin configuration).
+     *
+     * @param plugin             the owning plugin
+     * @param audioPlayerManager the source registry to play from
+     */
+    MusicManager(MusicPlugin plugin, AudioPlayerManager audioPlayerManager) {
         this.plugin = plugin;
-        this.audioPlayerManager = new AudioPlayerManager(plugin);
+        this.audioPlayerManager = audioPlayerManager;
         this.players = new ConcurrentHashMap<>();
     }
 
@@ -66,10 +76,7 @@ public class MusicManager {
         });
     }
 
-    /**
-     * Destroys a music player for a guild.
-     */
-    /** The guild'"'"'s player if one exists, without creating it (autocomplete must stay side-effect free). */
+    /** The guild's player if one exists, without creating it (autocomplete must stay side-effect free). */
     public Optional<MusicPlayer> findPlayer(String guildId) {
         try {
             return Optional.ofNullable(players.get(Long.parseLong(guildId)));
@@ -111,6 +118,7 @@ public class MusicManager {
         }
     }
 
+    /** Destroys the guild's player, releasing lavaplayer and the persisted state. */
     public synchronized void destroyPlayer(Guild guild) {
         MusicPlayer player = players.remove(guild.getIdLong());
         if (player != null) {
