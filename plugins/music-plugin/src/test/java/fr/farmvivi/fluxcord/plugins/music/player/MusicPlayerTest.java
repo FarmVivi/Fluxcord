@@ -10,6 +10,7 @@ import fr.farmvivi.fluxcord.plugins.music.MusicManager;
 import fr.farmvivi.fluxcord.plugins.music.MusicPlugin;
 import fr.farmvivi.fluxcord.plugins.music.state.PlaybackState;
 import fr.farmvivi.fluxcord.plugins.music.testing.MemoryDataStorage;
+import fr.farmvivi.fluxcord.plugins.music.testing.ScriptedAudioPlayer;
 import fr.farmvivi.fluxcord.plugins.music.testing.TestAudioSource;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.channel.concrete.VoiceChannel;
@@ -24,7 +25,6 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -41,7 +41,6 @@ class MusicPlayerTest {
     private static final String GUILD_ID = "g1";
     private static final String VOICE_ID = "vc1";
 
-    private final AtomicReference<AudioTrack> playing = new AtomicReference<>();
     private final MemoryDataStorage storage = new MemoryDataStorage();
     private final com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager playerManager =
             TestAudioSource.newPlayerManager();
@@ -58,21 +57,7 @@ class MusicPlayerTest {
     void setUp() {
         scheduler = Executors.newSingleThreadScheduledExecutor();
 
-        audioPlayer = mock(AudioPlayer.class);
-        when(audioPlayer.startTrack(any(), anyBoolean())).thenAnswer(invocation -> {
-            AudioTrack track = invocation.getArgument(0);
-            boolean noInterrupt = invocation.getArgument(1);
-            if (noInterrupt && playing.get() != null) {
-                return false;
-            }
-            playing.set(track);
-            return true;
-        });
-        when(audioPlayer.getPlayingTrack()).thenAnswer(invocation -> playing.get());
-        doAnswer(invocation -> {
-            playing.set(null);
-            return null;
-        }).when(audioPlayer).stopTrack();
+        audioPlayer = ScriptedAudioPlayer.create();
 
         audioManager = mock(AudioManager.class);
         when(audioManager.isConnected()).thenReturn(true);
@@ -150,7 +135,7 @@ class MusicPlayerTest {
         player.playTrack(track("a"));
         assertNotNull(savedState());
 
-        playing.set(null);
+        audioPlayer.stopTrack();
         player.saveState();
 
         assertNull(savedState(), "an idle player must not resurrect a stale queue on the next boot");
@@ -210,7 +195,7 @@ class MusicPlayerTest {
 
         player.stop();
 
-        assertNull(playing.get());
+        assertNull(audioPlayer.getPlayingTrack());
         assertEquals(0, player.getTrackScheduler().getQueueSize());
         verify(audioManager, never()).closeAudioConnection();
         verify(audioService, never()).deregisterSendHandler(any(), any());
@@ -245,9 +230,9 @@ class MusicPlayerTest {
         assertEquals(42, player.getVolume());
         assertTrue(player.getTrackScheduler().isLoopMode());
         assertTrue(player.getTrackScheduler().isShuffleMode());
-        assertNotNull(playing.get());
-        assertEquals("current", playing.get().getInfo().title);
-        assertEquals(30_000, playing.get().getPosition());
+        assertNotNull(audioPlayer.getPlayingTrack());
+        assertEquals("current", audioPlayer.getPlayingTrack().getInfo().title);
+        assertEquals(30_000, audioPlayer.getPlayingTrack().getPosition());
         assertEquals(2, player.getTrackScheduler().getQueueSize());
     }
 
@@ -259,8 +244,8 @@ class MusicPlayerTest {
 
         player.restoreFromState(state);
 
-        assertNotNull(playing.get());
-        assertEquals("only", playing.get().getInfo().title);
+        assertNotNull(audioPlayer.getPlayingTrack());
+        assertEquals("only", audioPlayer.getPlayingTrack().getInfo().title);
     }
 
     @Test
@@ -274,7 +259,7 @@ class MusicPlayerTest {
         player.restoreFromState(state);
 
         verify(audioManager, never()).openAudioConnection(any());
-        assertNull(playing.get());
+        assertNull(audioPlayer.getPlayingTrack());
         assertNull(savedState());
     }
 
@@ -286,7 +271,7 @@ class MusicPlayerTest {
 
         player.restoreFromState(state);
 
-        assertEquals("good", playing.get().getInfo().title);
+        assertEquals("good", audioPlayer.getPlayingTrack().getInfo().title);
     }
 
     @Test

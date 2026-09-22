@@ -11,6 +11,7 @@ import fr.farmvivi.fluxcord.plugins.music.playlist.Playlist;
 import fr.farmvivi.fluxcord.plugins.music.state.PlaybackState;
 import fr.farmvivi.fluxcord.plugins.music.state.TrackCodec;
 import fr.farmvivi.fluxcord.plugins.music.testing.MemoryDataStorage;
+import fr.farmvivi.fluxcord.plugins.music.testing.ScriptedAudioPlayer;
 import fr.farmvivi.fluxcord.plugins.music.testing.TestAudioSource;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Guild;
@@ -103,10 +104,17 @@ class MusicManagerTest {
         playerManager.shutdown();
     }
 
+    /**
+     * The real registry, except that {@code createPlayer()} hands out scripted players: a real one
+     * would try to decode the test tracks, fail, and drain the queue on its own.
+     */
     private fr.farmvivi.fluxcord.plugins.music.audio.AudioPlayerManager sourceRegistry() {
+        com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager spied = spy(playerManager);
+        doAnswer(invocation -> ScriptedAudioPlayer.create()).when(spied).createPlayer();
+
         fr.farmvivi.fluxcord.plugins.music.audio.AudioPlayerManager sources =
                 mock(fr.farmvivi.fluxcord.plugins.music.audio.AudioPlayerManager.class);
-        when(sources.getPlayerManager()).thenReturn(playerManager);
+        when(sources.getPlayerManager()).thenReturn(spied);
         return sources;
     }
 
@@ -276,8 +284,10 @@ class MusicManagerTest {
 
         verify(ctx, timeout(3000)).replyEmbed(any());
         MusicPlayer player = manager.findPlayer(GUILD_ID).orElseThrow();
-        assertEquals(1, player.getTrackScheduler().getQueueSize(), "the first one plays, the second waits");
-        assertTrue(manager.getRecentTracks(GUILD_ID).containsKey("first"), "loaded tracks feed /play autocomplete");
+        assertEquals("first", player.getPlayingTrack().getInfo().title, "queued in the order they were saved");
+        assertEquals(1, player.getTrackScheduler().getQueueSize(), "the second one waits its turn");
+        assertTrue(manager.getRecentTracks(GUILD_ID).keySet().containsAll(java.util.Set.of("first", "second")),
+                "loaded tracks feed /play autocomplete");
     }
 
     @Test

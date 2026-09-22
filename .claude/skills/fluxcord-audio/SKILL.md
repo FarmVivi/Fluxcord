@@ -51,5 +51,7 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 - 2026-09-22 (bug): `/seek` rejected the values its own autocomplete suggested (`1:30`), which the option description also advertises — `TimeParser` now parses `m:ss` / `h:mm:ss`. When adding a suggestion, assert the parser accepts it (`MusicAutocompleteTest.seekSuggestsPositionsTheParserAccepts`).
 - 2026-09-22 (Tier 3, not covered on purpose): `MusicPlayerMessage`, `ButtonHandler`, `MusicModalListener`, `ModalCommandContext` — embed building and `RestAction.queue()` chains; the smoke run is the real check.
 
+- 2026-09-22 (flaky, caught by CI): never let a test drive a **real** lavaplayer `AudioPlayer` with `TestAudioSource` tracks — `process()` throws, the track ends at once, `TrackScheduler` advances and the queue drains on its own, so queue assertions pass locally and fail on a faster runner. `testing/ScriptedAudioPlayer.create()` is the shared mock (a single "playing" slot reproducing `startTrack(track, noInterrupt)`); in `MusicManagerTest` the source registry is a `spy` of the real manager whose `createPlayer()` is overridden with it, so encode/decode still use the real implementation.
+
 ## Known issues / open questions
 - `plugins/ai-audio-plugin` is a stub full of TODOs (speech recognition / TTS services do nothing) — decide with the user whether to keep it in the reactor.

@@ -5,13 +5,13 @@ import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackInfo;
+import fr.farmvivi.fluxcord.plugins.music.testing.ScriptedAudioPlayer;
 import net.dv8tion.jda.api.entities.Guild;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -26,28 +26,13 @@ import static org.mockito.Mockito.*;
  */
 class TrackSchedulerTest {
 
-    private final AtomicReference<AudioTrack> playing = new AtomicReference<>();
     private AudioPlayer player;
     private MusicPlayer musicPlayer;
     private TrackScheduler scheduler;
 
     @BeforeEach
     void setUp() {
-        player = mock(AudioPlayer.class);
-        when(player.startTrack(any(), anyBoolean())).thenAnswer(invocation -> {
-            AudioTrack track = invocation.getArgument(0);
-            boolean noInterrupt = invocation.getArgument(1);
-            if (noInterrupt && playing.get() != null) {
-                return false;
-            }
-            playing.set(track);
-            return true;
-        });
-        when(player.getPlayingTrack()).thenAnswer(invocation -> playing.get());
-        doAnswer(invocation -> {
-            playing.set(null);
-            return null;
-        }).when(player).stopTrack();
+        player = ScriptedAudioPlayer.create();
 
         Guild guild = mock(Guild.class);
         when(guild.getName()).thenReturn("guild");
@@ -76,7 +61,7 @@ class TrackSchedulerTest {
     }
 
     private String playingTitle() {
-        return playing.get().getInfo().title;
+        return player.getPlayingTrack().getInfo().title;
     }
 
     @Test
@@ -87,7 +72,7 @@ class TrackSchedulerTest {
         assertTrue(scheduler.queue(first), "nothing was playing");
         assertFalse(scheduler.queue(second), "queued behind the playing track");
 
-        assertSame(first, playing.get());
+        assertSame(first, player.getPlayingTrack());
         assertEquals(List.of("second"), titles(scheduler.getQueue()));
     }
 
@@ -102,9 +87,9 @@ class TrackSchedulerTest {
         scheduler.nextTrack();
         assertEquals("c", playingTitle());
 
-        AudioTrack last = playing.get();
+        AudioTrack last = player.getPlayingTrack();
         scheduler.nextTrack();
-        assertSame(last, playing.get(), "an empty queue leaves the player untouched");
+        assertSame(last, player.getPlayingTrack(), "an empty queue leaves the player untouched");
         assertEquals(0, scheduler.getQueueSize());
     }
 
@@ -172,15 +157,15 @@ class TrackSchedulerTest {
     void aReplacedOrStoppedTrackNeverStartsTheNextOne() {
         scheduler.queue(track("a"));
         scheduler.queue(track("b"));
-        AudioTrack current = playing.get();
+        AudioTrack current = player.getPlayingTrack();
 
         scheduler.onTrackEnd(player, current, AudioTrackEndReason.REPLACED);
-        assertSame(current, playing.get());
+        assertSame(current, player.getPlayingTrack());
         assertEquals(1, scheduler.getQueueSize());
 
         scheduler.setLoopMode(true);
         scheduler.onTrackEnd(player, current, AudioTrackEndReason.STOPPED);
-        assertSame(current, playing.get(), "a user stop must not restart the track in loop mode");
+        assertSame(current, player.getPlayingTrack(), "a user stop must not restart the track in loop mode");
     }
 
     @Test
@@ -212,7 +197,7 @@ class TrackSchedulerTest {
         scheduler.nextTrack(); // end of the queue: restart from the history
 
         assertEquals(List.of("a", "b"),
-                Stream.concat(Stream.of(playing.get()), scheduler.getQueue().stream())
+                Stream.concat(Stream.of(player.getPlayingTrack()), scheduler.getQueue().stream())
                         .map(t -> t.getInfo().title).toList());
     }
 
@@ -224,10 +209,10 @@ class TrackSchedulerTest {
         scheduler.onTrackStart(player, a);
 
         scheduler.setLoopQueueMode(false);
-        AudioTrack current = playing.get();
+        AudioTrack current = player.getPlayingTrack();
         scheduler.nextTrack();
 
-        assertSame(current, playing.get(), "nothing left to play");
+        assertSame(current, player.getPlayingTrack(), "nothing left to play");
     }
 
     @Test
@@ -273,7 +258,7 @@ class TrackSchedulerTest {
         scheduler.restoreQueue(null);
         scheduler.restoreQueue(List.of());
         assertEquals(0, scheduler.getQueueSize());
-        assertNull(playing.get(), "restoring never starts a track");
+        assertNull(player.getPlayingTrack(), "restoring never starts a track");
 
         List<AudioTrack> restored = new ArrayList<>();
         restored.add(track("a"));
@@ -282,7 +267,7 @@ class TrackSchedulerTest {
         scheduler.restoreQueue(restored);
 
         assertEquals(List.of("a", "b"), titles(scheduler.getQueue()));
-        assertNull(playing.get());
+        assertNull(player.getPlayingTrack());
     }
 
     @Test
@@ -296,9 +281,9 @@ class TrackSchedulerTest {
         scheduler.clear();
         assertEquals(0, scheduler.getQueueSize());
 
-        AudioTrack current = playing.get();
+        AudioTrack current = player.getPlayingTrack();
         scheduler.nextTrack();
-        assertSame(current, playing.get(), "the history was cleared too, nothing to restart");
+        assertSame(current, player.getPlayingTrack(), "the history was cleared too, nothing to restart");
     }
 
     @Test
