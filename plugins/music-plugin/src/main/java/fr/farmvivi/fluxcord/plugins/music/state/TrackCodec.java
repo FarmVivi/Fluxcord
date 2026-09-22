@@ -17,8 +17,9 @@ import java.util.Base64;
  *
  * <p>Uses LavaPlayer's native binary encoding, which stores the source manager name and
  * source-specific track data. Decoding rebuilds the track without re-querying the source,
- * so the exact same track (same identifier, metadata, source) is restored. Playback position
- * is <em>not</em> part of the encoding and must be persisted separately.
+ * so the exact same track (same identifier, metadata, source) is restored. LavaPlayer 2.x also
+ * carries the playback position, but {@code PlaybackState} stores it separately and
+ * {@code MusicPlayer.restoreFromState} re-applies it, so the resumed position never depends on it.
  */
 public final class TrackCodec {
     private static final Logger logger = LoggerFactory.getLogger(TrackCodec.class);
