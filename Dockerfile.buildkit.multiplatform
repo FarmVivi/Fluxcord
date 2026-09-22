@@ -41,7 +41,7 @@ RUN --mount=type=cache,target=/root/.m2/repository \
 # Ubuntu 24.04 "noble" (glibc 2.39) runs JDAVE's bundled libdave.so as-is on both linux/amd64
 # and linux/arm64 (matching jdave-native-linux-x86-64 / jdave-native-linux-aarch64).
 # Do NOT use an Alpine/musl base: JDAVE has no musl native build.
-FROM eclipse-temurin:25.0.4_7-jre-noble AS production
+FROM eclipse-temurin:26.0.2_10-jre-noble AS production
 
 ENV APP_DIR=/app \
     BUNDLES_DIR=/opt/fluxcord/bundles \

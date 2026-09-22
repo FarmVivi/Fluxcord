@@ -18,7 +18,7 @@ RUN mvn -T1C -DskipTests package \
 # JDAVE (DAVE native lib) ships prebuilt natives for glibc only, and they need GLIBC >= 2.38.
 # Ubuntu 24.04 "noble" (glibc 2.39 + recent libstdc++) runs JDAVE's bundled libdave.so as-is,
 # so no native compilation is needed here. Do NOT use an Alpine/musl base: JDAVE has no musl build.
-FROM eclipse-temurin:25.0.4_7-jre-noble AS production
+FROM eclipse-temurin:26.0.2_10-jre-noble AS production
 
 ENV APP_DIR=/app \
     BUNDLES_DIR=/opt/fluxcord/bundles \
