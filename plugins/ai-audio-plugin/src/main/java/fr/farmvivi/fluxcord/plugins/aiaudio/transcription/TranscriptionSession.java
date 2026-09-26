@@ -1,6 +1,6 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio.transcription;
 
-import fr.farmvivi.fluxcord.plugins.aiaudio.audio.PcmAudio;
+import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import net.dv8tion.jda.api.audio.AudioReceiveHandler;
 import net.dv8tion.jda.api.audio.UserAudio;
 

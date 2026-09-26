@@ -1,4 +1,4 @@
-package fr.farmvivi.fluxcord.plugins.aiaudio.audio;
+package fr.farmvivi.fluxcord.api.audio;
 
 import org.junit.jupiter.api.Test;
 

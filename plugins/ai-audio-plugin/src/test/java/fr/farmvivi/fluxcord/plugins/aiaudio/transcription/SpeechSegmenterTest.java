@@ -1,6 +1,6 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio.transcription;
 
-import fr.farmvivi.fluxcord.plugins.aiaudio.audio.PcmAudio;
+import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;

@@ -1,7 +1,7 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio.ai;
 
 import com.google.gson.JsonObject;
-import fr.farmvivi.fluxcord.plugins.aiaudio.audio.PcmAudio;
+import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

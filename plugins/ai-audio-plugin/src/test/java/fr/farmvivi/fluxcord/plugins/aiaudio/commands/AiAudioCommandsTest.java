@@ -9,7 +9,7 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.SpeechRecognitionService;
 import fr.farmvivi.fluxcord.plugins.aiaudio.TextToSpeechService;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiEndpoint;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiRequestException;
-import fr.farmvivi.fluxcord.plugins.aiaudio.audio.PcmAudio;
+import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;

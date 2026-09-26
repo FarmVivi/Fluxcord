@@ -1,8 +1,8 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio;
 
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.TextToSpeech;
-import fr.farmvivi.fluxcord.plugins.aiaudio.audio.PcmAudio;
-import fr.farmvivi.fluxcord.plugins.aiaudio.audio.PcmSendHandler;
+import fr.farmvivi.fluxcord.api.audio.PcmAudio;
+import fr.farmvivi.fluxcord.api.audio.PcmSendHandler;
 import net.dv8tion.jda.api.entities.Guild;
 import org.slf4j.Logger;
 

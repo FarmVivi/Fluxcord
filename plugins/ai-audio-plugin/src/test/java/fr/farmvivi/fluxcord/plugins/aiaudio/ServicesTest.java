@@ -8,7 +8,7 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiEndpoint;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiRequestException;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.SpeechToText;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.TextToSpeech;
-import fr.farmvivi.fluxcord.plugins.aiaudio.audio.PcmAudio;
+import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.Turn;
 import fr.farmvivi.fluxcord.plugins.aiaudio.testing.MemoryDataStorage;

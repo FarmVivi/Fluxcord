@@ -1,6 +1,6 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio.ai;
 
-import fr.farmvivi.fluxcord.plugins.aiaudio.audio.PcmAudio;
+import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 
 /**
  * Turns speech into text.

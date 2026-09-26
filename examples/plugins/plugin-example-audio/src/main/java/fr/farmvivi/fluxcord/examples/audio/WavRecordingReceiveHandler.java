@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.examples.audio;
 
+import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import net.dv8tion.jda.api.audio.AudioReceiveHandler;
 import net.dv8tion.jda.api.audio.CombinedAudio;
 import org.slf4j.Logger;
@@ -66,17 +67,18 @@ public class WavRecordingReceiveHandler implements AudioReceiveHandler {
         write(combinedAudio.getAudioData(1.0));
     }
 
-    /** Appends one big-endian PCM frame, byte-swapped into the little-endian WAV layout. */
+    /**
+     * Appends one frame, byte-swapped into the little-endian layout a WAV file uses.
+     *
+     * <p>The swap itself lives in {@link PcmAudio#fromBigEndian}: JDA hands out big-endian samples while
+     * everything else here is little-endian, and every plugin receiving audio needs the same conversion.
+     */
     void write(byte[] bigEndianPcm) {
         if (output == null) {
             return;
         }
-        byte[] littleEndian = bigEndianPcm.clone();
-        for (int i = 0; i + 1 < littleEndian.length; i += 2) {
-            byte high = littleEndian[i];
-            littleEndian[i] = littleEndian[i + 1];
-            littleEndian[i + 1] = high;
-        }
+        byte[] littleEndian = PcmAudio.fromBigEndian(bigEndianPcm,
+                PcmAudio.DISCORD_SAMPLE_RATE, PcmAudio.DISCORD_CHANNELS).samples();
         try {
             output.write(littleEndian);
             dataSize += littleEndian.length;

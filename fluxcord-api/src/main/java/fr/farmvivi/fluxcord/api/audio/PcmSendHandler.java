@@ -1,4 +1,4 @@
-package fr.farmvivi.fluxcord.plugins.aiaudio.audio;
+package fr.farmvivi.fluxcord.api.audio;
 
 import net.dv8tion.jda.api.audio.AudioSendHandler;
 
