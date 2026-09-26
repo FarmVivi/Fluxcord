@@ -1,0 +1,12 @@
+# The subclass mock maker, not the default inline one.
+#
+# The inline maker rewrites loaded classes through a Byte Buddy agent it attaches to the running JVM.
+# In this module that collides with JaCoCo: the classes the tests mock are the module's own, so both
+# want to transform the same bytecode, and on JDK 25 the agent self-attachment fails outright - every
+# test using a mock then errors with "Could not initialize inline Byte Buddy mock maker". The other
+# modules are unaffected because the types they mock come from this jar and are not instrumented there.
+#
+# The subclass maker needs no agent. Its one limitation is that it cannot mock final classes or final
+# methods, so tests here use real instances of ScopedStorage and ScopedBinaryStorage (both final) over a
+# mocked backend - which checks the actual prefixing rather than a mock's identity anyway.
+mock-maker-subclass
