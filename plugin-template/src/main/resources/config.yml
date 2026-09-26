@@ -7,10 +7,13 @@
 config_version: 1
 
 # Which parts of the template are active. Read in onLoad, so a change needs a plugin reload.
+#
+# All off by default, on purpose: a fresh copy of the template registers nothing, so dropping it on a
+# running bot changes nothing until you opt in. The code's defaults say the same.
 features:
-  example_commands: true
-  example_events: true
-  example_storage: true
+  example_commands: false
+  example_events: false
+  example_storage: false
 
   # Answer when someone mentions the bot. Off by default: it is the one feature that talks
   # unprompted, and ExampleEventListener shows the guard rather than the reply.

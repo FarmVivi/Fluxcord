@@ -214,6 +214,8 @@ public class TemplatePlugin extends AbstractPlugin {
      */
     private void loadFeatureFlags() {
         try {
+            // Off unless asked for, and the shipped config.yml says the same: a fresh copy of the template
+            // must not start registering example commands on somebody's bot.
             exampleCommandsEnabled = getConfiguration().getBoolean("features.example_commands", false);
             exampleEventsEnabled = getConfiguration().getBoolean("features.example_events", false);
             exampleStorageEnabled = getConfiguration().getBoolean("features.example_storage", false);
@@ -331,13 +333,13 @@ public class TemplatePlugin extends AbstractPlugin {
      * Checks for integration opportunities with other plugins.
      */
     private void checkPluginIntegrations() {
-        // Example: Check if music plugin is available for integration
-        if (context.getPluginLoader().getPlugin("MusicPlugin") != null) {
+        // getPlugin takes the plugin *id* - the one in plugin.yml, which for the first-party plugins is
+        // the Maven artifactId. Asking for a class or display name ("MusicPlugin") silently finds nothing,
+        // which is what this method used to do.
+        if (context.getPluginLoader().getPlugin("music-plugin") != null) {
             logger.info("Music plugin detected - integration features available");
         }
-
-        // Example: Check if AI audio plugin is available
-        if (context.getPluginLoader().getPlugin("AIAudioPlugin") != null) {
+        if (context.getPluginLoader().getPlugin("ai-audio-plugin") != null) {
             logger.info("AI Audio plugin detected - enhanced features available");
         }
     }
