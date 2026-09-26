@@ -123,7 +123,7 @@ public class AIAudioPlugin extends AbstractPlugin {
                 new OpenAiTextToSpeech(settings.textToSpeech(), http));
         conversation = new ConversationService(this,
                 new OpenAiChatModel(settings.chat().endpoint(), http, settings.chat().temperature(),
-                        settings.chat().reasoningEffort()), memory);
+                        settings.chat().reasoningEffort(), settings.chat().toolReasoningEffort()), memory);
         // The transcription service feeds the conversation, so it is built last.
         speechRecognition = new SpeechRecognitionService(this, speechToText(), memory);
     }

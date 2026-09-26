@@ -3,6 +3,7 @@ package fr.farmvivi.fluxcord.plugins.aiaudio;
 import fr.farmvivi.fluxcord.api.audio.AudioService;
 import fr.farmvivi.fluxcord.api.config.Configuration;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiEndpoint;
+import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiChatModel;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.Persona;
 import org.slf4j.Logger;
 
@@ -187,13 +188,21 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
      * @param maxReplyTokens the longest answer to ask for; a spoken reply wants a short one
      * @param temperature    how much the model may wander
      * @param reasoningEffort what to ask of a reasoning model; empty omits the parameter
+     * @param toolReasoningEffort what to ask on a round that offers tools; {@code none} there means no tool
+     *                       call ever comes back, so it is not the same value as above
+     * @param memoryTools    whether the model may look the memory up itself instead of only being handed the
+     *                       last turns; needs a model that supports tool calls
+     * @param maxToolRounds  how many times in a row the model may ask for something before it has to answer,
+     *                       a guard against a loop that never ends
      */
     public record ChatSettings(AiEndpoint endpoint, boolean enabled, String wakeWord, int historyTurns,
-                               int maxReplyTokens, double temperature, String reasoningEffort) {
+                               int maxReplyTokens, double temperature, String reasoningEffort,
+                               String toolReasoningEffort, boolean memoryTools, int maxToolRounds) {
 
         private static final String DEFAULT_CHAT_MODEL = "gpt-4o-mini";
         private static final int DEFAULT_HISTORY_TURNS = 8;
         private static final int DEFAULT_MAX_REPLY_TOKENS = 120;
+        private static final int DEFAULT_MAX_TOOL_ROUNDS = 3;
         /** In hundredths, since the configuration reads integers. */
         private static final int DEFAULT_TEMPERATURE = 70;
         /**
@@ -208,6 +217,8 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
             temperature = Math.clamp(temperature, 0, 2);
             wakeWord = wakeWord == null ? "" : wakeWord.strip();
             reasoningEffort = reasoningEffort == null ? "" : reasoningEffort.strip();
+            toolReasoningEffort = toolReasoningEffort == null ? "" : toolReasoningEffort.strip();
+            maxToolRounds = Math.clamp(maxToolRounds, 0, 10);
         }
 
         static ChatSettings from(Configuration config, int timeoutSeconds) {
@@ -222,7 +233,11 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                     config.getInt("conversation.history_turns", DEFAULT_HISTORY_TURNS),
                     config.getInt("conversation.max_reply_tokens", DEFAULT_MAX_REPLY_TOKENS),
                     config.getInt("chat.temperature", DEFAULT_TEMPERATURE) / 100.0,
-                    config.getString("chat.reasoning_effort", DEFAULT_REASONING_EFFORT));
+                    config.getString("chat.reasoning_effort", DEFAULT_REASONING_EFFORT),
+                    config.getString("chat.tool_reasoning_effort",
+                            OpenAiChatModel.DEFAULT_TOOL_REASONING_EFFORT),
+                    config.getBoolean("conversation.memory_tools", false),
+                    config.getInt("conversation.max_tool_rounds", DEFAULT_MAX_TOOL_ROUNDS));
         }
 
         /** @return the settings used before the configuration has been read */
@@ -230,7 +245,8 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
             return new ChatSettings(
                     new AiEndpoint(DEFAULT_BASE_URL, "", DEFAULT_CHAT_MODEL, Duration.ofSeconds(30)),
                     false, "", DEFAULT_HISTORY_TURNS, DEFAULT_MAX_REPLY_TOKENS, DEFAULT_TEMPERATURE / 100.0,
-                    DEFAULT_REASONING_EFFORT);
+                    DEFAULT_REASONING_EFFORT, OpenAiChatModel.DEFAULT_TOOL_REASONING_EFFORT, false,
+                    DEFAULT_MAX_TOOL_ROUNDS);
         }
 
         /** @return true when a key is needed for this endpoint and none was given */

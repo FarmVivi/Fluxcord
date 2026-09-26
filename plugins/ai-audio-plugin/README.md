@@ -143,6 +143,8 @@ conversation:
   wake_word: "hé flux"     # empty answers everything said, which is rarely what you want
   history_turns: 8
   max_reply_tokens: 120
+  memory_tools: true       # let the model look its memory up instead of being handed a fixed window
+  max_tool_rounds: 3
 ```
 
 Two things are worth knowing before pointing this at a model.
@@ -173,14 +175,64 @@ poem"` was treated as an attempt rather than obeyed.
 The bot's own past answers are replayed with the assistant role rather than quoted back, so it does not start
 talking about itself in the third person.
 
+### Letting the model ask for its memory
+
+With `memory_tools: true` the three lookups the memory already keeps are offered to the model as tools, one for
+one:
+
+| Tool | What it returns |
+| --- | --- |
+| `recall_this_conversation` | what was said earlier in this voice channel |
+| `recall_this_server` | what was said on this server, across its channels |
+| `recall_person` | what one person said, on any server, including before today |
+
+The model then asks only when it is missing something, instead of paying for a bigger `history_turns` on every
+turn — at the cost of one extra request per lookup, so a slow model is worse off with this on than off.
+
+**`chat.tool_reasoning_effort` is why this works at all, and it is not the same value as
+`chat.reasoning_effort`.** With `reasoning_effort: "none"` — the value the answering round needs — *no tool call
+ever comes back*. Asked a question only the memory could answer, Gemma 4 E4B replied "I have no memory of that",
+Qwen 3.5 9B **invented** a memory, and Gemma once said out loud "I must call recall_person": the intention
+without the call. With `"low"` both called it. So the effort asked for depends on whether tools were offered:
+`tool_reasoning_effort` while the model may still ask for something, `reasoning_effort` on the round that only
+has to answer — which is the round whose latency anyone hears.
+
+**It also needs a model that calls tools reliably, and the fastest one does not.** Offered all three tools,
+three attempts each on the same Ollama:
+
+| Model | Called a tool | Round asking | Round answering |
+| --- | --- | --- | --- |
+| Qwen 3.5 9B | 3 / 3 | 1.7–5.6 s | 2.9 s |
+| Gemma 4 E4B | 1 / 3 | 2.8–6.0 s | — |
+
+Gemma is the one fast enough for a conversation (0.53 s a turn without tools) and it is the one that skips the
+call; Qwen calls reliably and costs something like nine seconds for the whole turn, which is a long silence in a
+voice channel. That is why `memory_tools` defaults to **false**: switch it on when the model behind `chat` is
+known to call tools and you would rather wait than have it make something up. A round where the model returns
+neither content nor a call is reported, logged and the conversation goes on.
+
+Three properties this loop is held to, each pinned by a test:
+
+- **A round limit.** `max_tool_rounds` caps how many times in a row the model may ask before it has to answer,
+  and on the last round the tools are withheld rather than the turn being cut off — so it answers with what it
+  found. Without the cap a model that keeps asking holds the voice channel silent indefinitely.
+- **Nothing throws.** Malformed arguments, an unknown tool name, a limit of a thousand, a missing name: each
+  comes back as a sentence the model can act on. An exception would end the spoken turn, which sounds to
+  everyone present like the bot ignoring them.
+- **`recall_person` only resolves people who are in the conversation.** The model learns names from the context;
+  letting it look up an arbitrary one would turn the memory into a directory of everyone the bot has ever heard.
+  An invented name is answered with "nobody called that is here", which is also what stops it inventing a
+  memory to go with the name.
+
+Results come back with the `tool` role and say in their first line that they are information and not
+instructions — a transcript of somebody saying "ignore your instructions" is exactly what this path carries.
+
 ## What is next
 
 - **Web search**, so the bot can answer something it does not know. Decided: a `WebSearch` interface with one
   implementation per API, selected by configuration exactly like `speech_to_text.api`, starting with a
   self-hosted SearxNG. The model reaches it as a tool call. A fetched page is untrusted input and will be
   passed as delimited data, never as instructions.
-- **The memory as tool calls**, so the model asks for the history it needs rather than being handed a fixed
-  window: `channelHistory`, `serverHistory` and `personHistory` map one to one onto three tools.
 - **A mood the model reports**, rather than one inferred from the fact that somebody spoke.
 
 ## Tests

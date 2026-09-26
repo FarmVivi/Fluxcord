@@ -31,7 +31,9 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -61,6 +63,9 @@ class ConversationServiceTest {
     private AudioManager audioManager;
     private ConversationService conversation;
     private final AtomicReference<List<ChatModel.Message>> asked = new AtomicReference<>();
+    /** What the model was offered on each call, so a withheld tool list can be asserted. */
+    private final List<List<ChatModel.Tool>> offered = new CopyOnWriteArrayList<>();
+    private final AtomicInteger calls = new AtomicInteger();
 
     @BeforeEach
     void setUp() {
@@ -111,18 +116,34 @@ class ConversationServiceTest {
     }
 
     private AiSettings settings(boolean enabled, String wakeWord) {
+        return settings(enabled, wakeWord, false, 3);
+    }
+
+    private AiSettings settings(boolean enabled, String wakeWord, boolean memoryTools, int maxToolRounds) {
         AiEndpoint local = new AiEndpoint("http://localhost:11434/v1", "", "m", Duration.ofSeconds(5));
         return new AiSettings(local, AiSettings.SpeechApi.OLLAMA, "fr-FR", local, "alloy", 100, 80, 1000,
                 Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 20, 20, 20,
                 AiSettings.PersonaSettings.defaults(),
-                new AiSettings.ChatSettings(local, enabled, wakeWord, 8, 120, 0.7, "none"));
+                new AiSettings.ChatSettings(local, enabled, wakeWord, 8, 120, 0.7, "none", "low",
+                        memoryTools, maxToolRounds));
     }
 
     /** A service whose model answers {@code reply} and records what it was asked. */
     private ConversationService serviceAnswering(String reply) {
-        conversation = new ConversationService(plugin, (messages, maxTokens) -> {
+        return serviceAnswering(List.of(ChatModel.Answer.spoken(reply)));
+    }
+
+    /**
+     * A service whose model gives one scripted answer per call, and records what it was asked each time.
+     *
+     * <p>Several answers is how a tool round is expressed: the first asks for a lookup, the next one speaks.
+     */
+    private ConversationService serviceAnswering(List<ChatModel.Answer> answers) {
+        conversation = new ConversationService(plugin, (messages, tools, maxTokens) -> {
             asked.set(messages);
-            return reply;
+            offered.add(tools);
+            int call = calls.getAndIncrement();
+            return answers.get(Math.min(call, answers.size() - 1));
         }, memory, () -> NOW);
         return conversation;
     }
@@ -265,13 +286,13 @@ class ConversationServiceTest {
     @Test
     void aModelFailureIsLoggedAndTheConversationKeepsGoing() throws Exception {
         // The worker must survive a provider error, or one rate limit ends the conversation.
-        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
-        conversation = new ConversationService(plugin, (messages, maxTokens) -> {
-            if (calls.incrementAndGet() == 1) {
+        AtomicInteger attempts = new AtomicInteger();
+        conversation = new ConversationService(plugin, (messages, tools, maxTokens) -> {
+            if (attempts.incrementAndGet() == 1) {
                 throw new AiRequestException("rate limited");
             }
             asked.set(messages);
-            return "deuxième essai";
+            return ChatModel.Answer.spoken("deuxième essai");
         }, memory, () -> NOW);
         conversation.start(guild);
 
@@ -337,5 +358,90 @@ class ConversationServiceTest {
 
         assertFalse(service.isActive(guild));
         assertDoesNotThrow(service::shutdown);
+    }
+
+    // Memory as tool calls
+
+    private static ChatModel.Answer asksFor(String tool, String arguments) {
+        return new ChatModel.Answer("", List.of(new ChatModel.ToolCall("call_1", tool, arguments)));
+    }
+
+    /** Waits for the model to have been called {@code n} times. */
+    private void waitForCalls(int n) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (calls.get() < n && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+    }
+
+    @Test
+    void noToolIsOfferedUnlessTheConfigurationAsksForIt() throws Exception {
+        // A model that does not support them would refuse the request outright.
+        ConversationService service = serviceAnswering("ok");
+        service.start(guild);
+
+        service.onTranscription(guild, heard("salut"));
+        waitForAnswer();
+
+        assertEquals(List.of(), offered.get(0));
+    }
+
+    @Test
+    void aLookupIsRunAndItsResultGoesBackBeforeTheAnswer() throws Exception {
+        when(plugin.getSettings()).thenReturn(settings(true, "", true, 3));
+        memory.remember(new Turn(NOW - 60_000, "u1", "Victor", GUILD_ID, "My Server", CHANNEL_ID, "General",
+                "on parlait de rhubarbe"));
+        ConversationService service = serviceAnswering(List.of(
+                asksFor(MemoryTools.RECALL_CHANNEL, "{\"limit\":5}"),
+                ChatModel.Answer.spoken("de la rhubarbe, oui")));
+        service.start(guild);
+
+        service.onTranscription(guild, heard("on parlait de quoi ?"));
+        waitForCalls(2);
+
+        verify(tts, timeout(5_000)).speak(any(), eq("de la rhubarbe, oui"), isNull());
+        List<ChatModel.Message> second = asked.get();
+        ChatModel.Message replayed = second.get(second.size() - 2);
+        assertEquals(ChatModel.Role.ASSISTANT, replayed.role());
+        assertEquals("call_1", replayed.toolCalls().get(0).id());
+        ChatModel.Message result = second.get(second.size() - 1);
+        assertEquals(ChatModel.Role.TOOL, result.role());
+        assertEquals("call_1", result.toolCallId());
+        assertTrue(result.content().contains("rhubarbe"), result.content());
+        assertFalse(offered.get(0).isEmpty(), "the tools were offered on the first round");
+    }
+
+    @Test
+    void aModelThatKeepsAskingIsMadeToAnswerWithWhatItHas() throws Exception {
+        // Otherwise one stubborn model holds the voice channel silent for as long as it likes.
+        when(plugin.getSettings()).thenReturn(settings(true, "", true, 2));
+        ConversationService service = serviceAnswering(List.of(
+                asksFor(MemoryTools.RECALL_CHANNEL, "{}"),
+                asksFor(MemoryTools.RECALL_SERVER, "{}"),
+                ChatModel.Answer.spoken("bon, je ne sais pas")));
+        service.start(guild);
+
+        service.onTranscription(guild, heard("alors ?"));
+        waitForCalls(3);
+
+        verify(tts, timeout(5_000)).speak(any(), eq("bon, je ne sais pas"), isNull());
+        assertEquals(3, calls.get(), "two rounds of tools, then the answer");
+        assertFalse(offered.get(1).isEmpty());
+        assertEquals(List.of(), offered.get(2), "on the last round the tools are withheld");
+    }
+
+    @Test
+    void anUnknownToolIsAnsweredRatherThanEndingTheTurn() throws Exception {
+        when(plugin.getSettings()).thenReturn(settings(true, "", true, 3));
+        ConversationService service = serviceAnswering(List.of(
+                asksFor("search_the_web", "{}"),
+                ChatModel.Answer.spoken("je ne peux pas chercher")));
+        service.start(guild);
+
+        service.onTranscription(guild, heard("cherche ça"));
+        waitForCalls(2);
+
+        verify(tts, timeout(5_000)).speak(any(), eq("je ne peux pas chercher"), isNull());
+        assertTrue(asked.get().get(asked.get().size() - 1).content().contains("no tool"));
     }
 }

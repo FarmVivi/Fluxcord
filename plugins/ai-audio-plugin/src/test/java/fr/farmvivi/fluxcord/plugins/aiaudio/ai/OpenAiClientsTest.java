@@ -349,7 +349,7 @@ class OpenAiClientsTest {
                 .reply(List.of(ChatModel.Message.system("tu es bref"),
                         ChatModel.Message.user("quelle heure ?"),
                         ChatModel.Message.assistant("il est cinq heures"),
-                        ChatModel.Message.user("et maintenant ?")), 120);
+                        ChatModel.Message.user("et maintenant ?")), List.of(), 120).content();
 
         assertEquals("il est six heures", reply, "trimmed");
         assertEquals("/v1/chat/completions", lastPath.get());
@@ -377,7 +377,7 @@ class OpenAiClientsTest {
         answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
 
         new OpenAiChatModel(endpoint("", "gemma4:e4b-it-qat"), http, 0.5, "none")
-                .reply(List.of(ChatModel.Message.user("salut")), 60);
+                .reply(List.of(ChatModel.Message.user("salut")), List.of(), 60);
 
         assertNull(lastAuthorization.get());
     }
@@ -386,7 +386,8 @@ class OpenAiClientsTest {
     void theTemperatureIsClampedToWhatTheApiAccepts() {
         answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
 
-        new OpenAiChatModel(endpoint("k", "m"), http, 9, "none").reply(List.of(ChatModel.Message.user("a")), 60);
+        new OpenAiChatModel(endpoint("k", "m"), http, 9, "none")
+                .reply(List.of(ChatModel.Message.user("a")), List.of(), 60);
 
         JsonObject sent = JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
                 .getAsJsonObject();
@@ -402,7 +403,7 @@ class OpenAiClientsTest {
 
         AiRequestException failure = assertThrows(AiRequestException.class,
                 () -> new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none")
-                        .reply(List.of(ChatModel.Message.user("a")), 60));
+                        .reply(List.of(ChatModel.Message.user("a")), List.of(), 60));
 
         assertTrue(failure.getMessage().contains("thinking"), failure.getMessage());
     }
@@ -413,7 +414,7 @@ class OpenAiClientsTest {
                 "{\"choices\":[]}".getBytes(StandardCharsets.UTF_8));
 
         assertThrows(AiRequestException.class, () -> new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none")
-                .reply(List.of(ChatModel.Message.user("a")), 60));
+                .reply(List.of(ChatModel.Message.user("a")), List.of(), 60));
     }
 
     @Test
@@ -422,7 +423,7 @@ class OpenAiClientsTest {
 
         AiRequestException failure = assertThrows(AiRequestException.class,
                 () -> new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none")
-                        .reply(List.of(ChatModel.Message.user("a")), 60));
+                        .reply(List.of(ChatModel.Message.user("a")), List.of(), 60));
 
         assertTrue(failure.getMessage().contains("expected JSON"), failure.getMessage());
     }
@@ -431,8 +432,8 @@ class OpenAiClientsTest {
     void askingWithNoMessagesIsRefusedBeforeAnythingIsSent() {
         OpenAiChatModel model = new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none");
 
-        assertThrows(IllegalArgumentException.class, () -> model.reply(List.of(), 60));
-        assertThrows(IllegalArgumentException.class, () -> model.reply(null, 60));
+        assertThrows(IllegalArgumentException.class, () -> model.reply(List.of(), List.of(), 60));
+        assertThrows(IllegalArgumentException.class, () -> model.reply(null, List.of(), 60));
         assertNull(lastPath.get());
     }
 
@@ -442,11 +443,167 @@ class OpenAiClientsTest {
         answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
 
         new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "")
-                .reply(List.of(ChatModel.Message.user("a")), 60);
+                .reply(List.of(ChatModel.Message.user("a")), List.of(), 60);
 
         JsonObject sent = JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
                 .getAsJsonObject();
         assertFalse(sent.has("reasoning_effort"));
+    }
+
+    // Tool calls: the wire shape of a tool, and the two ways a provider answers with one
+
+    private static final ChatModel.Tool A_TOOL = new ChatModel.Tool("recall_person",
+            "What one person said", new java.util.LinkedHashMap<>(java.util.Map.of(
+            "name", ChatModel.Tool.Parameter.requiredString("who"))));
+
+    @Test
+    void aToolIsSentAsTheJsonSchemaTheApiExpects() {
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none")
+                .reply(List.of(ChatModel.Message.user("a")), List.of(A_TOOL), 60);
+
+        JsonObject sent = JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject();
+        JsonObject tool = sent.getAsJsonArray("tools").get(0).getAsJsonObject();
+        assertEquals("function", tool.get("type").getAsString());
+        JsonObject function = tool.getAsJsonObject("function");
+        assertEquals("recall_person", function.get("name").getAsString());
+        assertEquals("What one person said", function.get("description").getAsString());
+        JsonObject parameters = function.getAsJsonObject("parameters");
+        assertEquals("object", parameters.get("type").getAsString());
+        assertEquals("string",
+                parameters.getAsJsonObject("properties").getAsJsonObject("name").get("type").getAsString());
+        assertEquals("name", parameters.getAsJsonArray("required").get(0).getAsString());
+    }
+
+    @Test
+    void aRoundThatOffersToolsAsksForADifferentReasoningEffort() {
+        // Measured on Ollama: with reasoning_effort "none" no tool call ever comes back - one model answered
+        // "I have no memory of that", another invented a memory, a third said out loud that it should call the
+        // tool. With "low" both called it. So the effort depends on whether tools were offered.
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none", "low")
+                .reply(List.of(ChatModel.Message.user("a")), List.of(A_TOOL), 60);
+
+        assertEquals("low", JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject().get("reasoning_effort").getAsString());
+    }
+
+    @Test
+    void theAnsweringRoundKeepsTheFastEffortSinceItsLatencyIsTheOneHeard() {
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none", "low")
+                .reply(List.of(ChatModel.Message.user("a")), List.of(), 60);
+
+        assertEquals("none", JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject().get("reasoning_effort").getAsString());
+    }
+
+    @Test
+    void anEmptyToolEffortOmitsTheParameterOnAToolRoundToo() {
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none", "")
+                .reply(List.of(ChatModel.Message.user("a")), List.of(A_TOOL), 60);
+
+        assertFalse(JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject().has("reasoning_effort"));
+    }
+
+    @Test
+    void noToolMeansNoToolsFieldAtAll() {
+        // A provider that does not support tools must not be sent an empty list.
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none")
+                .reply(List.of(ChatModel.Message.user("a")), List.of(), 60);
+
+        assertFalse(JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject().has("tools"));
+    }
+
+    @Test
+    void openAiSendsTheArgumentsAsAJsonString() {
+        answer("/v1/chat/completions", 200, "application/json", ("""
+                {"choices":[{"message":{"content":"","tool_calls":[
+                  {"id":"call_abc","type":"function","function":{"name":"recall_person",
+                   "arguments":"{\\"name\\":\\"Victor\\"}"}}]}}]}""").getBytes(StandardCharsets.UTF_8));
+
+        ChatModel.Answer answer = new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none")
+                .reply(List.of(ChatModel.Message.user("a")), List.of(A_TOOL), 60);
+
+        assertTrue(answer.hasToolCalls());
+        assertEquals("call_abc", answer.toolCalls().get(0).id());
+        assertEquals("recall_person", answer.toolCalls().get(0).name());
+        assertEquals("{\"name\":\"Victor\"}", answer.toolCalls().get(0).arguments());
+    }
+
+    @Test
+    void ollamaSendsThemAsTheObjectAndSometimesWithoutAnId() {
+        // Both shapes are real; a plugin cannot choose which provider it is talking to.
+        answer("/v1/chat/completions", 200, "application/json", ("""
+                {"choices":[{"message":{"content":null,"tool_calls":[
+                  {"function":{"name":"recall_person","arguments":{"name":"Victor"}}}]}}]}""")
+                .getBytes(StandardCharsets.UTF_8));
+
+        ChatModel.Answer answer = new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none")
+                .reply(List.of(ChatModel.Message.user("a")), List.of(A_TOOL), 60);
+
+        assertEquals("{\"name\":\"Victor\"}", answer.toolCalls().get(0).arguments());
+        // The results must quote an id back, so one is made up when the provider omitted it.
+        assertEquals("call_0", answer.toolCalls().get(0).id());
+    }
+
+    @Test
+    void aToolCallWithoutANameIsSkippedRatherThanFailingTheTurn() {
+        answer("/v1/chat/completions", 200, "application/json", ("""
+                {"choices":[{"message":{"content":"voila","tool_calls":[{"id":"x","function":{}}]}}]}""")
+                .getBytes(StandardCharsets.UTF_8));
+
+        ChatModel.Answer answer = new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none")
+                .reply(List.of(ChatModel.Message.user("a")), List.of(A_TOOL), 60);
+
+        assertFalse(answer.hasToolCalls());
+        assertEquals("voila", answer.content());
+    }
+
+    @Test
+    void anAnswerWithNeitherContentNorToolCallIsStillReported() {
+        answer("/v1/chat/completions", 200, "application/json",
+                "{\"choices\":[{\"message\":{\"content\":\"\",\"tool_calls\":[]}}]}"
+                        .getBytes(StandardCharsets.UTF_8));
+
+        assertThrows(AiRequestException.class, () -> new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none")
+                .reply(List.of(ChatModel.Message.user("a")), List.of(A_TOOL), 60));
+    }
+
+    @Test
+    void theResultsAreSentBackWithTheCallTheyAnswerAndTheTurnThatAskedForIt() {
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+        ChatModel.ToolCall call = new ChatModel.ToolCall("call_abc", "recall_person", "{\"name\":\"V\"}");
+
+        new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none").reply(List.of(
+                ChatModel.Message.user("a"),
+                ChatModel.Message.assistantToolCalls(List.of(call)),
+                ChatModel.Message.toolResult("call_abc", "V said hello")), List.of(A_TOOL), 60);
+
+        var messages = JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject().getAsJsonArray("messages");
+        JsonObject asked = messages.get(1).getAsJsonObject();
+        assertEquals("assistant", asked.get("role").getAsString());
+        JsonObject wireCall = asked.getAsJsonArray("tool_calls").get(0).getAsJsonObject();
+        assertEquals("call_abc", wireCall.get("id").getAsString());
+        assertEquals("function", wireCall.get("type").getAsString());
+        assertEquals("{\"name\":\"V\"}",
+                wireCall.getAsJsonObject("function").get("arguments").getAsString(),
+                "the arguments go back as the model wrote them, as a JSON string");
+        JsonObject result = messages.get(2).getAsJsonObject();
+        assertEquals("tool", result.get("role").getAsString());
+        assertEquals("call_abc", result.get("tool_call_id").getAsString());
+        assertEquals("V said hello", result.get("content").getAsString());
     }
 }
 

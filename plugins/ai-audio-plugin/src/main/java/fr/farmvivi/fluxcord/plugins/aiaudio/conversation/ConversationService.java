@@ -11,6 +11,7 @@ import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.channel.middleman.AudioChannel;
 import org.slf4j.Logger;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,6 +35,7 @@ public class ConversationService {
     private final AIAudioPlugin plugin;
     private final ChatModel model;
     private final ConversationMemory memory;
+    private final MemoryTools memoryTools;
     private final Logger logger;
     private final LongSupplier clock;
     private final ExecutorService worker;
@@ -50,6 +52,7 @@ public class ConversationService {
         this.plugin = plugin;
         this.model = model;
         this.memory = memory;
+        this.memoryTools = new MemoryTools(memory);
         this.logger = plugin.getLogger();
         this.clock = clock;
         this.worker = Executors.newSingleThreadExecutor(runnable -> {
@@ -115,9 +118,9 @@ public class ConversationService {
                     ConversationContext.of(channel, memory, chat.historyTurns(), 0), clock.getAsLong());
 
             String botId = botUserId(guild);
-            List<ChatModel.Message> messages =
-                    ConversationPrompt.build(snapshot, question, chat.historyTurns(), botId);
-            String reply = model.reply(messages, chat.maxReplyTokens());
+            List<ChatModel.Message> messages = new ArrayList<>(
+                    ConversationPrompt.build(snapshot, question, chat.historyTurns(), botId));
+            String reply = converse(messages, snapshot, chat);
             if (reply == null || reply.isBlank()) {
                 logger.debug("The model chose to stay silent");
                 return;
@@ -136,6 +139,37 @@ public class ConversationService {
         } catch (RuntimeException e) {
             logger.warn("Could not answer in guild {}: {}", guild.getId(), e.getMessage());
         }
+    }
+
+    /**
+     * Asks until the model answers instead of asking for something.
+     *
+     * <p>A model that can call the memory will often do it before answering: one round to look something up,
+     * then the answer. Each round is a full request, so the number of them is capped — a model that keeps asking
+     * would otherwise hold the voice channel silent forever. On the last round the tools are withheld, which is
+     * how it is told to answer with what it has rather than being cut off mid-thought.
+     *
+     * @return what to say, possibly empty when the model chose to stay silent
+     */
+    private String converse(List<ChatModel.Message> messages, PersonaSnapshot snapshot,
+                            AiSettings.ChatSettings chat) {
+        List<ChatModel.Tool> tools = chat.memoryTools() ? memoryTools.declarations() : List.of();
+        for (int round = 0; round <= chat.maxToolRounds(); round++) {
+            boolean lastRound = round == chat.maxToolRounds();
+            ChatModel.Answer answer = model.reply(messages, lastRound ? List.of() : tools,
+                    chat.maxReplyTokens());
+            if (!answer.hasToolCalls()) {
+                return answer.content();
+            }
+            messages.add(ChatModel.Message.assistantToolCalls(answer.toolCalls()));
+            for (ChatModel.ToolCall call : answer.toolCalls()) {
+                String result = memoryTools.execute(call, snapshot, clock.getAsLong());
+                logger.debug("Tool {} answered {} character(s)", call.name(), result.length());
+                messages.add(ChatModel.Message.toolResult(call.id(), result));
+            }
+        }
+        // Reached only if the model asked for something on a round where it had been offered nothing.
+        return "";
     }
 
     /**
