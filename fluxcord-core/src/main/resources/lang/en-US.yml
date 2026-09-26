@@ -6,17 +6,14 @@ permissions:
 commands:
   titles:
     info: "Information"
-    success: "Command executed successfully"
     warning: "Warning"
     error: "An error occurred"
   messages:
-    success: "Command executed successfully"
     cooldown: "This command is on cooldown. Please wait {0} second(s) before using it again."
     disabled: "This command is disabled"
     guild_only: "This command can only be used in a server"
     permission_error: "Permission error: {0}"
     system_disabled: "Command system is disabled"
-    unknown_command: "Unknown command: {0}"
     execution_cancelled: "Command execution was cancelled"
     execution_error: "An error occurred while executing the command: {0}"
     parse_error: "Invalid usage: {0}"
@@ -63,5 +60,4 @@ commands:
     nodes: "Registered permissions:\n{0}"
     no_nodes: "No permission registered"
   shutdown:
-    restarting: "Bot is restarting..."
     shutting_down: "Bot is shutting down..."

@@ -1,82 +1,44 @@
 # Command Example Plugin Configuration
+#
+# Every key below is read by the plugin. This file is a reference, so a setting that changes nothing
+# would teach the wrong thing: the previous version declared 30 keys of which 12 were read — command
+# descriptions that come from lang/*.yml, a text prefix the core owns, a cooldown section replaced by
+# CommandBuilder.cooldown(), and permissions that were never registered.
 config_version: 1
 
-# Plugin enablement
-enabled: false  # Disabled by default - set to true to activate
+# Master switch for the whole plugin.
+enabled: true
 
-# Command configurations
 commands:
-  # Basic ping command
   ping:
     enabled: true
-    description: "Simple ping-pong command"
-    cooldown: 3  # seconds
-
-  # Echo command with arguments
-  echo:
-    enabled: true
-    description: "Echo back user input"
-    max_length: 200
+    # Seconds between two uses, per user. Enforced by the core through
+    # CommandBuilder.cooldown() - a plugin never has to track cooldowns itself.
     cooldown: 5
 
-  # Info command with embeds
+  echo:
+    enabled: true
+    cooldown: 3
+    # Longest text /echo accepts.
+    max_length: 500
+
   info:
     enabled: true
-    description: "Show bot and plugin information"
-    show_detailed: false
+    # Include memory and uptime in the reply.
+    show_detailed: true
 
-  # Admin-only command
   admin:
+    # The command checks the commandexample.admin permission, which the plugin registers in
+    # onPreEnable and declares with CommandBuilder.permission().
     enabled: true
-    description: "Administrative command example"
-    permission_required: true
 
-# Command behavior settings
-behavior:
-  # Delete user command messages
-  delete_command_messages: false
-  
-  # Reply privately (ephemeral) by default
-  ephemeral_replies: false
-  
-  # Command prefix for text commands (if enabled)
-  text_prefix: "!"
-  
-  # Enable text commands alongside slash commands
-  text_commands_enabled: false
-
-# Response settings
 responses:
-  # Use embeds for responses
+  # Reply with embeds rather than plain text.
   use_embeds: true
-  
-  # Bot color for embeds (hex color)
-  embed_color: "#7289DA"
-  
-  # Include command execution time in responses
-  show_execution_time: false
 
-# Cooldown settings
-cooldowns:
-  # Global cooldown between any commands (in seconds)
-  global_cooldown: 1
-  
-  # Per-user cooldown tracking
-  per_user: true
-  
-  # Cooldown bypass permission
-  bypass_permission: "commands.cooldown.bypass"
+  # Embed colour, as a hex string.
+  embed_color: "#5865F2"
 
-# Permission settings
-permissions:
-  # Default permission level for commands
-  default_permission: true
-  
-  # Permission nodes for admin commands
-  admin_permission: "commands.admin"
-
-# Debug and logging
 debug:
-  log_command_usage: true
-  log_execution_times: false
-  detailed_errors: false
+  # Log every command this plugin executes.
+  log_command_usage: false

@@ -16,12 +16,6 @@ music:
   
   # Auto-leave timeout in milliseconds (5 minutes)
   auto_leave_timeout: 300000
-  
-  # Enable vote skip (requires majority vote to skip)
-  vote_skip_enabled: false
-  
-  # Vote skip percentage required (0.0 to 1.0)
-  vote_skip_ratio: 0.5
 
   # Playback-state persistence: save the current track, position, queue, modes and volume so the
   # bot resumes exactly where it left off after a restart (e.g. a Kubernetes pod being rescheduled).
@@ -38,10 +32,6 @@ providers:
   youtube:
     # Enable YouTube support
     enabled: true
-    # Email for age-restricted videos (optional)
-    email: ""
-    # Password for age-restricted videos (optional)
-    password: ""
   
   # Spotify settings
   spotify:

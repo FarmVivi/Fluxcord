@@ -1,4 +1,8 @@
-# Command descriptions
+# Only the strings the plugin actually looks up; the previous version declared 34 keys of
+# which 18 were used. Note there is no top-level wrapper: PluginLanguageAdapter already
+# namespaces every key by the plugin id, so a 'commandexample:' block here would make
+# every lookup miss.
+
 ping:
   description: "Check if the bot is responsive"
   response: "🏓 Pong! Bot is online and responsive."
@@ -20,33 +24,7 @@ info:
 admin:
   description: "Administrative command (admin only)"
   response: "🔧 Admin command executed successfully!"
-  no_permission: "❌ You need administrator permissions to use this command."
 
-# General messages
-general:
-  cooldown: "⏳ Please wait {0} seconds before using this command again."
-  error: "❌ An error occurred while executing the command."
-  disabled: "🚫 This command is currently disabled."
-  loading: "⌛ Processing your command..."
-  success: "✅ Command executed successfully!"
-
-# Help messages
-help:
-  title: "Command Example Plugin - Help"
-  description: "This plugin demonstrates various command system features."
-  available_commands: "Available Commands:"
-  command_format: "`/{0}` - {1}"
-  footer: "Use /{0} <command> for detailed information about a specific command."
-
-# Error messages
-errors:
-  not_found: "❌ Command not found."
-  permission_denied: "❌ You don't have permission to use this command."
-  invalid_arguments: "❌ Invalid arguments provided."
-  execution_failed: "❌ Command execution failed: {0}"
-  cooldown_active: "⏳ Command is on cooldown. Try again in {0} seconds."
-
-# Status messages  
 status:
   enabled: "✅ Plugin is enabled and ready!"
   disabled: "🚫 Plugin is disabled in configuration."

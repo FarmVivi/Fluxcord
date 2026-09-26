@@ -11,7 +11,6 @@ language:
 # Command system settings
 commands:
   default-prefix: "!"  # Default prefix for text commands
-  cooldown: 3  # Global default cooldown in seconds
   system:
     help: true      # Enable/disable help command
     version: true   # Enable/disable version command
@@ -30,6 +29,13 @@ data:
   storage:
     type: FILE  # Options: FILE, DB
     fallback: false  # If true, fall back to file storage when the database is unreachable at startup
+    file:
+      # Where the FILE backend keeps its data, relative to the working directory. One data.json per
+      # scope (guild:123 -> data/guild/123/data.json).
+      folder: data
+      # Writes are debounced per scope; this is how long a scope waits before being written to disk.
+      # A clean shutdown always flushes, but a kill -9 between two ticks loses the last writes.
+      debounce_ms: 2000
     db:
       # Supported drivers: MySQL/MariaDB and PostgreSQL. The dialect is detected from the URL prefix.
       #   MySQL/MariaDB: jdbc:mysql://localhost:3306/fluxcord  or  jdbc:mariadb://localhost:3306/fluxcord

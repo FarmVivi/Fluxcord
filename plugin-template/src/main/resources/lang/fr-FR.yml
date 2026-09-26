@@ -1,64 +1,18 @@
-# Messages du cycle de vie du plugin
+# Only the strings the plugin actually looks up. A language file is not a catalogue of
+# things a plugin might say one day: an unused key is dead weight, and this file is a
+# teaching example. The previous version declared 38 keys of which 6 were used.
+
 lifecycle:
   plugin_enabled: "Plugin Template activé !"
   plugin_disabled: "Plugin Template désactivé !"
-  plugin_loaded: "Plugin Template chargé avec succès"
-  config_reloaded: "Configuration rechargée avec succès"
 
-# Messages généraux
 messages:
   example_message: "Bonjour depuis le Plugin Template !"
-  welcome_user: "Bienvenue, {0} !"
+  # Prend un argument, donc l'apostrophe est doublée : sinon MessageFormat avale {0}.
   mention_response: "Bonjour {0} ! Je suis le Plugin Template. Tapez `/template help` pour plus d''informations."
-  feature_disabled: "Cette fonctionnalité est actuellement désactivée"
-  processing: "Traitement de votre demande..."
-  completed: "Opération terminée avec succès"
 
-# Descriptions et réponses des commandes
 commands:
-  # Descriptions des commandes pour le système d'aide
-  help: "Afficher l'aide du plugin template et les commandes disponibles"
-  info: "Afficher les informations et statistiques du plugin"
   example: "Exécuter une commande d'exemple (démonstration uniquement)"
-  config: "Gérer la configuration du plugin (admin uniquement)"
-  reload: "Recharger la configuration du plugin (admin uniquement)"
-  
-  # Réponses des commandes
-  help_response: "Plugin Template v{0} - Commandes disponibles : help, info, example"
-  info_response: "Plugin Template v{0} par {1} - Temps de fonctionnement : {2}"
-  example_response: "Ceci est une réponse de commande d''exemple ! Configuration chargée : {0}"
 
-# Messages d'erreur
 errors:
   no_permission: "Vous n'avez pas la permission d'utiliser cette commande"
-  invalid_usage: "Utilisation de commande invalide. Utilisez `/template help` pour plus d'informations"
-  config_error: "Erreur de configuration : {0}"
-  command_disabled: "Cette commande est actuellement désactivée"
-  internal_error: "Une erreur interne s'est produite. Veuillez réessayer plus tard"
-  user_not_found: "Utilisateur introuvable"
-  guild_only: "Cette commande ne peut être utilisée que dans un serveur"
-
-# Messages de succès
-success:
-  config_saved: "Configuration sauvegardée avec succès"
-  config_reloaded: "Configuration rechargée avec succès"
-  setting_updated: "Paramètre ''{0}'' mis à jour vers ''{1}''"
-  operation_completed: "Opération terminée avec succès"
-
-# Messages liés aux permissions
-permissions:
-  missing_permission: "Vous avez besoin de la permission ''{0}'' pour utiliser cette commande"
-  permission_granted: "Permission ''{0}'' accordée à l''utilisateur {1}"
-  permission_revoked: "Permission ''{0}'' révoquée de l''utilisateur {1}"
-
-# Messages de stockage et de données
-storage:
-  data_saved: "Données sauvegardées avec succès"
-  data_loaded: "Données chargées avec succès"
-  storage_error: "Échec de la sauvegarde/chargement des données : {0}"
-
-# Messages d'état des fonctionnalités
-features:
-  enabled: "La fonctionnalité ''{0}'' est activée"
-  disabled: "La fonctionnalité ''{0}'' est désactivée"
-  toggled: "Fonctionnalité ''{0}'' basculée {1}"

@@ -1,4 +1,8 @@
-# Descriptions des commandes
+# Only the strings the plugin actually looks up; the previous version declared 34 keys of
+# which 18 were used. Note there is no top-level wrapper: PluginLanguageAdapter already
+# namespaces every key by the plugin id, so a 'commandexample:' block here would make
+# every lookup miss.
+
 ping:
   description: "Vérifier si le bot répond"
   response: "🏓 Pong ! Le bot est en ligne et réactif."
@@ -20,33 +24,7 @@ info:
 admin:
   description: "Commande administrative (admin seulement)"
   response: "🔧 Commande admin exécutée avec succès !"
-  no_permission: "❌ Vous avez besoin des permissions d'administrateur pour cette commande."
 
-# Messages généraux
-general:
-  cooldown: "⏳ Veuillez attendre {0} secondes avant d''utiliser cette commande à nouveau."
-  error: "❌ Une erreur s'est produite lors de l'exécution de la commande."
-  disabled: "🚫 Cette commande est actuellement désactivée."
-  loading: "⌛ Traitement de votre commande..."
-  success: "✅ Commande exécutée avec succès !"
-
-# Messages d'aide
-help:
-  title: "Plugin d'Exemple de Commandes - Aide"
-  description: "Ce plugin démontre diverses fonctionnalités du système de commandes."
-  available_commands: "Commandes Disponibles :"
-  command_format: "`/{0}` - {1}"
-  footer: "Utilisez /{0} <commande> pour des informations détaillées sur une commande spécifique."
-
-# Messages d'erreur
-errors:
-  not_found: "❌ Commande introuvable."
-  permission_denied: "❌ Vous n'avez pas la permission d'utiliser cette commande."
-  invalid_arguments: "❌ Arguments invalides fournis."
-  execution_failed: "❌ Échec de l''exécution de la commande : {0}"
-  cooldown_active: "⏳ Commande en cooldown. Réessayez dans {0} secondes."
-
-# Messages de statut
 status:
   enabled: "✅ Le plugin est activé et prêt !"
   disabled: "🚫 Le plugin est désactivé dans la configuration."

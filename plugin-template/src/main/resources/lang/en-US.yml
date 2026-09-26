@@ -1,64 +1,18 @@
-# Plugin lifecycle messages
+# Only the strings the plugin actually looks up. A language file is not a catalogue of
+# things a plugin might say one day: an unused key is dead weight, and this file is a
+# teaching example. The previous version declared 38 keys of which 6 were used.
+
 lifecycle:
   plugin_enabled: "Template Plugin enabled!"
   plugin_disabled: "Template Plugin disabled!"
-  plugin_loaded: "Template Plugin loaded successfully"
-  config_reloaded: "Configuration reloaded successfully"
 
-# General messages  
 messages:
   example_message: "Hello from Template Plugin!"
-  welcome_user: "Welcome, {0}!"
+  # Takes an argument, so its apostrophe is doubled: MessageFormat would otherwise swallow {0}.
   mention_response: "Hello {0}! I''m the Template Plugin. Type `/template help` for more information."
-  feature_disabled: "This feature is currently disabled"
-  processing: "Processing your request..."
-  completed: "Operation completed successfully"
 
-# Command descriptions and responses
 commands:
-  # Command descriptions for help system
-  help: "Show template plugin help and available commands"
-  info: "Display plugin information and statistics"
   example: "Execute an example command (demonstration only)"
-  config: "Manage plugin configuration (admin only)"
-  reload: "Reload plugin configuration (admin only)"
-  
-  # Command responses
-  help_response: "Template Plugin v{0} - Available commands: help, info, example"
-  info_response: "Template Plugin v{0} by {1} - Uptime: {2}"
-  example_response: "This is an example command response! Configuration loaded: {0}"
 
-# Error messages
 errors:
   no_permission: "You don't have permission to use this command"
-  invalid_usage: "Invalid command usage. Use `/template help` for more information"
-  config_error: "Configuration error: {0}"
-  command_disabled: "This command is currently disabled"
-  internal_error: "An internal error occurred. Please try again later"
-  user_not_found: "User not found"
-  guild_only: "This command can only be used in a server"
-
-# Success messages
-success:
-  config_saved: "Configuration saved successfully"
-  config_reloaded: "Configuration reloaded successfully"
-  setting_updated: "Setting ''{0}'' updated to ''{1}''"
-  operation_completed: "Operation completed successfully"
-
-# Permission-related messages
-permissions:
-  missing_permission: "You need the ''{0}'' permission to use this command"
-  permission_granted: "Permission ''{0}'' granted to user {1}"
-  permission_revoked: "Permission ''{0}'' revoked from user {1}"
-
-# Storage and data messages
-storage:
-  data_saved: "Data saved successfully"
-  data_loaded: "Data loaded successfully"
-  storage_error: "Failed to save/load data: {0}"
-
-# Feature status messages
-features:
-  enabled: "Feature ''{0}'' is enabled"
-  disabled: "Feature ''{0}'' is disabled"
-  toggled: "Feature ''{0}'' toggled {1}"

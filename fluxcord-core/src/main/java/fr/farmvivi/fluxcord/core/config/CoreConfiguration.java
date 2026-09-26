@@ -172,10 +172,6 @@ public class CoreConfiguration extends EnvAwareYamlConfiguration {
             set("commands.default-prefix", "!");
         }
 
-        if (!contains("commands.cooldown")) {
-            set("commands.cooldown", 3);
-        }
-
         if (!contains("commands.system")) {
             set("commands.system.help", true);
             set("commands.system.version", true);

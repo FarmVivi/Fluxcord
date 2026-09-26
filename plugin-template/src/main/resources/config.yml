@@ -1,99 +1,42 @@
-# Template Plugin Configuration
+# Plugin Template Configuration
+#
+# Every key below is read by the plugin. That matters more here than anywhere else: this file is a
+# teaching example, and a setting that changes nothing teaches that settings change nothing. The
+# previous version declared 29 keys of which 11 were read — prefixes, cooldowns, limits and an i18n
+# section that no line of code ever looked at.
 config_version: 1
 
-# Plugin features control - disable any features not needed
+# Which parts of the template are active. Read in onLoad, so a change needs a plugin reload.
 features:
-  # Enable example commands (set to false to disable all example commands)
-  example_commands: false
-  
-  # Enable example event handlers (set to false to disable event examples)  
-  example_events: false
-  
-  # Enable data storage examples (set to false to disable storage examples)
-  example_storage: false
-  
-  # Respond to bot mentions (example feature)
+  example_commands: true
+  example_events: true
+  example_storage: true
+
+  # Answer when someone mentions the bot. Off by default: it is the one feature that talks
+  # unprompted, and ExampleEventListener shows the guard rather than the reply.
   respond_to_mentions: false
 
-# Command system settings
+# The example command (/template).
 commands:
-  # Enable command functionality
   enabled: true
-  
-  # Command prefix for text commands (if supported)
-  prefix: "!"
-  
-  # Command cooldown in seconds
-  cooldown: 3
 
-# Event system settings  
+# The JDA listener and the Fluxcord event handler in ExampleEventListener.
 events:
-  # Enable event handling
   enabled: true
-  
-  # Event processing priority
-  priority: "NORMAL"
 
-# Permission system settings
-permissions:
-  # Default permission level for basic usage
-  default_permission: true
-  
-  # Admin permission nodes - users with these can manage the plugin
-  admin_nodes:
-    - "templateplugin.admin"
-    - "templateplugin.config"
-    - "templateplugin.reload"
-
-# Data storage settings
+# The three storage scopes shown by ExampleDataService.
 storage:
-  # Enable persistent data storage
   enabled: true
-  
-  # Storage format preference (json/yaml)
-  format: "json"
-  
-  # Auto-save interval in seconds (0 = save immediately)
-  autosave_interval: 30
 
-# Internationalization settings
-i18n:
-  # Default language for this plugin
-  default_language: "en-US"
-  
-  # Fallback to default if translation missing
-  fallback_enabled: true
+# Cross-plugin integration, wired in onPostEnable when every other plugin is enabled.
+integration:
+  # Look for the other plugins this one can cooperate with, and log what was found.
+  check_other_plugins: true
 
-# Debug and logging settings
+# Extra logging while developing the plugin.
 debug:
-  # Log all messages received (can be verbose)
+  # Log each message the listener sees.
   log_messages: false
-  
-  # Log plugin lifecycle events
-  log_plugin_events: false
-  
-  # Log configuration changes
-  log_config_changes: true
-  
-  # Extended debug information
-  extended_debug: false
 
-# Example plugin-specific settings
-example:
-  # Example string setting with default
-  message: "Hello from Template Plugin!"
-  
-  # Example numeric setting
-  max_items: 100
-  
-  # Example boolean setting
-  advanced_mode: false
-  
-  # Example list setting
-  allowed_channels: [ ]
-  
-  # Example object setting
-  limits:
-    per_user: 10
-    per_guild: 100
-    global: 1000
+  # Log the Fluxcord plugin lifecycle events this plugin receives.
+  log_plugin_events: false
