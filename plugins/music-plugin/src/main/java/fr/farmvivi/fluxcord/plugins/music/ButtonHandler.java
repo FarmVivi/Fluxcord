@@ -200,9 +200,13 @@ public class ButtonHandler {
     }
 
     /**
-     * Helper for building provider select options based on configuration and available credentials.
+     * Builds the provider choices of the add-track modal from the configuration.
+     *
+     * <p>Package-private rather than private so it can be tested on its own: which providers are offered
+     * depends on eight configuration branches and on credentials being present, and reaching that through
+     * a modal would test JDA's component tree instead of the rule.
      */
-    private static final class ProviderOptions {
+    static final class ProviderOptions {
         static java.util.List<SelectOption> fromConfig(MusicPlugin plugin) {
             var cfg = plugin.getConfiguration();
             var options = new java.util.ArrayList<SelectOption>();
