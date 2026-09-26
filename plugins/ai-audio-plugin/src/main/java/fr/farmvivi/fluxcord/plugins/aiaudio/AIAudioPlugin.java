@@ -8,15 +8,18 @@ import fr.farmvivi.fluxcord.api.permissions.PermissionDefault;
 import fr.farmvivi.fluxcord.api.plugin.AbstractPlugin;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiEndpoint;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OllamaSpeechToText;
+import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiChatModel;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiSpeechToText;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.SpeechToText;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiTextToSpeech;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.ForgetCommand;
+import fr.farmvivi.fluxcord.plugins.aiaudio.commands.ConverseCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.PersonaCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.SilenceCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.SpeakCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.TranscribeCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
+import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.ConversationService;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaStore;
 
 import java.net.http.HttpClient;
@@ -47,6 +50,7 @@ public class AIAudioPlugin extends AbstractPlugin {
     private TextToSpeechService textToSpeech;
     private ConversationMemory memory;
     private PersonaStore personaStore;
+    private ConversationService conversation;
     private HttpClient http;
 
     private AiSettings settings = AiSettings.defaults();
@@ -89,6 +93,10 @@ public class AIAudioPlugin extends AbstractPlugin {
             speechRecognition.shutdown();
             speechRecognition = null;
         }
+        if (conversation != null) {
+            conversation.shutdown();
+            conversation = null;
+        }
         if (textToSpeech != null) {
             textToSpeech.shutdown();
             textToSpeech = null;
@@ -113,6 +121,10 @@ public class AIAudioPlugin extends AbstractPlugin {
         personaStore = new PersonaStore(getStorage(), settings.persona().persona());
         textToSpeech = new TextToSpeechService(this,
                 new OpenAiTextToSpeech(settings.textToSpeech(), http));
+        conversation = new ConversationService(this,
+                new OpenAiChatModel(settings.chat().endpoint(), http, settings.chat().temperature(),
+                        settings.chat().reasoningEffort()), memory);
+        // The transcription service feeds the conversation, so it is built last.
         speechRecognition = new SpeechRecognitionService(this, speechToText(), memory);
     }
 
@@ -155,6 +167,16 @@ public class AIAudioPlugin extends AbstractPlugin {
                         choice("commands.transcribe.stop", TranscribeCommand.STOP))
                 .executor((ctx, cmd) -> {
                     new TranscribeCommand(this).execute(ctx, ctx.getRequiredOption("action"));
+                    return CommandResult.success();
+                }));
+
+        command("converse", builder -> builder
+                .permission(permissionKey(PERM_TRANSCRIBE))
+                .stringOption("action", text("commands.converse.option.action"), true,
+                        choice("commands.converse.start", ConverseCommand.START),
+                        choice("commands.converse.stop", ConverseCommand.STOP))
+                .executor((ctx, cmd) -> {
+                    new ConverseCommand(this).execute(ctx, ctx.getRequiredOption("action"));
                     return CommandResult.success();
                 }));
 
@@ -240,6 +262,11 @@ public class AIAudioPlugin extends AbstractPlugin {
     /** @return the speech service, or null before {@code onEnable} */
     public TextToSpeechService getTextToSpeech() {
         return textToSpeech;
+    }
+
+    /** @return the service that answers out loud, or null before {@code onEnable} */
+    public ConversationService getConversation() {
+        return conversation;
     }
 
     /** @return the persona and mood store, or null before {@code onEnable} */

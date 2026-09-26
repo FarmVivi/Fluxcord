@@ -16,6 +16,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -334,4 +335,118 @@ class OpenAiClientsTest {
         assertThrows(IllegalArgumentException.class, () -> stt.transcribe(empty, "fr"));
         assertNull(lastPath.get());
     }
+
+    // Chat, the one client that covers OpenAI and Ollama alike
+
+    private static final String A_REPLY =
+            "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"  il est six heures  \"}}]}";
+
+    @Test
+    void aChatRequestCarriesTheMessagesInOrderWithTheirRoles() {
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+
+        String reply = new OpenAiChatModel(endpoint("sk-test", "gpt-4o-mini"), http, 0.7, "none")
+                .reply(List.of(ChatModel.Message.system("tu es bref"),
+                        ChatModel.Message.user("quelle heure ?"),
+                        ChatModel.Message.assistant("il est cinq heures"),
+                        ChatModel.Message.user("et maintenant ?")), 120);
+
+        assertEquals("il est six heures", reply, "trimmed");
+        assertEquals("/v1/chat/completions", lastPath.get());
+        assertEquals("Bearer sk-test", lastAuthorization.get());
+        JsonObject sent = JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject();
+        assertEquals("gpt-4o-mini", sent.get("model").getAsString());
+        assertEquals(120, sent.get("max_tokens").getAsInt());
+        assertEquals(0.7, sent.get("temperature").getAsDouble(), 1e-9);
+        assertFalse(sent.get("stream").getAsBoolean(), "the answer is synthesised whole");
+        assertEquals("none", sent.get("reasoning_effort").getAsString(),
+                "and not Ollama's think:false, which this route ignores - the content then comes back empty");
+        assertFalse(sent.has("think"));
+        var messages = sent.getAsJsonArray("messages");
+        assertEquals(4, messages.size());
+        assertEquals("system", messages.get(0).getAsJsonObject().get("role").getAsString());
+        assertEquals("user", messages.get(1).getAsJsonObject().get("role").getAsString());
+        assertEquals("assistant", messages.get(2).getAsJsonObject().get("role").getAsString());
+        assertEquals("et maintenant ?", messages.get(3).getAsJsonObject().get("content").getAsString());
+    }
+
+    @Test
+    void anOllamaEndpointNeedsNoKeyAndUsesTheSameRoute() {
+        // Ollama serves the OpenAI-compatible route under /v1, so one client covers both.
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiChatModel(endpoint("", "gemma4:e4b-it-qat"), http, 0.5, "none")
+                .reply(List.of(ChatModel.Message.user("salut")), 60);
+
+        assertNull(lastAuthorization.get());
+    }
+
+    @Test
+    void theTemperatureIsClampedToWhatTheApiAccepts() {
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiChatModel(endpoint("k", "m"), http, 9, "none").reply(List.of(ChatModel.Message.user("a")), 60);
+
+        JsonObject sent = JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject();
+        assertEquals(2.0, sent.get("temperature").getAsDouble(), 1e-9);
+    }
+
+    @Test
+    void anEmptyContentIsReportedAsWhatItUsuallyIs() {
+        // A reasoning model that spent its whole budget thinking. Reporting it as silence would send the
+        // reader looking in the wrong place.
+        answer("/v1/chat/completions", 200, "application/json",
+                "{\"choices\":[{\"message\":{\"content\":null}}]}".getBytes(StandardCharsets.UTF_8));
+
+        AiRequestException failure = assertThrows(AiRequestException.class,
+                () -> new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none")
+                        .reply(List.of(ChatModel.Message.user("a")), 60));
+
+        assertTrue(failure.getMessage().contains("thinking"), failure.getMessage());
+    }
+
+    @Test
+    void ananswerWithNoChoiceIsRefused() {
+        answer("/v1/chat/completions", 200, "application/json",
+                "{\"choices\":[]}".getBytes(StandardCharsets.UTF_8));
+
+        assertThrows(AiRequestException.class, () -> new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none")
+                .reply(List.of(ChatModel.Message.user("a")), 60));
+    }
+
+    @Test
+    void aChatAnswerThatIsNotJsonIsReported() {
+        answer("/v1/chat/completions", 200, "text/html", "<html>nope</html>".getBytes(StandardCharsets.UTF_8));
+
+        AiRequestException failure = assertThrows(AiRequestException.class,
+                () -> new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none")
+                        .reply(List.of(ChatModel.Message.user("a")), 60));
+
+        assertTrue(failure.getMessage().contains("expected JSON"), failure.getMessage());
+    }
+
+    @Test
+    void askingWithNoMessagesIsRefusedBeforeAnythingIsSent() {
+        OpenAiChatModel model = new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none");
+
+        assertThrows(IllegalArgumentException.class, () -> model.reply(List.of(), 60));
+        assertThrows(IllegalArgumentException.class, () -> model.reply(null, 60));
+        assertNull(lastPath.get());
+    }
+
+    @Test
+    void anEmptyReasoningEffortOmitsTheParameterAltogether() {
+        // A model that rejects the parameter needs it absent, not empty.
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "")
+                .reply(List.of(ChatModel.Message.user("a")), 60);
+
+        JsonObject sent = JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject();
+        assertFalse(sent.has("reasoning_effort"));
+    }
 }
+

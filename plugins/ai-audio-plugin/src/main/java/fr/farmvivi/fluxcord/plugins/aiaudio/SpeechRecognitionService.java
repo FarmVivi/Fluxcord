@@ -161,10 +161,15 @@ public class SpeechRecognitionService {
     private void publish(Guild guild, Session session, String userId, String text) {
         String speaker = displayName(guild, userId);
         Optional<AudioChannel> channel = connectedChannel(guild);
-        memory.remember(Turn.now(userId, speaker, guild.getId(), guild.getName(),
+        Turn turn = Turn.now(userId, speaker, guild.getId(), guild.getName(),
                 channel.map(AudioChannel::getId).orElse(null),
-                channel.map(AudioChannel::getName).orElse(null), text));
+                channel.map(AudioChannel::getName).orElse(null), text);
+        memory.remember(turn);
         liftMood(guild, channel.map(AudioChannel::getId).orElse(null));
+        // Remembered first, then offered for an answer: the model must see the sentence it is answering.
+        if (plugin.getConversation() != null) {
+            plugin.getConversation().onTranscription(guild, turn);
+        }
         logger.debug("[{}] {}: {}", guild.getId(), speaker, text);
         try {
             session.output.sendMessage("**" + speaker + "** " + text).queue();

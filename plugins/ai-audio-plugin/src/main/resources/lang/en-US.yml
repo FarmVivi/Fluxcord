@@ -41,6 +41,13 @@ commands:
       server: "This server"
       channel: "This voice channel"
 
+  converse:
+    description: "Let the bot answer out loud in the voice channel"
+    start: "Start"
+    stop: "Stop"
+    option:
+      action: "Start or stop answering"
+
 messages:
   speaking: "Speaking: {0}"
   silenced: "Stopped talking."
@@ -57,6 +64,9 @@ messages:
   mood_reset: "Mood cleared."
   scope_server: "this server"
   scope_channel: "this voice channel"
+  converse_started: "I am listening and will answer out loud."
+  converse_started_wake_word: "I am listening. Say “{0}” and I will answer."
+  converse_stopped: "I will stop answering."
 
 errors:
   guild_only: "This command only works in a server."
@@ -71,6 +81,9 @@ errors:
   not_transcribing: "I was not transcribing anything."
   persona_usage: "Say which field and which value: /persona set field:tone value:familier"
   persona_unknown_field: "There is no persona field called {0}."
+  conversation_disabled: "Answering out loud is switched off in the configuration (conversation.enabled)."
+  already_conversing: "I am already answering in this server."
+  not_conversing: "I was not answering anything."
 
 mood:
   neutral: "neutral"

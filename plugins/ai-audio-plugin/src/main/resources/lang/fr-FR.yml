@@ -41,6 +41,13 @@ commands:
       server: "Ce serveur"
       channel: "Ce salon vocal"
 
+  converse:
+    description: "Laisser le bot répondre à voix haute dans le salon vocal"
+    start: "Démarrer"
+    stop: "Arrêter"
+    option:
+      action: "Démarrer ou arrêter les réponses"
+
 messages:
   speaking: "Je dis : {0}"
   silenced: "J'arrête de parler."
@@ -57,6 +64,9 @@ messages:
   mood_reset: "Humeur remise à zéro."
   scope_server: "ce serveur"
   scope_channel: "ce salon vocal"
+  converse_started: "J'écoute et je répondrai à voix haute."
+  converse_started_wake_word: "J''écoute. Dis “{0}” et je réponds."
+  converse_stopped: "J'arrête de répondre."
 
 errors:
   guild_only: "Cette commande ne fonctionne que sur un serveur."
@@ -71,6 +81,9 @@ errors:
   not_transcribing: "Je ne transcrivais rien."
   persona_usage: "Précise le champ et la valeur : /persona set field:tone value:familier"
   persona_unknown_field: "Il n''existe pas de champ de personnalité nommé {0}."
+  conversation_disabled: "Les réponses vocales sont désactivées dans la configuration (conversation.enabled)."
+  already_conversing: "Je réponds déjà sur ce serveur."
+  not_conversing: "Je ne répondais à rien."
 
 mood:
   neutral: "neutre"

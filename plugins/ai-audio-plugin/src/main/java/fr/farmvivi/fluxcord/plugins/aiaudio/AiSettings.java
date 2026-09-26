@@ -36,11 +36,13 @@ import java.util.Locale;
  * @param serverTurns           turns remembered per server across its channels, 0 to remember none
  * @param userTurns             turns remembered per person across every server, 0 to remember none
  * @param persona               who the bot is, and how much a conversation moves its mood
+ * @param chat                  the model that answers, and how it is asked
  */
 public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, String transcriptionLanguage,
                          AiEndpoint textToSpeech, String voice, int volume, int priority,
                          int maxTextLength, Duration silence, Duration maxSegment, Duration minSegment,
-                         int channelTurns, int serverTurns, int userTurns, PersonaSettings persona) {
+                         int channelTurns, int serverTurns, int userTurns, PersonaSettings persona,
+                         ChatSettings chat) {
 
     private static final String DEFAULT_BASE_URL = "https://api.openai.com/v1";
     /** Shipped defaults, matching {@code config.yml}: named so the two cannot drift apart. */
@@ -117,7 +119,8 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                 Math.max(0, config.getInt("memory.channel_turns", DEFAULT_CHANNEL_TURNS)),
                 Math.max(0, config.getInt("memory.server_turns", DEFAULT_SERVER_TURNS)),
                 Math.max(0, config.getInt("memory.user_turns", DEFAULT_USER_TURNS)),
-                PersonaSettings.from(config));
+                PersonaSettings.from(config),
+                ChatSettings.from(config, timeout));
     }
 
     /** @return the settings the plugin runs with before {@code onEnable} has read the configuration */
@@ -131,7 +134,7 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                 Duration.ofMillis(DEFAULT_SILENCE_MS), Duration.ofSeconds(DEFAULT_MAX_SEGMENT_SECONDS),
                 Duration.ofMillis(DEFAULT_MIN_SEGMENT_MS),
                 DEFAULT_CHANNEL_TURNS, DEFAULT_SERVER_TURNS, DEFAULT_USER_TURNS,
-                PersonaSettings.defaults());
+                PersonaSettings.defaults(), ChatSettings.defaults());
     }
 
     /** @return true when the transcription endpoint is OpenAI's and no key was configured */
@@ -172,6 +175,83 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
             return fallback;
         }
         return value;
+    }
+
+    /**
+     * The model that answers out loud, and how it is asked.
+     *
+     * @param endpoint       where the chat model lives; OpenAI and Ollama both serve {@code /chat/completions}
+     * @param enabled        whether answering aloud is possible at all
+     * @param wakeWord       only sentences containing it are answered; empty answers everything
+     * @param historyTurns   how many earlier turns of the channel the model is shown
+     * @param maxReplyTokens the longest answer to ask for; a spoken reply wants a short one
+     * @param temperature    how much the model may wander
+     * @param reasoningEffort what to ask of a reasoning model; empty omits the parameter
+     */
+    public record ChatSettings(AiEndpoint endpoint, boolean enabled, String wakeWord, int historyTurns,
+                               int maxReplyTokens, double temperature, String reasoningEffort) {
+
+        private static final String DEFAULT_CHAT_MODEL = "gpt-4o-mini";
+        private static final int DEFAULT_HISTORY_TURNS = 8;
+        private static final int DEFAULT_MAX_REPLY_TOKENS = 120;
+        /** In hundredths, since the configuration reads integers. */
+        private static final int DEFAULT_TEMPERATURE = 70;
+        /**
+         * No reasoning by default. Measured on Ollama: without this a reasoning model spends the whole token
+         * budget thinking and answers with empty content.
+         */
+        private static final String DEFAULT_REASONING_EFFORT = "none";
+
+        public ChatSettings {
+            historyTurns = Math.clamp(historyTurns, 0, 50);
+            maxReplyTokens = Math.clamp(maxReplyTokens, 16, 2000);
+            temperature = Math.clamp(temperature, 0, 2);
+            wakeWord = wakeWord == null ? "" : wakeWord.strip();
+            reasoningEffort = reasoningEffort == null ? "" : reasoningEffort.strip();
+        }
+
+        static ChatSettings from(Configuration config, int timeoutSeconds) {
+            AiEndpoint endpoint = new AiEndpoint(
+                    nonBlank(config.getString("chat.base_url", DEFAULT_BASE_URL), DEFAULT_BASE_URL),
+                    config.getString("chat.api_key", ""),
+                    nonBlank(config.getString("chat.model", DEFAULT_CHAT_MODEL), DEFAULT_CHAT_MODEL),
+                    Duration.ofSeconds(timeoutSeconds));
+            return new ChatSettings(endpoint,
+                    config.getBoolean("conversation.enabled", false),
+                    config.getString("conversation.wake_word", ""),
+                    config.getInt("conversation.history_turns", DEFAULT_HISTORY_TURNS),
+                    config.getInt("conversation.max_reply_tokens", DEFAULT_MAX_REPLY_TOKENS),
+                    config.getInt("chat.temperature", DEFAULT_TEMPERATURE) / 100.0,
+                    config.getString("chat.reasoning_effort", DEFAULT_REASONING_EFFORT));
+        }
+
+        /** @return the settings used before the configuration has been read */
+        public static ChatSettings defaults() {
+            return new ChatSettings(
+                    new AiEndpoint(DEFAULT_BASE_URL, "", DEFAULT_CHAT_MODEL, Duration.ofSeconds(30)),
+                    false, "", DEFAULT_HISTORY_TURNS, DEFAULT_MAX_REPLY_TOKENS, DEFAULT_TEMPERATURE / 100.0,
+                    DEFAULT_REASONING_EFFORT);
+        }
+
+        /** @return true when a key is needed for this endpoint and none was given */
+        public boolean needsKey() {
+            return !endpoint.hasApiKey() && endpoint.uri("/").getHost() != null
+                    && endpoint.uri("/").getHost().endsWith("openai.com");
+        }
+
+        /**
+         * Whether a sentence is addressed to the bot.
+         *
+         * @param spoken what was said
+         * @return true when there is no wake word, or the sentence contains it
+         */
+        public boolean isAddressedToUs(String spoken) {
+            if (wakeWord.isEmpty()) {
+                return true;
+            }
+            return spoken != null
+                    && spoken.toLowerCase(Locale.ROOT).contains(wakeWord.toLowerCase(Locale.ROOT));
+        }
     }
 
     /**

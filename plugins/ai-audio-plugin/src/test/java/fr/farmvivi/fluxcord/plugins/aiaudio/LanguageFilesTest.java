@@ -49,14 +49,19 @@ class LanguageFilesTest {
             "messages.scope_server", "messages.scope_channel",
             "errors.persona_usage", "errors.persona_unknown_field",
             "mood.neutral", "mood.enthusiastic", "mood.subdued", "mood.tense", "mood.warm",
-            "mood.distant");
+            "mood.distant",
+            "commands.converse.description", "commands.converse.start", "commands.converse.stop",
+            "commands.converse.option.action",
+            "messages.converse_started", "messages.converse_started_wake_word", "messages.converse_stopped",
+            "errors.conversation_disabled", "errors.already_conversing", "errors.not_conversing");
 
     /** The keys whose value goes through MessageFormat, because the code passes arguments. */
     private static final Set<String> FORMATTED_KEYS = Set.of(
             "messages.speaking", "messages.forgot_channel", "messages.forgot_server",
             "errors.text_too_long", "errors.synthesis_failed",
             "messages.persona_shown", "messages.persona_set", "messages.persona_reset",
-            "messages.persona_nothing_to_reset", "errors.persona_unknown_field");
+            "messages.persona_nothing_to_reset", "errors.persona_unknown_field",
+            "messages.converse_started_wake_word");
 
     private Map<String, String> load(String locale) {
         try (InputStream in = getClass().getResourceAsStream("/lang/" + locale + ".yml")) {
