@@ -69,6 +69,7 @@ class ButtonHandlerTest {
         when(plugin.getLanguage()).thenReturn(language);
         when(plugin.getPermissions()).thenReturn(permissions);
         when(plugin.getMusicManager()).thenReturn(manager);
+        when(plugin.permissionKey(anyString())).thenAnswer(i -> PLUGIN_ID + "." + i.getArgument(0));
 
         guild = mock(Guild.class);
         when(guild.getId()).thenReturn(GUILD_ID);
@@ -198,15 +199,15 @@ class ButtonHandlerTest {
     }
 
     @Test
-    void theLegacyNodeNamesAreRewrittenToTheRegisteredOnes() {
-        // The handler passes "music.skip" internally while the plugin registers "music-plugin.skip";
-        // the prefix is rebuilt from the plugin id, so the check must land on the registered name.
+    void theCheckLandsOnTheRegisteredNodeName() {
+        // The handler names the short node and asks the plugin to qualify it, so a button can never check
+        // a name the plugin never registered.
         allow("skip");
 
         press("skip");
 
         verify(permissions).hasPermission(USER_ID, GUILD_ID, PLUGIN_ID + ".skip");
-        verify(permissions, never()).hasPermission(USER_ID, GUILD_ID, "music.skip");
+        verify(plugin).permissionKey(MusicPlugin.PERM_SKIP);
     }
 
     @Test

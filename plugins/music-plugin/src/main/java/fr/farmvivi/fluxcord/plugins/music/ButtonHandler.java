@@ -99,7 +99,7 @@ public class ButtonHandler {
                 break;
 
             case "pause":
-                if (!hasPermission(member, "music.play")) {
+                if (!hasPermission(member, MusicPlugin.PERM_PLAY)) {
                     replyNoPermission(event);
                     return;
                 }
@@ -108,7 +108,7 @@ public class ButtonHandler {
                 break;
 
             case "skip":
-                if (!hasPermission(member, "music.skip")) {
+                if (!hasPermission(member, MusicPlugin.PERM_SKIP)) {
                     replyNoPermission(event);
                     return;
                 }
@@ -117,7 +117,7 @@ public class ButtonHandler {
                 break;
 
             case "stop":
-                if (!hasPermission(member, "music.play")) {
+                if (!hasPermission(member, MusicPlugin.PERM_PLAY)) {
                     replyNoPermission(event);
                     return;
                 }
@@ -126,7 +126,7 @@ public class ButtonHandler {
                 break;
 
             case "clear":
-                if (!hasPermission(member, "music.admin")) {
+                if (!hasPermission(member, MusicPlugin.PERM_ADMIN)) {
                     replyNoPermission(event);
                     return;
                 }
@@ -135,7 +135,7 @@ public class ButtonHandler {
                 break;
 
             case "loop":
-                if (!hasPermission(member, "music.queue")) {
+                if (!hasPermission(member, MusicPlugin.PERM_QUEUE)) {
                     replyNoPermission(event);
                     return;
                 }
@@ -144,7 +144,7 @@ public class ButtonHandler {
                 break;
 
             case "loopqueue":
-                if (!hasPermission(member, "music.queue")) {
+                if (!hasPermission(member, MusicPlugin.PERM_QUEUE)) {
                     replyNoPermission(event);
                     return;
                 }
@@ -153,7 +153,7 @@ public class ButtonHandler {
                 break;
 
             case "shuffle":
-                if (!hasPermission(member, "music.queue")) {
+                if (!hasPermission(member, MusicPlugin.PERM_QUEUE)) {
                     replyNoPermission(event);
                     return;
                 }
@@ -162,7 +162,7 @@ public class ButtonHandler {
                 break;
 
             case "volume":
-                if (!hasPermission(member, "music.volume")) {
+                if (!hasPermission(member, MusicPlugin.PERM_VOLUME)) {
                     replyNoPermission(event);
                     return;
                 }
@@ -177,7 +177,7 @@ public class ButtonHandler {
                 break;
 
             case "mute":
-                if (!hasPermission(member, "music.volume")) {
+                if (!hasPermission(member, MusicPlugin.PERM_VOLUME)) {
                     replyNoPermission(event);
                     return;
                 }
@@ -195,13 +195,23 @@ public class ButtonHandler {
         }
     }
 
-    private boolean hasPermission(Member member, String permission) {
+    /**
+     * Whether the member holds one of this plugin's permission nodes.
+     *
+     * <p>Takes the short node (the constants on {@link MusicPlugin}) rather than a {@code music.<node>}
+     * literal that had to have its prefix rewritten here at every call. Either scope is accepted, so an
+     * operator granted globally is not locked out of one guild.
+     *
+     * @param member the person who pressed the button
+     * @param node   a node from {@link MusicPlugin}, without the plugin id
+     * @return true when the action is allowed
+     */
+    private boolean hasPermission(Member member, String node) {
         String userId = member.getId();
         String guildId = member.getGuild().getId();
-        // Permission nodes are registered as pluginName.node
-        String perm = plugin.getId() + "." + permission.substring(permission.indexOf('.') + 1);
-        return plugin.getPermissions().hasPermission(userId, guildId, perm)
-                || plugin.getPermissions().hasPermission(userId, perm);
+        String permission = plugin.permissionKey(node);
+        return plugin.getPermissions().hasPermission(userId, guildId, permission)
+                || plugin.getPermissions().hasPermission(userId, permission);
     }
 
     private void replyNoPermission(ButtonInteractionEvent event) {

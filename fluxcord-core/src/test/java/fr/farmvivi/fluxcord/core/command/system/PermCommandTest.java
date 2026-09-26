@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.core.command.system;
 
+import fr.farmvivi.fluxcord.core.testing.StubPlugin;
 import fr.farmvivi.fluxcord.api.command.option.AutocompleteContext;
 import fr.farmvivi.fluxcord.api.permissions.Permission;
 import fr.farmvivi.fluxcord.api.permissions.PermissionDefault;
@@ -53,18 +54,6 @@ class PermCommandTest {
         @Override public boolean close() { return true; }
     }
 
-    static class StubPlugin implements Plugin {
-        private PluginLifecycle lifecycle = PluginLifecycle.LOADED;
-        @Override public String getId() { return "music"; }
-        @Override public String getName() { return "music"; }
-        @Override public String getVersion() { return "1"; }
-        @Override public void onLoad(PluginContext context) { }
-        @Override public void onEnable() { }
-        @Override public void onDisable() { }
-        @Override public PluginLifecycle getLifecycle() { return lifecycle; }
-        @Override public void setLifecycle(PluginLifecycle lifecycle) { this.lifecycle = lifecycle; }
-    }
-
     record Perm(String getName, String getDescription, PermissionDefault getDefault) implements Permission { }
 
     private final SimpleEventManager events = new SimpleEventManager();
@@ -82,8 +71,8 @@ class PermCommandTest {
         User user = mock(User.class);
         when(user.getId()).thenReturn("123456789012345678");
         when(jda.getUserById("123456789012345678")).thenReturn(user); // the console resolves USER options through JDA
-        permissions.registerPermission(new Perm("music.play", "Play music", PermissionDefault.TRUE), new StubPlugin());
-        permissions.registerPermission(new Perm("music.volume", "Change the volume", PermissionDefault.OP), new StubPlugin());
+        permissions.registerPermission(new Perm("music.play", "Play music", PermissionDefault.TRUE), new StubPlugin("music"));
+        permissions.registerPermission(new Perm("music.volume", "Change the volume", PermissionDefault.OP), new StubPlugin("music"));
         service = new SimpleCommandService(events, new SimpleLanguageManager(Locale.US), permissions,
                 new CoreSettings.Commands("!", false, false, false, true), new SimpleDataStorageManager(storage));
         service.setJDA(jda);

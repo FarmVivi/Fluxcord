@@ -47,6 +47,12 @@ data:
       # database/schema without colliding (e.g. "bot1_" -> table "bot1_storage_data").
       # Empty = default table name "storage_data". Allowed chars: letters, digits, underscore.
       table_prefix: ""
+      # Connection pool size. Several bots sharing one database each open their own pool, so keep this
+      # modest unless the server is sized for it.
+      max_pool_size: 10
+      # Whether the pool hands out connections in auto-commit mode. The storage writes one row at a
+      # time, so leaving this on is right unless a DBA asks otherwise.
+      auto_commit: true
 
   # Binary storage settings for large files
   binary:

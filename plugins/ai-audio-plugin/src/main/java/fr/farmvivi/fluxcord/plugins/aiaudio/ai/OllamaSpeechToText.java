@@ -36,6 +36,9 @@ import java.util.Base64;
  */
 public class OllamaSpeechToText implements SpeechToText {
 
+    /** The field carrying the text, both in the request and in the answer. */
+    private static final String CONTENT = "content";
+
     private static final Logger LOG = LoggerFactory.getLogger(OllamaSpeechToText.class);
 
     /**
@@ -65,7 +68,7 @@ public class OllamaSpeechToText implements SpeechToText {
 
         JsonObject message = new JsonObject();
         message.addProperty("role", "user");
-        message.addProperty("content", instructionFor(language));
+        message.addProperty(CONTENT, instructionFor(language));
         // Not "audio": Ollama carries every medium in "images", and an "audio" field is ignored in
         // silence - the model then replies that it received nothing to transcribe.
         message.add("images", media);
@@ -103,10 +106,10 @@ public class OllamaSpeechToText implements SpeechToText {
         try {
             JsonObject json = JsonParser.parseString(raw).getAsJsonObject();
             JsonObject message = json.getAsJsonObject("message");
-            if (message == null || !message.has("content")) {
+            if (message == null || !message.has(CONTENT)) {
                 throw new AiRequestException("Transcription answered without a message content");
             }
-            return message.get("content").getAsString().trim();
+            return message.get(CONTENT).getAsString().trim();
         } catch (JsonParseException | IllegalStateException e) {
             throw new AiRequestException("Transcription did not answer JSON: "
                     + (raw.length() > 120 ? raw.substring(0, 120) + "..." : raw), e);

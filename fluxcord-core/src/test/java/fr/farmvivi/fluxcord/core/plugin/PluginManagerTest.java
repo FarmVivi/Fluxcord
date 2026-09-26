@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.core.plugin;
 
+import fr.farmvivi.fluxcord.core.testing.StubPlugin;
 import fr.farmvivi.fluxcord.api.audio.AudioService;
 import fr.farmvivi.fluxcord.api.command.CommandService;
 import fr.farmvivi.fluxcord.api.discord.DiscordAPI;
@@ -274,7 +275,7 @@ class PluginManagerTest {
                 transitions.add(e.getOldStatus() + ">" + e.getNewStatus());
             }
         }
-        events.registerListener(new Listener(), new SimpleEventManagerStub());
+        events.registerListener(new Listener(), new StubPlugin("test-listener"));
         PluginJars.plugin(pluginsFolder.toPath(), "alpha");
 
         boot();
@@ -288,7 +289,7 @@ class PluginManagerTest {
         PluginJars.plugin(pluginsFolder.toPath(), "alpha");
         boot();
         class Veto { @EventHandler public void on(PluginEnableEvent e) { e.setCancelled(true); } }
-        events.registerListener(new Veto(), new SimpleEventManagerStub());
+        events.registerListener(new Veto(), new StubPlugin("test-listener"));
 
         assertFalse(manager.reloadPlugin("alpha"));
         Plugin reloaded = manager.getPlugin("alpha");
@@ -379,16 +380,4 @@ class PluginManagerTest {
         @Override public String getDescription() { return ""; }
     }
 
-    /** Owner for test listeners (the event manager only needs an identity). */
-    static class SimpleEventManagerStub implements Plugin {
-        private PluginLifecycle lifecycle = PluginLifecycle.ENABLED;
-        @Override public String getId() { return "test-listener"; }
-        @Override public String getName() { return "test-listener"; }
-        @Override public String getVersion() { return "1"; }
-        @Override public void onLoad(fr.farmvivi.fluxcord.api.plugin.PluginContext context) { }
-        @Override public void onEnable() { }
-        @Override public void onDisable() { }
-        @Override public PluginLifecycle getLifecycle() { return lifecycle; }
-        @Override public void setLifecycle(PluginLifecycle lifecycle) { this.lifecycle = lifecycle; }
-    }
 }

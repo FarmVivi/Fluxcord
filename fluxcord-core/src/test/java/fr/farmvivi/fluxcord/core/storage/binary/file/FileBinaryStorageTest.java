@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.core.storage.binary.file;
 
+import fr.farmvivi.fluxcord.core.testing.StubPlugin;
 import fr.farmvivi.fluxcord.api.event.EventHandler;
 import fr.farmvivi.fluxcord.api.plugin.Plugin;
 import fr.farmvivi.fluxcord.api.plugin.PluginContext;
@@ -138,18 +139,6 @@ class FileBinaryStorageTest {
 
     // ---- events ---------------------------------------------------------------------------------------------------
 
-    static class StubPlugin implements Plugin {
-        private PluginLifecycle lifecycle = PluginLifecycle.LOADED;
-        @Override public String getId() { return "t"; }
-        @Override public String getName() { return "t"; }
-        @Override public String getVersion() { return "1"; }
-        @Override public void onLoad(PluginContext context) { }
-        @Override public void onEnable() { }
-        @Override public void onDisable() { }
-        @Override public PluginLifecycle getLifecycle() { return lifecycle; }
-        @Override public void setLifecycle(PluginLifecycle lifecycle) { this.lifecycle = lifecycle; }
-    }
-
     static class Veto {
         boolean uploads, downloads, deletes;
         int seen;
@@ -161,7 +150,7 @@ class FileBinaryStorageTest {
     @Test
     void listenersCanVetoUploadsDownloadsAndDeletions() throws Exception {
         Veto veto = new Veto();
-        events.registerListener(veto, new StubPlugin());
+        events.registerListener(veto, new StubPlugin("t"));
         FileBinaryStorage storage = storage();
         BinaryStorageKey key = BinaryStorageKey.global("a.txt");
         Path source = dir.resolve("s.txt");

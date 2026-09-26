@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.core.event;
 
+import fr.farmvivi.fluxcord.core.testing.StubPlugin;
 import fr.farmvivi.fluxcord.api.event.Cancellable;
 import fr.farmvivi.fluxcord.api.event.Event;
 import fr.farmvivi.fluxcord.api.event.EventHandler;
@@ -29,23 +30,18 @@ class SimpleEventManagerTest {
 
     // --- fixtures -------------------------------------------------------------------------------
 
-    /** Minimal plugin: the manager only needs identity and a name for logs. */
-    static class StubPlugin implements Plugin {
-        private final String id;
-        private PluginLifecycle lifecycle = PluginLifecycle.LOADED;
-
-        StubPlugin(String id) {
-            this.id = id;
+    /**
+     * The shared stub, declared here on purpose.
+     *
+     * <p>{@code SimpleEventManager} auto-registers the event types it finds in the <em>plugin class's own
+     * package</em>, so this stub has to live beside the test events. Using
+     * {@code fr.farmvivi.fluxcord.core.testing.StubPlugin} directly makes the manager scan that package
+     * instead and find nothing — which is exactly how this test failed when the stub was deduplicated.
+     */
+    static class EventPackagePlugin extends StubPlugin {
+        EventPackagePlugin(String id) {
+            super(id);
         }
-
-        @Override public String getId() { return id; }
-        @Override public String getName() { return id; }
-        @Override public String getVersion() { return "1"; }
-        @Override public void onLoad(PluginContext context) { }
-        @Override public void onEnable() { }
-        @Override public void onDisable() { }
-        @Override public PluginLifecycle getLifecycle() { return lifecycle; }
-        @Override public void setLifecycle(PluginLifecycle lifecycle) { this.lifecycle = lifecycle; }
     }
 
     interface BaseEvent extends Event { }
@@ -74,7 +70,7 @@ class SimpleEventManagerTest {
     }
 
     private final SimpleEventManager manager = new SimpleEventManager();
-    private final StubPlugin plugin = new StubPlugin("a");
+    private final EventPackagePlugin plugin = new EventPackagePlugin("a");
 
     @AfterEach
     void shutdown() {
@@ -120,7 +116,7 @@ class SimpleEventManagerTest {
     void sameListenerCannotBeRegisteredTwice() {
         PriorityListener listener = new PriorityListener();
         manager.registerListener(listener, plugin);
-        manager.registerListener(listener, new StubPlugin("b")); // refused, still owned by "a"
+        manager.registerListener(listener, new EventPackagePlugin("b")); // refused, still owned by "a"
 
         assertSame(plugin, manager.getOwningPlugin(listener));
         assertEquals(6, manager.getTotalHandlerCount());
@@ -315,7 +311,7 @@ class SimpleEventManagerTest {
 
     @Test
     void unregisterAllOnlyTouchesThePluginsListeners() {
-        StubPlugin other = new StubPlugin("b");
+        EventPackagePlugin other = new EventPackagePlugin("b");
         PriorityListener mine1 = new PriorityListener();
         PriorityListener mine2 = new PriorityListener();
         PriorityListener theirs = new PriorityListener();
@@ -418,7 +414,7 @@ class SimpleEventManagerTest {
 
     @Test
     void explicitEventTypeRegistrationIsFirstComeFirstServed() {
-        StubPlugin other = new StubPlugin("b");
+        EventPackagePlugin other = new EventPackagePlugin("b");
         assertTrue(manager.registerEventType(OtherEvent.class, plugin, "mine"));
         assertFalse(manager.registerEventType(OtherEvent.class, other, "theirs"));
 

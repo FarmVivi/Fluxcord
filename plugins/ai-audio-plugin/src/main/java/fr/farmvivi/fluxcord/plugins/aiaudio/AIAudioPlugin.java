@@ -36,6 +36,11 @@ import java.util.function.Consumer;
  */
 public class AIAudioPlugin extends AbstractPlugin {
 
+    /** The permission nodes, named once: they appear at registration and again on each command. */
+    public static final String PERM_TRANSCRIBE = "transcribe";
+    public static final String PERM_TTS = "tts";
+    public static final String PERM_ADMIN = "admin";
+
     private SpeechRecognitionService speechRecognition;
     private TextToSpeechService textToSpeech;
     private ConversationMemory memory;
@@ -46,9 +51,9 @@ public class AIAudioPlugin extends AbstractPlugin {
     @Override
     public void onPreEnable() {
         // Permissions have to exist before any command referring to them is registered.
-        registerPermission("transcribe", "Allows transcribing a voice channel", PermissionDefault.TRUE);
-        registerPermission("tts", "Allows making the bot speak", PermissionDefault.TRUE);
-        registerPermission("admin", "Allows clearing what the bot remembers of a server",
+        registerPermission(PERM_TRANSCRIBE, "Allows transcribing a voice channel", PermissionDefault.TRUE);
+        registerPermission(PERM_TTS, "Allows making the bot speak", PermissionDefault.TRUE);
+        registerPermission(PERM_ADMIN, "Allows clearing what the bot remembers of a server",
                 PermissionDefault.OP);
         logger.debug("AI Audio permissions registered: {}", getPermissions().getRegisteredPermissions());
     }
@@ -117,7 +122,7 @@ public class AIAudioPlugin extends AbstractPlugin {
 
     private void registerCommands() {
         command("speak", builder -> builder
-                .permission(permissionKey("tts"))
+                .permission(permissionKey(PERM_TTS))
                 .cooldown(getConfiguration().getInt("request.cooldown_seconds", 0))
                 .stringOption("text", text("commands.speak.option.text"), true)
                 .stringOption("voice", text("commands.speak.option.voice"), false)
@@ -128,14 +133,14 @@ public class AIAudioPlugin extends AbstractPlugin {
                 }));
 
         command("silence", builder -> builder
-                .permission(permissionKey("tts"))
+                .permission(permissionKey(PERM_TTS))
                 .executor((ctx, cmd) -> {
                     new SilenceCommand(this).execute(ctx);
                     return CommandResult.success();
                 }));
 
         command("transcribe", builder -> builder
-                .permission(permissionKey("transcribe"))
+                .permission(permissionKey(PERM_TRANSCRIBE))
                 .stringOption("action", text("commands.transcribe.option.action"), true,
                         choice("commands.transcribe.start", TranscribeCommand.START),
                         choice("commands.transcribe.stop", TranscribeCommand.STOP))

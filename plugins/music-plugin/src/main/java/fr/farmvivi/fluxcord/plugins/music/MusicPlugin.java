@@ -106,13 +106,30 @@ public class MusicPlugin extends AbstractPlugin {
         logger.info("Music Plugin disabled!");
     }
 
+    /**
+     * The permission nodes, named once.
+     *
+     * <p>Public because {@code ButtonHandler} checks the same nodes: a permission protects an action, not
+     * the way it was invoked, so the button and the command must name the same one. They are the short
+     * node; {@link #permissionKey} turns one into the registered {@code <pluginId>.<node>}.
+     */
+    /** The {@code /playlist} option naming which store to act on. */
+    private static final String OPTION_SCOPE = "scope";
+
+    public static final String PERM_PLAY = "play";
+    public static final String PERM_SKIP = "skip";
+    public static final String PERM_QUEUE = "queue";
+    public static final String PERM_VOLUME = "volume";
+    public static final String PERM_PLAYLIST = "playlist";
+    public static final String PERM_ADMIN = "admin";
+
     private void registerPermissions() {
-        registerPermissionNode("play", "Allows playing tracks", PermissionDefault.TRUE);
-        registerPermissionNode("skip", "Allows skipping current track", PermissionDefault.TRUE);
-        registerPermissionNode("queue", "Allows viewing and reordering the queue", PermissionDefault.TRUE);
-        registerPermissionNode("volume", "Allows changing playback volume", PermissionDefault.OP);
-        registerPermissionNode("playlist", "Allows managing playlists", PermissionDefault.TRUE);
-        registerPermissionNode("admin", "Allows moderator music actions", PermissionDefault.OP);
+        registerPermissionNode(PERM_PLAY, "Allows playing tracks", PermissionDefault.TRUE);
+        registerPermissionNode(PERM_SKIP, "Allows skipping current track", PermissionDefault.TRUE);
+        registerPermissionNode(PERM_QUEUE, "Allows viewing and reordering the queue", PermissionDefault.TRUE);
+        registerPermissionNode(PERM_VOLUME, "Allows changing playback volume", PermissionDefault.OP);
+        registerPermissionNode(PERM_PLAYLIST, "Allows managing playlists", PermissionDefault.TRUE);
+        registerPermissionNode(PERM_ADMIN, "Allows moderator music actions", PermissionDefault.OP);
     }
 
     private void registerPermissionNode(String node, String description, PermissionDefault def) {
@@ -148,7 +165,7 @@ public class MusicPlugin extends AbstractPlugin {
     private void registerCommands() {
         musicCommand("play", builder -> {
             builder
-                    .permission(permissionKey("play"))
+                    .permission(permissionKey(PERM_PLAY))
                     .aliases("p")
                     .stringOption("query", text("music.command.play.option.query"), true, this::suggestRecentTracks)
                     .booleanOption("now", text("music.command.play.option.now"), false)
@@ -162,7 +179,7 @@ public class MusicPlugin extends AbstractPlugin {
 
         musicCommand("pause", builder -> {
             builder
-                    .permission(permissionKey("play"))
+                    .permission(permissionKey(PERM_PLAY))
                     .executor((ctx, cmd) -> {
                         new PauseCommand(this).execute(ctx);
                         return CommandResult.success();
@@ -171,7 +188,7 @@ public class MusicPlugin extends AbstractPlugin {
 
         musicCommand("skip", builder -> {
             builder
-                    .permission(permissionKey("skip"))
+                    .permission(permissionKey(PERM_SKIP))
                     .aliases("s", "next")
                     .executor((ctx, cmd) -> {
                         new SkipCommand(this).execute(ctx);
@@ -181,7 +198,7 @@ public class MusicPlugin extends AbstractPlugin {
 
         musicCommand("stop", builder -> {
             builder
-                    .permission(permissionKey("play"))
+                    .permission(permissionKey(PERM_PLAY))
                     .executor((ctx, cmd) -> {
                         new StopCommand(this).execute(ctx);
                         return CommandResult.success();
@@ -190,7 +207,7 @@ public class MusicPlugin extends AbstractPlugin {
 
         musicCommand("queue", builder -> {
             builder
-                    .permission(permissionKey("queue"))
+                    .permission(permissionKey(PERM_QUEUE))
                     .aliases("q")
                     .integerOption("page", text("music.command.queue.option.page"), false, 1, 100, this::suggestQueuePages)
                     .executor((ctx, cmd) -> {
@@ -202,7 +219,7 @@ public class MusicPlugin extends AbstractPlugin {
 
         musicCommand("nowplaying", builder -> {
             builder
-                    .permission(permissionKey("queue"))
+                    .permission(permissionKey(PERM_QUEUE))
                     .aliases("np", "current")
                     .executor((ctx, cmd) -> {
                         new NowPlayingCommand(this).execute(ctx);
@@ -212,7 +229,7 @@ public class MusicPlugin extends AbstractPlugin {
 
         musicCommand("volume", builder -> {
             builder
-                    .permission(permissionKey("volume"))
+                    .permission(permissionKey(PERM_VOLUME))
                     .aliases("vol")
                     .integerOption("level", text("music.command.volume.option.level"), false, 0, 100, this::suggestVolumes)
                     .executor((ctx, cmd) -> {
@@ -224,7 +241,7 @@ public class MusicPlugin extends AbstractPlugin {
 
         musicCommand("loop", builder -> {
             builder
-                    .permission(permissionKey("queue"))
+                    .permission(permissionKey(PERM_QUEUE))
                     .stringOption(
                             "mode",
                             text("music.command.loop.option.mode"),
@@ -242,7 +259,7 @@ public class MusicPlugin extends AbstractPlugin {
 
         musicCommand("shuffle", builder -> {
             builder
-                    .permission(permissionKey("queue"))
+                    .permission(permissionKey(PERM_QUEUE))
                     .executor((ctx, cmd) -> {
                         new ShuffleCommand(this).execute(ctx);
                         return CommandResult.success();
@@ -250,7 +267,7 @@ public class MusicPlugin extends AbstractPlugin {
         });
 
         musicCommand("clear", builder -> {
-            builder.permission(permissionKey("admin"))
+            builder.permission(permissionKey(PERM_ADMIN))
                     .executor((ctx, cmd) -> {
                         new ClearCommand(this).execute(ctx);
                         return CommandResult.success();
@@ -259,7 +276,7 @@ public class MusicPlugin extends AbstractPlugin {
 
         musicCommand("remove", builder -> {
             builder
-                    .permission(permissionKey("queue"))
+                    .permission(permissionKey(PERM_QUEUE))
                     .integerOption("position", text("music.command.remove.option.position"), true, 1, 1000, this::suggestQueuePositions)
                     .executor((ctx, cmd) -> {
                         int position = ctx.getRequiredOption("position");
@@ -270,7 +287,7 @@ public class MusicPlugin extends AbstractPlugin {
 
         musicCommand("seek", builder -> {
             builder
-                    .permission(permissionKey("play"))
+                    .permission(permissionKey(PERM_PLAY))
                     .stringOption("time", text("music.command.seek.option.time"), true, this::suggestSeekPositions)
                     .executor((ctx, cmd) -> {
                         String time = ctx.getRequiredOption("time");
@@ -281,7 +298,7 @@ public class MusicPlugin extends AbstractPlugin {
 
         musicCommand("playlist", builder -> {
             builder.aliases("pl")
-                    .permission(permissionKey("playlist"))
+                    .permission(permissionKey(PERM_PLAYLIST))
                     .stringOption("action", text("music.command.playlist.option.action"), true,
                             OptionChoice.of(text("music.command.playlist.action.save"), "save"),
                             OptionChoice.of(text("music.command.playlist.action.load"), "load"),
@@ -290,13 +307,13 @@ public class MusicPlugin extends AbstractPlugin {
                             OptionChoice.of(text("music.command.playlist.action.delete"), "delete"))
                     .stringOption("name", text("music.command.playlist.option.name"), false,
                             this::suggestPlaylistNames)
-                    .stringOption("scope", text("music.command.playlist.option.scope"), false,
+                    .stringOption(OPTION_SCOPE, text("music.command.playlist.option.scope"), false,
                             OptionChoice.of(text("music.command.playlist.scope.personal"), "personal"),
                             OptionChoice.of(text("music.command.playlist.scope.server"), "server"))
                     .executor((ctx, cmd) -> {
                         String action = ctx.getRequiredOption("action");
                         String name = ctx.<String>getOption("name").orElse(null);
-                        String scope = ctx.<String>getOption("scope").orElse(null);
+                        String scope = ctx.<String>getOption(OPTION_SCOPE).orElse(null);
                         new PlaylistCommand(this).execute(ctx, action, name, scope);
                         return CommandResult.success();
                     });
@@ -384,7 +401,7 @@ public class MusicPlugin extends AbstractPlugin {
 
     /** /playlist name: the caller's playlists, or the server ones when {@code scope:server} is already typed. */
     private java.util.List<OptionChoice<String>> suggestPlaylistNames(AutocompleteContext ctx) {
-        PlaylistScope scope = PlaylistScope.parse(ctx.options().get("scope"), PlaylistScope.USER);
+        PlaylistScope scope = PlaylistScope.parse(ctx.options().get(OPTION_SCOPE), PlaylistScope.USER);
         String ownerId = scope == PlaylistScope.GUILD ? ctx.guildId() : ctx.userId();
         if (ownerId == null) {
             return java.util.List.of();

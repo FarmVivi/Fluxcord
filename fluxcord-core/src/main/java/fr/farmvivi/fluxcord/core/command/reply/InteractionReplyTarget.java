@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class InteractionReplyTarget implements ReplyTarget {
     private static final Logger logger = LoggerFactory.getLogger(InteractionReplyTarget.class);
+    /** A zero-width space: acknowledges an interaction without showing anything to the channel. */
     private static final String PLACEHOLDER = "​";
 
     private final IReplyCallback callback;

@@ -62,6 +62,31 @@ public record PcmAudio(byte[] samples, int sampleRate, int channels) {
      * @throws IllegalArgumentException if this is not a 16-bit PCM WAVE file
      */
     public static PcmAudio fromWav(byte[] wav) {
+        ByteBuffer buffer = riffBody(wav);
+        Format format = null;
+        while (buffer.remaining() >= 8) {
+            int chunkId = buffer.getInt();
+            int chunkSize = buffer.getInt();
+            if (chunkSize < 0) {
+                throw new IllegalArgumentException("WAV chunk size overflows an int: " + chunkSize);
+            }
+            if (chunkId == FMT) {
+                format = readFormat(buffer, chunkSize);
+            } else if (chunkId == DATA) {
+                return readData(buffer, chunkSize, format);
+            } else {
+                skip(buffer, chunkSize);
+            }
+        }
+        throw new IllegalArgumentException("WAV has no data chunk");
+    }
+
+    /**
+     * Checks the container and positions the buffer on the first chunk.
+     *
+     * @return the buffer, little-endian, ready to walk
+     */
+    private static ByteBuffer riffBody(byte[] wav) {
         if (wav == null || wav.length < WAV_HEADER_SIZE) {
             throw new IllegalArgumentException("not a WAV file: " + (wav == null ? "null" : wav.length + " bytes"));
         }
@@ -73,43 +98,42 @@ public record PcmAudio(byte[] samples, int sampleRate, int channels) {
         if (buffer.getInt() != WAVE) {
             throw new IllegalArgumentException("not a WAV file: missing WAVE marker");
         }
+        return buffer;
+    }
 
-        int sampleRate = 0;
-        int channels = 0;
-        while (buffer.remaining() >= 8) {
-            int chunkId = buffer.getInt();
-            int chunkSize = buffer.getInt();
-            if (chunkSize < 0) {
-                throw new IllegalArgumentException("WAV chunk size overflows an int: " + chunkSize);
-            }
-            if (chunkId == FMT) {
-                int format = Short.toUnsignedInt(buffer.getShort());
-                channels = Short.toUnsignedInt(buffer.getShort());
-                sampleRate = buffer.getInt();
-                buffer.getInt();   // byte rate, derivable
-                buffer.getShort(); // block align, derivable
-                int bitsPerSample = Short.toUnsignedInt(buffer.getShort());
-                if (format != PCM_FORMAT) {
-                    throw new IllegalArgumentException("WAV is not uncompressed PCM (format " + format + ")");
-                }
-                if (bitsPerSample != 16) {
-                    throw new IllegalArgumentException("WAV is not 16-bit (" + bitsPerSample + " bits)");
-                }
-                skip(buffer, chunkSize - 16);
-            } else if (chunkId == DATA) {
-                if (sampleRate == 0) {
-                    throw new IllegalArgumentException("WAV data chunk comes before its fmt chunk");
-                }
-                // A streamed WAV can declare a size it never delivers; trust what is actually there.
-                int available = Math.min(chunkSize, buffer.remaining());
-                byte[] samples = new byte[available - (available % (BYTES_PER_SAMPLE * channels))];
-                buffer.get(samples);
-                return new PcmAudio(samples, sampleRate, channels);
-            } else {
-                skip(buffer, chunkSize);
-            }
+    /** Reads a {@code fmt } chunk, refusing anything this class cannot decode. */
+    private static Format readFormat(ByteBuffer buffer, int chunkSize) {
+        int encoding = Short.toUnsignedInt(buffer.getShort());
+        int channels = Short.toUnsignedInt(buffer.getShort());
+        int sampleRate = buffer.getInt();
+        buffer.getInt();   // byte rate, derivable
+        buffer.getShort(); // block align, derivable
+        int bitsPerSample = Short.toUnsignedInt(buffer.getShort());
+        if (encoding != PCM_FORMAT) {
+            throw new IllegalArgumentException("WAV is not uncompressed PCM (format " + encoding + ")");
         }
-        throw new IllegalArgumentException("WAV has no data chunk");
+        if (bitsPerSample != 16) {
+            throw new IllegalArgumentException("WAV is not 16-bit (" + bitsPerSample + " bits)");
+        }
+        // A fmt chunk may be longer than the 16 bytes read above (cbSize extension), as Windows writes.
+        skip(buffer, chunkSize - 16);
+        return new Format(sampleRate, channels);
+    }
+
+    /** Reads a {@code data} chunk against the format the {@code fmt } chunk announced. */
+    private static PcmAudio readData(ByteBuffer buffer, int chunkSize, Format format) {
+        if (format == null) {
+            throw new IllegalArgumentException("WAV data chunk comes before its fmt chunk");
+        }
+        // A streamed WAV can declare a size it never delivers; trust what is actually there.
+        int available = Math.min(chunkSize, buffer.remaining());
+        byte[] samples = new byte[available - (available % (BYTES_PER_SAMPLE * format.channels()))];
+        buffer.get(samples);
+        return new PcmAudio(samples, format.sampleRate(), format.channels());
+    }
+
+    /** What a {@code fmt } chunk says about the samples that follow. */
+    private record Format(int sampleRate, int channels) {
     }
 
     /**

@@ -82,13 +82,24 @@ public record CoreSettings(
     }
 
     /**
-     * {@code data.storage.db.*}. {@code maxPoolSize} and {@code autoCommit} are null when not configured
-     * (HikariCP defaults apply).
+     * {@code data.storage.db.*}.
+     *
+     * <p>{@code maxPoolSize} and {@code autoCommit} used to be boxed and null when unset, but the pool
+     * substituted a default for null anyway — so the nullability bought nothing and invited an unboxing
+     * NPE. The defaults are applied when the configuration is read instead.
      */
     public record Database(String url, String username, String password, String tablePrefix,
-                           Integer maxPoolSize, Boolean autoCommit) {
+                           int maxPoolSize, boolean autoCommit) {
+        /** What HikariCP is given when {@code data.storage.db.max_pool_size} is absent. */
+        public static final int DEFAULT_MAX_POOL_SIZE = 10;
+        /** What HikariCP is given when {@code data.storage.db.auto_commit} is absent. */
+        public static final boolean DEFAULT_AUTO_COMMIT = true;
+
         public Database {
             tablePrefix = tablePrefix == null ? "" : tablePrefix;
+            if (maxPoolSize <= 0) {
+                maxPoolSize = DEFAULT_MAX_POOL_SIZE;
+            }
         }
 
         /** @throws ConfigurationException when the URL is missing or not a JDBC URL */
@@ -164,8 +175,8 @@ public record CoreSettings(
                 config.getString("data.storage.db.username", null),
                 config.getString("data.storage.db.password", null),
                 config.getString("data.storage.db.table_prefix", ""),
-                optionalInt(config, "data.storage.db.max_pool_size"),
-                optionalBoolean(config, "data.storage.db.auto_commit"));
+                config.getInt("data.storage.db.max_pool_size", Database.DEFAULT_MAX_POOL_SIZE),
+                config.getBoolean("data.storage.db.auto_commit", Database.DEFAULT_AUTO_COMMIT));
         if (dataBackend == DataBackend.DB) {
             database.validate();
         }
@@ -221,19 +232,4 @@ public record CoreSettings(
         return file.isAbsolute() ? file : new File(baseDir, folder);
     }
 
-    private static Integer optionalInt(Configuration config, String key) {
-        try {
-            return config.getInt(key);
-        } catch (ConfigurationException e) {
-            return null;
-        }
-    }
-
-    private static Boolean optionalBoolean(Configuration config, String key) {
-        try {
-            return config.getBoolean(key);
-        } catch (ConfigurationException e) {
-            return null;
-        }
-    }
 }

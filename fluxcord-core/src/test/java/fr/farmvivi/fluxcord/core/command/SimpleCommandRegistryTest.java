@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.core.command;
 
+import fr.farmvivi.fluxcord.core.testing.StubPlugin;
 import fr.farmvivi.fluxcord.api.command.Command;
 import fr.farmvivi.fluxcord.api.command.CommandResult;
 import fr.farmvivi.fluxcord.api.plugin.Plugin;
@@ -17,22 +18,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * first registration wins, and every index stays consistent through unregister/enable/disable.
  */
 class SimpleCommandRegistryTest {
-
-    static class StubPlugin implements Plugin {
-        private final String id;
-        private PluginLifecycle lifecycle = PluginLifecycle.LOADED;
-
-        StubPlugin(String id) { this.id = id; }
-
-        @Override public String getId() { return id; }
-        @Override public String getName() { return id; }
-        @Override public String getVersion() { return "1"; }
-        @Override public void onLoad(PluginContext context) { }
-        @Override public void onEnable() { }
-        @Override public void onDisable() { }
-        @Override public PluginLifecycle getLifecycle() { return lifecycle; }
-        @Override public void setLifecycle(PluginLifecycle lifecycle) { this.lifecycle = lifecycle; }
-    }
 
     private static SimpleCommand command(String name, String category, boolean enabled, String... aliases) {
         return new SimpleCommand(name, "desc", category, null, null, null, null, null,

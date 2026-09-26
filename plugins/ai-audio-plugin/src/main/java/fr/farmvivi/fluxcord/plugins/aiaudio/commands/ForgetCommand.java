@@ -42,7 +42,7 @@ public class ForgetCommand extends AiAudioCommand {
             return;
         }
         Guild guild = optGuild.get();
-        if (!plugin.getPermissions().hasPermission(ctx.getUser().getId(), plugin.permissionKey("admin"))) {
+        if (!plugin.getPermissions().hasPermission(ctx.getUser().getId(), plugin.permissionKey(AIAudioPlugin.PERM_ADMIN))) {
             ctx.replyError(text(ctx, "errors.no_permission"));
             return;
         }

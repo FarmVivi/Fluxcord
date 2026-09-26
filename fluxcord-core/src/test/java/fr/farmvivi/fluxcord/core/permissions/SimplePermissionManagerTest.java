@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.core.permissions;
 
+import fr.farmvivi.fluxcord.core.testing.StubPlugin;
 import fr.farmvivi.fluxcord.api.event.EventHandler;
 import fr.farmvivi.fluxcord.api.permissions.Permission;
 import fr.farmvivi.fluxcord.api.permissions.PermissionDefault;
@@ -46,20 +47,6 @@ class SimplePermissionManagerTest {
         @Override public boolean clear(String scope) { data.remove(scope); return true; }
         @Override public boolean save() { return true; }
         @Override public boolean close() { return true; }
-    }
-
-    static class StubPlugin implements Plugin {
-        private final String id;
-        private PluginLifecycle lifecycle = PluginLifecycle.LOADED;
-        StubPlugin(String id) { this.id = id; }
-        @Override public String getId() { return id; }
-        @Override public String getName() { return id; }
-        @Override public String getVersion() { return "1"; }
-        @Override public void onLoad(PluginContext context) { }
-        @Override public void onEnable() { }
-        @Override public void onDisable() { }
-        @Override public PluginLifecycle getLifecycle() { return lifecycle; }
-        @Override public void setLifecycle(PluginLifecycle lifecycle) { this.lifecycle = lifecycle; }
     }
 
     record Perm(String getName, String getDescription, PermissionDefault getDefault) implements Permission { }

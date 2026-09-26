@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.core.storage;
 
+import fr.farmvivi.fluxcord.core.testing.StubPlugin;
 import fr.farmvivi.fluxcord.api.event.EventHandler;
 import fr.farmvivi.fluxcord.api.plugin.Plugin;
 import fr.farmvivi.fluxcord.api.plugin.PluginContext;
@@ -66,18 +67,6 @@ class AbstractDataStorageTest {
         @Override protected Map<String, Object> doGetAll(String scope) { return new HashMap<>(scope(scope)); }
         @Override protected boolean doClear(String scope) { store.remove(scope); return true; }
         @Override public boolean close() { return true; }
-    }
-
-    static class StubPlugin implements Plugin {
-        private PluginLifecycle lifecycle = PluginLifecycle.LOADED;
-        @Override public String getId() { return "test"; }
-        @Override public String getName() { return "test"; }
-        @Override public String getVersion() { return "1"; }
-        @Override public void onLoad(PluginContext context) { }
-        @Override public void onEnable() { }
-        @Override public void onDisable() { }
-        @Override public PluginLifecycle getLifecycle() { return lifecycle; }
-        @Override public void setLifecycle(PluginLifecycle lifecycle) { this.lifecycle = lifecycle; }
     }
 
     private static final StorageKey KEY = StorageKey.user("7", "lang");
@@ -194,7 +183,7 @@ class AbstractDataStorageTest {
 
     private Interceptor intercept() {
         Interceptor interceptor = new Interceptor();
-        events.registerListener(interceptor, new StubPlugin());
+        events.registerListener(interceptor, new StubPlugin("test"));
         return interceptor;
     }
 

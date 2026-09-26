@@ -81,7 +81,11 @@ class CoreSettingsTest {
         assertEquals("username", db.username(), "default config value");
         assertEquals("bot1_", db.tablePrefix());
         assertEquals(4, db.maxPoolSize());
-        assertNull(db.autoCommit(), "unset optional stays null");
+        assertTrue(db.autoCommit(), "unset falls back to the documented default rather than null");
+        // The pool size is refused rather than passed on when it makes no sense.
+        config.set("data.storage.db.max_pool_size", 0);
+        assertEquals(CoreSettings.Database.DEFAULT_MAX_POOL_SIZE,
+                CoreSettings.from(config, dir.toFile()).dataStorage().database().maxPoolSize());
     }
 
     @Test

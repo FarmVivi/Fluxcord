@@ -38,7 +38,7 @@ class ConfigurationKeysTest {
      * literals are translation keys.
      */
     private static final Pattern CONFIG_READ = Pattern.compile(
-            "(\\w+)\\s*(?:\\(\\))?\\s*\\.\\s*"
+            "(\\w+)\\s*(?:\\(\\)\\s*)?\\.\\s*"
                     + "get(?:String|Int|Boolean|Long|Double|StringList)\\s*\\(\\s*\"([^\"]+)\"");
 
     /** Read by the framework itself, not by any code path of this module. */

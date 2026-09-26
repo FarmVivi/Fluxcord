@@ -94,9 +94,9 @@ public class MusicManager {
             }
             synchronized (recent) {
                 java.util.LinkedHashMap<String, String> copy = new java.util.LinkedHashMap<>();
-                java.util.ArrayList<Map.Entry<String, String>> entries = new java.util.ArrayList<>(recent.entrySet());
-                java.util.Collections.reverse(entries);
-                entries.forEach(e -> copy.put(e.getKey(), e.getValue()));
+                // Most recent first: the insertion order is oldest first, so the view is reversed.
+                new java.util.ArrayList<>(recent.entrySet()).reversed()
+                        .forEach(e -> copy.put(e.getKey(), e.getValue()));
                 return copy;
             }
         } catch (NumberFormatException e) {

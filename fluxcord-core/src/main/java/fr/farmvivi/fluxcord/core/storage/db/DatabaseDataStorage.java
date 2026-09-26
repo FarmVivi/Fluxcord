@@ -119,12 +119,12 @@ public class DatabaseDataStorage extends AbstractDataStorage {
         hikariConfig.setUsername(settings.username());
         hikariConfig.setPassword(settings.password());
 
-        hikariConfig.setMaximumPoolSize(settings.maxPoolSize() != null ? settings.maxPoolSize() : 10);
+        hikariConfig.setMaximumPoolSize(settings.maxPoolSize());
         hikariConfig.setMinimumIdle(2);
         hikariConfig.setIdleTimeout(30000);
         hikariConfig.setMaxLifetime(1800000);
         hikariConfig.setConnectionTimeout(30000);
-        hikariConfig.setAutoCommit(settings.autoCommit() == null || settings.autoCommit());
+        hikariConfig.setAutoCommit(settings.autoCommit());
 
         logger.info("Initializing {} database connection pool to {}", dialect, settings.url());
         return new HikariDataSource(hikariConfig);

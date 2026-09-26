@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.core.language;
 
+import fr.farmvivi.fluxcord.core.testing.StubPlugin;
 import fr.farmvivi.fluxcord.api.event.EventHandler;
 import fr.farmvivi.fluxcord.api.language.events.LanguageLoadedEvent;
 import fr.farmvivi.fluxcord.api.language.events.NamespaceRegisteredEvent;
@@ -160,18 +161,6 @@ class SimpleLanguageManagerTest {
 
     // --- events ---------------------------------------------------------------------------------
 
-    static class StubPlugin implements Plugin {
-        private PluginLifecycle lifecycle = PluginLifecycle.LOADED;
-        @Override public String getId() { return "test"; }
-        @Override public String getName() { return "test"; }
-        @Override public String getVersion() { return "1"; }
-        @Override public void onLoad(PluginContext context) { }
-        @Override public void onEnable() { }
-        @Override public void onDisable() { }
-        @Override public PluginLifecycle getLifecycle() { return lifecycle; }
-        @Override public void setLifecycle(PluginLifecycle lifecycle) { this.lifecycle = lifecycle; }
-    }
-
     static class Recorder {
         final List<StringRetrievalEvent> retrievals = new ArrayList<>();
         final List<String> namespaces = new ArrayList<>();
@@ -187,7 +176,7 @@ class SimpleLanguageManagerTest {
     void listenersCanOverrideAnyLookup() {
         SimpleEventManager events = new SimpleEventManager();
         Recorder recorder = new Recorder();
-        events.registerListener(recorder, new StubPlugin());
+        events.registerListener(recorder, new StubPlugin("test"));
         SimpleLanguageManager withEvents = new SimpleLanguageManager(EN_US, events);
         try {
             recorder.override = "Overridden {0}";
@@ -212,7 +201,7 @@ class SimpleLanguageManagerTest {
     void retrievalEventIsFiredOnceWithTheArguments() {
         SimpleEventManager events = new SimpleEventManager();
         Recorder recorder = new Recorder();
-        events.registerListener(recorder, new StubPlugin());
+        events.registerListener(recorder, new StubPlugin("test"));
         SimpleLanguageManager withEvents = new SimpleLanguageManager(EN_US, events);
         try {
             assertEquals(List.of("core"), recorder.namespaces);

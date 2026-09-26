@@ -40,6 +40,10 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                          int channelTurns, int serverTurns, int userTurns) {
 
     private static final String DEFAULT_BASE_URL = "https://api.openai.com/v1";
+    /** Shipped defaults, matching {@code config.yml}: named so the two cannot drift apart. */
+    private static final String DEFAULT_TRANSCRIPTION_MODEL = "whisper-1";
+    private static final String DEFAULT_SPEECH_MODEL = "gpt-4o-mini-tts";
+    private static final String DEFAULT_VOICE = "alloy";
     private static final int DEFAULT_TIMEOUT_SECONDS = 30;
     private static final int DEFAULT_MAX_TEXT_LENGTH = 1000;
     private static final int DEFAULT_SILENCE_MS = 1200;
@@ -77,13 +81,15 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
         AiEndpoint stt = new AiEndpoint(
                 nonBlank(config.getString("speech_to_text.base_url", DEFAULT_BASE_URL), DEFAULT_BASE_URL),
                 config.getString("speech_to_text.api_key", ""),
-                nonBlank(config.getString("speech_to_text.model", "whisper-1"), "whisper-1"),
+                nonBlank(config.getString("speech_to_text.model", DEFAULT_TRANSCRIPTION_MODEL),
+                        DEFAULT_TRANSCRIPTION_MODEL),
                 Duration.ofSeconds(timeout));
 
         AiEndpoint tts = new AiEndpoint(
                 nonBlank(config.getString("text_to_speech.base_url", DEFAULT_BASE_URL), DEFAULT_BASE_URL),
                 config.getString("text_to_speech.api_key", ""),
-                nonBlank(config.getString("text_to_speech.model", "gpt-4o-mini-tts"), "gpt-4o-mini-tts"),
+                nonBlank(config.getString("text_to_speech.model", DEFAULT_SPEECH_MODEL),
+                        DEFAULT_SPEECH_MODEL),
                 Duration.ofSeconds(timeout));
 
         return new AiSettings(
@@ -91,7 +97,7 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                 SpeechApi.of(config.getString("speech_to_text.api", SpeechApi.OPENAI.name()), logger),
                 nonBlank(config.getString("speech_to_text.language", "auto"), "auto"),
                 tts,
-                nonBlank(config.getString("text_to_speech.voice", "alloy"), "alloy"),
+                nonBlank(config.getString("text_to_speech.voice", DEFAULT_VOICE), DEFAULT_VOICE),
                 clamp(config.getInt("text_to_speech.volume", AudioService.DEFAULT_VOLUME),
                         AudioService.MIN_VOLUME, AudioService.MAX_VOLUME, "text_to_speech.volume", logger),
                 clamp(config.getInt("text_to_speech.priority", AudioService.DEFAULT_PRIORITY_THRESHOLD),
@@ -114,8 +120,8 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
     public static AiSettings defaults() {
         Duration timeout = Duration.ofSeconds(DEFAULT_TIMEOUT_SECONDS);
         return new AiSettings(
-                new AiEndpoint(DEFAULT_BASE_URL, "", "whisper-1", timeout), SpeechApi.OPENAI, "auto",
-                new AiEndpoint(DEFAULT_BASE_URL, "", "gpt-4o-mini-tts", timeout), "alloy",
+                new AiEndpoint(DEFAULT_BASE_URL, "", DEFAULT_TRANSCRIPTION_MODEL, timeout), SpeechApi.OPENAI, "auto",
+                new AiEndpoint(DEFAULT_BASE_URL, "", DEFAULT_SPEECH_MODEL, timeout), DEFAULT_VOICE,
                 AudioService.DEFAULT_VOLUME, AudioService.DEFAULT_PRIORITY_THRESHOLD,
                 DEFAULT_MAX_TEXT_LENGTH,
                 Duration.ofMillis(DEFAULT_SILENCE_MS), Duration.ofSeconds(DEFAULT_MAX_SEGMENT_SECONDS),
