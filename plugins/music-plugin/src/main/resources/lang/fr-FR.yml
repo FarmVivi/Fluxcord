@@ -28,7 +28,7 @@ music:
       option:
         mode: "Mode de répétition"
       mode:
-        off: "Désactivé"
+        "off": "Désactivé"
         track: "Piste"
         queue: "File d'attente"
     shuffle:
@@ -154,6 +154,7 @@ music:
   
   # Messages d'erreur
   error:
+    guild_only: "Cette commande ne fonctionne que sur un serveur"
     not_in_voice: "Vous devez être dans un salon vocal pour utiliser cette commande"
     nothing_playing: "Aucune lecture en cours"
     queue_empty: "La file d'attente est vide"

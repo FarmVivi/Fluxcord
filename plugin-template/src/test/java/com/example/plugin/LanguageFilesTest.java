@@ -90,4 +90,49 @@ class LanguageFilesTest {
         }
         return found;
     }
+
+    @Test
+    void everyKeyIsAStringAndNotSomethingYamlResolvedForUs() {
+        // off/on/yes/no/true/false and bare numbers are not strings in YAML 1.1, which snakeyaml
+        // implements: such a key is flattened through String.valueOf and stops matching what the code
+        // asks for. It cost music-plugin a /loop choice labelled with a raw key.
+        for (String locale : List.of("en-US", "fr-FR")) {
+            assertNonStringKeys(locale, "", loadRaw(locale));
+        }
+    }
+
+    private void assertNonStringKeys(String locale, String prefix, Map<?, ?> node) {
+        node.forEach((key, value) -> {
+            assertInstanceOf(String.class, key,
+                    locale + ": the key '" + prefix + key + "' is a " + key.getClass().getSimpleName()
+                            + ", not a string - quote it in the YAML");
+            if (value instanceof Map<?, ?> child) {
+                assertNonStringKeys(locale, prefix + key + ".", child);
+            }
+        });
+    }
+
+    /** The raw YAML tree, to inspect the key objects themselves rather than their string form. */
+    private Map<String, Object> loadRaw(String locale) {
+        try (InputStream in = getClass().getResourceAsStream("/lang/" + locale + ".yml")) {
+            return new Yaml().load(in);
+        } catch (java.io.IOException e) {
+            throw new AssertionError("cannot read " + locale, e);
+        }
+    }
+
+
+    @Test
+    void aFormattedStringNeverCarriesALoneApostrophe() {
+        // MessageFormat swallows a single quote and the placeholders after it, so a value taking
+        // arguments must double its apostrophes.
+        for (String locale : List.of("en-US", "fr-FR")) {
+            load(locale).forEach((key, value) -> {
+                if (!placeholders(value).isEmpty()) {
+                    assertFalse(value.replace("''", "").contains("'"),
+                            locale + ": '" + key + "' takes arguments, so its apostrophes must be doubled");
+                }
+            });
+        }
+    }
 }

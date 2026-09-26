@@ -9,7 +9,7 @@ lifecycle:
 messages:
   example_message: "Bonjour depuis le Plugin Template !"
   welcome_user: "Bienvenue, {0} !"
-  mention_response: "Bonjour {0} ! Je suis le Plugin Template. Tapez `/template help` pour plus d'informations."
+  mention_response: "Bonjour {0} ! Je suis le Plugin Template. Tapez `/template help` pour plus d''informations."
   feature_disabled: "Cette fonctionnalité est actuellement désactivée"
   processing: "Traitement de votre demande..."
   completed: "Opération terminée avec succès"
@@ -26,7 +26,7 @@ commands:
   # Réponses des commandes
   help_response: "Plugin Template v{0} - Commandes disponibles : help, info, example"
   info_response: "Plugin Template v{0} par {1} - Temps de fonctionnement : {2}"
-  example_response: "Ceci est une réponse de commande d'exemple ! Configuration chargée : {0}"
+  example_response: "Ceci est une réponse de commande d''exemple ! Configuration chargée : {0}"
 
 # Messages d'erreur
 errors:
@@ -42,14 +42,14 @@ errors:
 success:
   config_saved: "Configuration sauvegardée avec succès"
   config_reloaded: "Configuration rechargée avec succès"
-  setting_updated: "Paramètre '{0}' mis à jour vers '{1}'"
+  setting_updated: "Paramètre ''{0}'' mis à jour vers ''{1}''"
   operation_completed: "Opération terminée avec succès"
 
 # Messages liés aux permissions
 permissions:
-  missing_permission: "Vous avez besoin de la permission '{0}' pour utiliser cette commande"
-  permission_granted: "Permission '{0}' accordée à l'utilisateur {1}"
-  permission_revoked: "Permission '{0}' révoquée de l'utilisateur {1}"
+  missing_permission: "Vous avez besoin de la permission ''{0}'' pour utiliser cette commande"
+  permission_granted: "Permission ''{0}'' accordée à l''utilisateur {1}"
+  permission_revoked: "Permission ''{0}'' révoquée de l''utilisateur {1}"
 
 # Messages de stockage et de données
 storage:
@@ -59,6 +59,6 @@ storage:
 
 # Messages d'état des fonctionnalités
 features:
-  enabled: "La fonctionnalité '{0}' est activée"
-  disabled: "La fonctionnalité '{0}' est désactivée"
-  toggled: "Fonctionnalité '{0}' basculée {1}"
+  enabled: "La fonctionnalité ''{0}'' est activée"
+  disabled: "La fonctionnalité ''{0}'' est désactivée"
+  toggled: "Fonctionnalité ''{0}'' basculée {1}"

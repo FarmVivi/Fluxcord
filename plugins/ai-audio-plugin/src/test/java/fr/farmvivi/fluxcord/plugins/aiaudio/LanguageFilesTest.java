@@ -112,7 +112,7 @@ class LanguageFilesTest {
         for (String locale : List.of("en-US", "fr-FR")) {
             load(locale).forEach((key, value) -> {
                 if (FORMATTED_KEYS.contains(key)) {
-                    assertEquals(0, countSingleQuotes(value),
+                    assertFalse(value.replace("''", "").contains("'"),
                             locale + ": '" + key + "' is formatted, so its apostrophes must be doubled");
                 } else {
                     assertFalse(value.contains("''"),
@@ -132,11 +132,6 @@ class LanguageFilesTest {
         });
     }
 
-    /** Apostrophes that are not part of a doubled pair. */
-    private long countSingleQuotes(String value) {
-        return value.replace("''", "").chars().filter(c -> c == '\'').count();
-    }
-
     private Set<String> placeholders(String value) {
         Set<String> found = new TreeSet<>();
         java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\{\\d+}").matcher(value);
@@ -144,5 +139,35 @@ class LanguageFilesTest {
             found.add(matcher.group());
         }
         return found;
+    }
+
+    @Test
+    void everyKeyIsAStringAndNotSomethingYamlResolvedForUs() {
+        // off/on/yes/no/true/false and bare numbers are not strings in YAML 1.1, which snakeyaml
+        // implements: such a key is flattened through String.valueOf and stops matching what the code
+        // asks for. It cost music-plugin a /loop choice labelled with a raw key.
+        for (String locale : List.of("en-US", "fr-FR")) {
+            assertNonStringKeys(locale, "", loadRaw(locale));
+        }
+    }
+
+    private void assertNonStringKeys(String locale, String prefix, Map<?, ?> node) {
+        node.forEach((key, value) -> {
+            assertInstanceOf(String.class, key,
+                    locale + ": the key '" + prefix + key + "' is a " + key.getClass().getSimpleName()
+                            + ", not a string - quote it in the YAML");
+            if (value instanceof Map<?, ?> child) {
+                assertNonStringKeys(locale, prefix + key + ".", child);
+            }
+        });
+    }
+
+    /** The raw YAML tree, to inspect the key objects themselves rather than their string form. */
+    private Map<String, Object> loadRaw(String locale) {
+        try (InputStream in = getClass().getResourceAsStream("/lang/" + locale + ".yml")) {
+            return new Yaml().load(in);
+        } catch (java.io.IOException e) {
+            throw new AssertionError("cannot read " + locale, e);
+        }
     }
 }

@@ -9,7 +9,7 @@ lifecycle:
 messages:
   example_message: "Hello from Template Plugin!"
   welcome_user: "Welcome, {0}!"
-  mention_response: "Hello {0}! I'm the Template Plugin. Type `/template help` for more information."
+  mention_response: "Hello {0}! I''m the Template Plugin. Type `/template help` for more information."
   feature_disabled: "This feature is currently disabled"
   processing: "Processing your request..."
   completed: "Operation completed successfully"
@@ -42,14 +42,14 @@ errors:
 success:
   config_saved: "Configuration saved successfully"
   config_reloaded: "Configuration reloaded successfully"
-  setting_updated: "Setting '{0}' updated to '{1}'"
+  setting_updated: "Setting ''{0}'' updated to ''{1}''"
   operation_completed: "Operation completed successfully"
 
 # Permission-related messages
 permissions:
-  missing_permission: "You need the '{0}' permission to use this command"
-  permission_granted: "Permission '{0}' granted to user {1}"
-  permission_revoked: "Permission '{0}' revoked from user {1}"
+  missing_permission: "You need the ''{0}'' permission to use this command"
+  permission_granted: "Permission ''{0}'' granted to user {1}"
+  permission_revoked: "Permission ''{0}'' revoked from user {1}"
 
 # Storage and data messages
 storage:
@@ -59,6 +59,6 @@ storage:
 
 # Feature status messages
 features:
-  enabled: "Feature '{0}' is enabled"
-  disabled: "Feature '{0}' is disabled"
-  toggled: "Feature '{0}' toggled {1}"
+  enabled: "Feature ''{0}'' is enabled"
+  disabled: "Feature ''{0}'' is disabled"
+  toggled: "Feature ''{0}'' toggled {1}"

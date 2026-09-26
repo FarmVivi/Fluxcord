@@ -63,10 +63,7 @@ public class PluginLanguageAdapter {
      */
     public String getString(String key) {
         String fullKey = namespace + ":" + key;
-        if (logger.isDebugEnabled()) {
-            logger.debug("[{}] getString key='{}' -> '{}'", pluginName, key, fullKey);
-        }
-        return languageManager.getString(fullKey);
+        return logResult(key, null, languageManager.getString(fullKey), fullKey);
     }
 
     /**
@@ -79,10 +76,7 @@ public class PluginLanguageAdapter {
      */
     public String getString(String key, Object... args) {
         String fullKey = namespace + ":" + key;
-        if (logger.isDebugEnabled()) {
-            logger.debug("[{}] getString key='{}' with {} arg(s) -> '{}'", pluginName, key, args == null ? 0 : args.length, fullKey);
-        }
-        return languageManager.getString(fullKey, args);
+        return logResult(key, null, languageManager.getString(fullKey, args), fullKey);
     }
 
     /**
@@ -95,10 +89,7 @@ public class PluginLanguageAdapter {
      */
     public String getString(Locale locale, String key) {
         String fullKey = namespace + ":" + key;
-        if (logger.isDebugEnabled()) {
-            logger.debug("[{}] getString locale={}, key='{}' -> '{}'", pluginName, locale.toLanguageTag(), key, fullKey);
-        }
-        return languageManager.getString(locale, fullKey);
+        return logResult(key, locale, languageManager.getString(locale, fullKey), fullKey);
     }
 
     /**
@@ -112,9 +103,34 @@ public class PluginLanguageAdapter {
      */
     public String getString(Locale locale, String key, Object... args) {
         String fullKey = namespace + ":" + key;
-        if (logger.isDebugEnabled()) {
-            logger.debug("[{}] getString locale={}, key='{}' with {} arg(s) -> '{}'", pluginName, locale.toLanguageTag(), key, args == null ? 0 : args.length, fullKey);
+        return logResult(key, locale, languageManager.getString(locale, fullKey, args), fullKey);
+    }
+
+    /**
+     * Logs what a lookup produced, and warns when it produced nothing.
+     *
+     * <p>The manager signals a miss by returning the key it was given, which is otherwise invisible: the
+     * user simply sees {@code myplugin:commands.foo.description} in Discord. Reporting it here is the only
+     * place that knows both the key asked for and the answer.
+     *
+     * <p>These logs used to print the namespaced key as if it were the result, which reads like a failed
+     * lookup even when the lookup worked — misleading enough to have sent a reader hunting a bug that was
+     * not there.
+     *
+     * @param key      the key as the plugin asked for it
+     * @param locale   the locale asked for, or null for the default one
+     * @param resolved what the language manager answered
+     * @param fullKey  the namespaced key, which is also what a miss returns
+     * @return {@code resolved}, unchanged
+     */
+    private String logResult(String key, Locale locale, String resolved, String fullKey) {
+        if (fullKey.equals(resolved)) {
+            logger.warn("[{}] no translation for '{}'{}; the key itself will be shown to the user",
+                    pluginName, key, locale == null ? "" : " in " + locale.toLanguageTag());
+        } else if (logger.isDebugEnabled()) {
+            logger.debug("[{}] '{}'{} = \"{}\"", pluginName, key,
+                    locale == null ? "" : " (" + locale.toLanguageTag() + ")", resolved);
         }
-        return languageManager.getString(locale, fullKey, args);
+        return resolved;
     }
 }

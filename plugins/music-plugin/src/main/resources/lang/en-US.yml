@@ -28,7 +28,7 @@ music:
       option:
         mode: "Loop mode"
       mode:
-        off: "Off"
+        "off": "Off"
         track: "Track"
         queue: "Queue"
     shuffle:
@@ -154,6 +154,7 @@ music:
   
   # Error messages
   error:
+    guild_only: "This command only works in a server"
     not_in_voice: "You must be in a voice channel to use this command"
     nothing_playing: "Nothing is currently playing"
     queue_empty: "The queue is empty"

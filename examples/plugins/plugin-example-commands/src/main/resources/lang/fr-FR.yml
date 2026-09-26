@@ -24,7 +24,7 @@ admin:
 
 # Messages généraux
 general:
-  cooldown: "⏳ Veuillez attendre {0} secondes avant d'utiliser cette commande à nouveau."
+  cooldown: "⏳ Veuillez attendre {0} secondes avant d''utiliser cette commande à nouveau."
   error: "❌ Une erreur s'est produite lors de l'exécution de la commande."
   disabled: "🚫 Cette commande est actuellement désactivée."
   loading: "⌛ Traitement de votre commande..."
@@ -43,7 +43,7 @@ errors:
   not_found: "❌ Commande introuvable."
   permission_denied: "❌ Vous n'avez pas la permission d'utiliser cette commande."
   invalid_arguments: "❌ Arguments invalides fournis."
-  execution_failed: "❌ Échec de l'exécution de la commande : {0}"
+  execution_failed: "❌ Échec de l''exécution de la commande : {0}"
   cooldown_active: "⏳ Commande en cooldown. Réessayez dans {0} secondes."
 
 # Messages de statut

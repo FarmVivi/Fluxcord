@@ -74,7 +74,8 @@ Tests are JUnit 5 + Mockito, and live almost entirely in `fluxcord-core/src/test
 | `fluxcord-core` | The engine: `fr.farmvivi.fluxcord.core.Fluxcord` main class, all `Simple*Impl` implementations, shaded fat jar. |
 | `plugin-template` | Copy-me starter for new plugins (`com.example.plugin`). |
 | `examples/plugins/*` | Reference plugins (audio, commands). |
-| `plugins/music-plugin`, `plugins/ai-audio-plugin` | First-party plugins built in this reactor. |
+| `plugins/music-plugin` | First-party music plugin (lavaplayer, shaded and relocated). |
+| `plugins/ai-audio-plugin` | First-party voice AI plugin: `/speak`, `/transcribe`, conversation memory. Talks to speech and transcription services over the **OpenAI HTTP API**, so OpenAI, a self-hosted server or an in-cluster service differ only by a `base_url` — see its README before changing that. |
 
 Versions of all dependencies are pinned in the root `pom.xml` `<dependencyManagement>`; child poms declare artifacts without versions. Root `<version>` (`3.0.0-SNAPSHOT`) is bumped by the `bump-*-version` GitHub workflows via `versions:set`, so don't hand-edit versions across modules.
 
@@ -121,6 +122,7 @@ JDA voice requires a DAVE (E2EE) implementation since 2026-03-01. `JDADiscordAPI
 ## Conventions worth knowing
 
 - Log/comment language is mixed French/English; user-facing strings go through `lang/*.yml` (i18n), not literals.
+- Every module shipping `lang/*.yml` has a `LanguageFilesTest` guarding three traps that each cost a real bug: a key YAML 1.1 resolves as a non-string (an unquoted `off` becomes `false`), a key present in one locale only, and a lone apostrophe in a value taking `{0}` arguments (MessageFormat then eats the placeholder). Copy that test into any new module. `PluginLanguageAdapter` also logs a `WARN` for every lookup that misses, so a smoke log grepped for `no translation for` is the quickest i18n audit.
 - `Fluxcord.PRODUCTION` is derived from whether the version ends in `-SNAPSHOT`.
 - Dependabot opens many bump PRs; the memory notes about reviewing all intermediate changelogs apply here.
 - `*.jar` under `plugins/` and `fluxcord-core/run/` are git-ignored — never commit built plugins or a local config with a token.
