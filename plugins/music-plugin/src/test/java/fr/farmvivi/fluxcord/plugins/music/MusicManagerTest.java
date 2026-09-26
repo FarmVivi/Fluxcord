@@ -363,8 +363,10 @@ class MusicManagerTest {
     private AudioLoadResultHandler handlerFor(CommandContext ctx, String query, boolean playNow) {
         manager.loadTrack(ctx, query, playNow);
 
+        // Matched on the query, so each call is verified on its own and no reset is needed - resetting
+        // the spy would drop the stubs and let the real loader run.
         ArgumentCaptor<AudioLoadResultHandler> captor = ArgumentCaptor.forClass(AudioLoadResultHandler.class);
-        verify(spiedPlayerManager).loadItemOrdered(any(), eq(query), captor.capture());
+        verify(spiedPlayerManager, atLeastOnce()).loadItemOrdered(any(), eq(query), captor.capture());
         return captor.getValue();
     }
 
@@ -399,7 +401,6 @@ class MusicManagerTest {
         MusicPlayer player = manager.getPlayer(guild);
 
         handlerFor(ctx, "ytsearch:one", false).trackLoaded(testTrack("One"));
-        reset(spiedPlayerManager);
         handlerFor(ctx, "ytsearch:two", false).trackLoaded(testTrack("Two"));
 
         assertEquals(1, player.getTrackScheduler().getQueueSize());
@@ -411,7 +412,6 @@ class MusicManagerTest {
         MusicPlayer player = manager.getPlayer(guild);
         AudioTrack urgent = testTrack("Urgent");
         handlerFor(ctx, "ytsearch:queued", false).trackLoaded(testTrack("Queued"));
-        reset(spiedPlayerManager);
 
         handlerFor(ctx, "ytsearch:urgent", true).trackLoaded(urgent);
 
