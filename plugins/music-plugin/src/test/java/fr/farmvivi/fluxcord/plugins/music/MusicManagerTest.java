@@ -2,6 +2,12 @@ package fr.farmvivi.fluxcord.plugins.music;
 
 import fr.farmvivi.fluxcord.api.audio.AudioService;
 import fr.farmvivi.fluxcord.api.command.CommandContext;
+import org.mockito.ArgumentCaptor;
+import net.dv8tion.jda.api.EmbedBuilder;
+import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
+import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
+import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
+import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
 import fr.farmvivi.fluxcord.api.language.PluginLanguageAdapter;
 import fr.farmvivi.fluxcord.api.plugin.PluginContext;
 import fr.farmvivi.fluxcord.api.storage.PluginDataStorageAdapter;
@@ -52,6 +58,7 @@ class MusicManagerTest {
     private final com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager playerManager =
             TestAudioSource.newPlayerManager();
 
+    private com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager spiedPlayerManager;
     private ScheduledExecutorService scheduler;
     private MusicPlugin plugin;
     private MusicManager manager;
@@ -110,6 +117,7 @@ class MusicManagerTest {
      */
     private fr.farmvivi.fluxcord.plugins.music.audio.AudioPlayerManager sourceRegistry() {
         com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager spied = spy(playerManager);
+        spiedPlayerManager = spied;
         doAnswer(invocation -> ScriptedAudioPlayer.create()).when(spied).createPlayer();
 
         fr.farmvivi.fluxcord.plugins.music.audio.AudioPlayerManager sources =
@@ -333,5 +341,174 @@ class MusicManagerTest {
 
         assertFalse(storage.scope(StorageKey.guildScope(GUILD_ID)).isEmpty(),
                 "a graceful shutdown must leave something to resume");
+    }
+
+    // Loading a query: what the user is told, and what reaches the player
+
+    /** A command context in this guild, already connected, whose replies the test can observe. */
+    private CommandContext loadContext() {
+        // A real loadItemOrdered goes looking for the query, fails, and calls the handler back
+        // asynchronously - on top of whatever outcome the test drives explicitly. Only these tests
+        // neutralise it: the /playlist load test relies on the real one.
+        doAnswer(invocation -> null).when(spiedPlayerManager).loadItemOrdered(any(), anyString(), any());
+        CommandContext ctx = mock(CommandContext.class);
+        MessageChannel channel = mock(MessageChannel.class);
+        when(ctx.getGuild()).thenReturn(Optional.of(guild));
+        when(ctx.getChannel()).thenReturn(channel);
+        when(ctx.getLocale()).thenReturn(Locale.FRANCE);
+        return ctx;
+    }
+
+    /** Runs a load and returns the handler the manager gave LavaPlayer, so its outcomes can be driven. */
+    private AudioLoadResultHandler handlerFor(CommandContext ctx, String query, boolean playNow) {
+        manager.loadTrack(ctx, query, playNow);
+
+        ArgumentCaptor<AudioLoadResultHandler> captor = ArgumentCaptor.forClass(AudioLoadResultHandler.class);
+        verify(spiedPlayerManager).loadItemOrdered(any(), eq(query), captor.capture());
+        return captor.getValue();
+    }
+
+    private AudioTrack testTrack(String title) {
+        return TestAudioSource.trackOf(playerManager, title, 120_000);
+    }
+
+    @Test
+    void loadingDefersTheReplyBecauseAQueryCanTakeSeconds() {
+        CommandContext ctx = loadContext();
+
+        manager.loadTrack(ctx, "ytsearch:a song", false);
+
+        verify(ctx).deferReply();
+    }
+
+    @Test
+    void aLoadedTrackIsAnnouncedAndStartsWhenNothingIsPlaying() {
+        CommandContext ctx = loadContext();
+        MusicPlayer player = manager.getPlayer(guild);
+
+        handlerFor(ctx, "ytsearch:a song", false).trackLoaded(testTrack("A Song"));
+
+        verify(ctx).replyEmbed(any(EmbedBuilder.class));
+        assertNotNull(player.getPlayingTrack());
+        assertEquals(0, player.getTrackScheduler().getQueueSize());
+    }
+
+    @Test
+    void aSecondTrackWaitsItsTurn() {
+        CommandContext ctx = loadContext();
+        MusicPlayer player = manager.getPlayer(guild);
+
+        handlerFor(ctx, "ytsearch:one", false).trackLoaded(testTrack("One"));
+        reset(spiedPlayerManager);
+        handlerFor(ctx, "ytsearch:two", false).trackLoaded(testTrack("Two"));
+
+        assertEquals(1, player.getTrackScheduler().getQueueSize());
+    }
+
+    @Test
+    void aTrackAskedForNowJumpsTheQueue() {
+        CommandContext ctx = loadContext();
+        MusicPlayer player = manager.getPlayer(guild);
+        AudioTrack urgent = testTrack("Urgent");
+        handlerFor(ctx, "ytsearch:queued", false).trackLoaded(testTrack("Queued"));
+        reset(spiedPlayerManager);
+
+        handlerFor(ctx, "ytsearch:urgent", true).trackLoaded(urgent);
+
+        assertEquals(urgent, player.getPlayingTrack(), "played at once rather than appended");
+    }
+
+    @Test
+    void aSearchResultPlaysItsFirstHitRatherThanTheWholeList() {
+        // A search answers with a playlist; queueing all of it would add fifty tracks for one request.
+        CommandContext ctx = loadContext();
+        AudioTrack first = testTrack("First");
+        AudioPlaylist search = mock(AudioPlaylist.class);
+        when(search.isSearchResult()).thenReturn(true);
+        when(search.getTracks()).thenReturn(List.of(first, testTrack("Second")));
+        MusicPlayer player = manager.getPlayer(guild);
+
+        handlerFor(ctx, "ytsearch:a song", false).playlistLoaded(search);
+
+        assertEquals(first, player.getPlayingTrack());
+        assertEquals(0, player.getTrackScheduler().getQueueSize(), "the other hits are dropped");
+    }
+
+    @Test
+    void aRealPlaylistIsQueuedWholeAndAnnouncedOnce() {
+        CommandContext ctx = loadContext();
+        AudioPlaylist album = mock(AudioPlaylist.class);
+        when(album.isSearchResult()).thenReturn(false);
+        when(album.getName()).thenReturn("An Album");
+        when(album.getTracks()).thenReturn(List.of(testTrack("One"), testTrack("Two"), testTrack("Three")));
+        MusicPlayer player = manager.getPlayer(guild);
+
+        handlerFor(ctx, "https://example.com/album", false).playlistLoaded(album);
+
+        verify(ctx, times(1)).replyEmbed(any(EmbedBuilder.class));
+        assertEquals(2, player.getTrackScheduler().getQueueSize(), "one playing, two waiting");
+    }
+
+    @Test
+    void onlyTheFirstTrackOfAPlaylistJumpsTheQueue() {
+        // The loop used to identify the first track with indexOf, which is quadratic and would have
+        // jumped the queue again for a playlist holding the same track twice.
+        CommandContext ctx = loadContext();
+        AudioTrack repeated = testTrack("Repeated");
+        AudioPlaylist album = mock(AudioPlaylist.class);
+        when(album.isSearchResult()).thenReturn(false);
+        when(album.getName()).thenReturn("Album");
+        when(album.getTracks()).thenReturn(List.of(repeated, testTrack("Other"), repeated));
+        MusicPlayer player = manager.getPlayer(guild);
+
+        handlerFor(ctx, "https://example.com/album", true).playlistLoaded(album);
+
+        assertEquals(repeated, player.getPlayingTrack());
+        assertEquals(2, player.getTrackScheduler().getQueueSize(), "the repeat waits like any other track");
+    }
+
+    @Test
+    void anEmptySearchResultDoesNotFail() {
+        CommandContext ctx = loadContext();
+        AudioPlaylist empty = mock(AudioPlaylist.class);
+        when(empty.isSearchResult()).thenReturn(true);
+        when(empty.getName()).thenReturn("Nothing");
+        when(empty.getTracks()).thenReturn(List.of());
+
+        assertDoesNotThrow(() -> handlerFor(ctx, "ytsearch:nothing", false).playlistLoaded(empty));
+    }
+
+    @Test
+    void nothingFoundTellsTheUserInsteadOfStayingSilent() {
+        CommandContext ctx = loadContext();
+
+        handlerFor(ctx, "ytsearch:zzzz", false).noMatches();
+
+        verify(ctx).replyError("music.error.no_matches");
+    }
+
+    @Test
+    void aFailedLoadReportsTheProvidersReason() {
+        CommandContext ctx = loadContext();
+
+        handlerFor(ctx, "https://example.com/gone", false).loadFailed(new FriendlyException(
+                "video unavailable", FriendlyException.Severity.COMMON, null));
+
+        verify(ctx).replyError("music.error.load_failed");
+    }
+
+    @Test
+    void loadingOutsideAGuildNeverReachesTheProvider() {
+        CommandContext ctx = mock(CommandContext.class);
+        when(ctx.getGuild()).thenReturn(Optional.empty());
+        // any(Locale.class) does not match null in Mockito, so an unstubbed locale would make the
+        // language adapter return null and this assertion unreadable.
+        when(ctx.getLocale()).thenReturn(Locale.FRANCE);
+
+        manager.loadTrack(ctx, "ytsearch:a song", false);
+
+        verify(ctx).replyError("music.error.guild_only");
+        verify(ctx, never()).deferReply();
+        verify(spiedPlayerManager, never()).loadItemOrdered(any(), anyString(), any());
     }
 }

@@ -110,6 +110,55 @@ class MusicPluginTest {
         return names;
     }
 
+    /** The permission each command declares, by replaying its registration against a recording builder. */
+    private Map<String, String> declaredCommandPermissions() {
+        ArgumentCaptor<Consumer<CommandBuilder>> captor = ArgumentCaptor.forClass(Consumer.class);
+        verify(commands, atLeastOnce()).registerCommand(captor.capture());
+
+        Map<String, String> byName = new java.util.LinkedHashMap<>();
+        for (Consumer<CommandBuilder> registration : captor.getAllValues()) {
+            CommandBuilder builder = mock(CommandBuilder.class, invocation ->
+                    CommandBuilder.class.isAssignableFrom(invocation.getMethod().getReturnType())
+                            ? invocation.getMock() : null);
+            registration.accept(builder);
+
+            ArgumentCaptor<String> name = ArgumentCaptor.forClass(String.class);
+            verify(builder).name(name.capture());
+            String permission = mockingDetails(builder).getInvocations().stream()
+                    .filter(i -> i.getMethod().getName().equals("permission"))
+                    .map(i -> (String) i.getArgument(0))
+                    .findFirst()
+                    .orElse(null);
+            byName.put(name.getValue(), permission);
+        }
+        return byName;
+    }
+
+    @Test
+    void everyCommandDeclaresThePermissionItsButtonChecks() {
+        // A permission protects an action, not the way it was invoked. Until 2026-09-26 the buttons
+        // checked these nodes and the commands declared nothing, so music-plugin.volume - an OP
+        // permission the volume button honoured - was bypassable by typing /volume instead of clicking.
+        plugin.onEnable();
+
+        assertEquals(Map.ofEntries(
+                Map.entry("play", "music-plugin.play"),
+                Map.entry("pause", "music-plugin.play"),
+                Map.entry("stop", "music-plugin.play"),
+                Map.entry("seek", "music-plugin.play"),
+                Map.entry("skip", "music-plugin.skip"),
+                Map.entry("queue", "music-plugin.queue"),
+                Map.entry("nowplaying", "music-plugin.queue"),
+                Map.entry("loop", "music-plugin.queue"),
+                Map.entry("shuffle", "music-plugin.queue"),
+                Map.entry("remove", "music-plugin.queue"),
+                Map.entry("volume", "music-plugin.volume"),
+                Map.entry("clear", "music-plugin.admin"),
+                Map.entry("playlist", "music-plugin.playlist")),
+                declaredCommandPermissions(),
+                "this table is also the one in the plugin README");
+    }
+
     @Test
     void everyPermissionNodeIsNamespacedByThePluginId() {
         plugin.onEnable();

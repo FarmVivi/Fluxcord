@@ -329,11 +329,14 @@ public class MusicManager {
 
                     ctx.replyEmbed(embed);
 
-                    for (AudioTrack track : tracks) {
-                        if (playNow && tracks.indexOf(track) == 0) {
-                            player.playTrackNow(track);
+                    // Indexed, not indexOf inside the loop: that was quadratic, and it identified the
+                    // "first" track by equality, so a playlist holding the same track twice would have
+                    // jumped the queue again halfway through.
+                    for (int i = 0; i < tracks.size(); i++) {
+                        if (playNow && i == 0) {
+                            player.playTrackNow(tracks.get(i));
                         } else {
-                            player.playTrack(track);
+                            player.playTrack(tracks.get(i));
                         }
                     }
                 }

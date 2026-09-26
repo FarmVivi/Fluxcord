@@ -44,19 +44,19 @@ persistent player controls.
 
 | Command              | Description                     | Permission       |
 |----------------------|---------------------------------|------------------|
-| `/play <query>`      | Play music from search or URL   | `music.play`     |
-| `/pause`             | Pause/resume playback           | `music.play`     |
-| `/skip`              | Skip current track              | `music.skip`     |
-| `/stop`              | Stop playback and clear queue   | `music.play`     |
-| `/queue [page]`      | Show current queue              | `music.queue`    |
-| `/nowplaying`        | Show current track info         | `music.queue`    |
-| `/volume [level]`    | View or set volume (0-100)      | `music.volume`   |
-| `/loop [mode]`       | Set loop mode (off/track/queue) | `music.queue`    |
-| `/shuffle`           | Toggle shuffle mode             | `music.queue`    |
-| `/clear`             | Clear the queue                 | `music.admin`    |
-| `/remove <position>` | Remove track from queue         | `music.queue`    |
-| `/seek <time>`       | Seek to position in track       | `music.play`     |
-| `/playlist <action>` | Manage playlists                | `music.playlist` |
+| `/play <query>`      | Play music from search or URL   | `music-plugin.play`     |
+| `/pause`             | Pause/resume playback           | `music-plugin.play`     |
+| `/skip`              | Skip current track              | `music-plugin.skip`     |
+| `/stop`              | Stop playback and clear queue   | `music-plugin.play`     |
+| `/queue [page]`      | Show current queue              | `music-plugin.queue`    |
+| `/nowplaying`        | Show current track info         | `music-plugin.queue`    |
+| `/volume [level]`    | View or set volume (0-100)      | `music-plugin.volume`   |
+| `/loop [mode]`       | Set loop mode (off/track/queue) | `music-plugin.queue`    |
+| `/shuffle`           | Toggle shuffle mode             | `music-plugin.queue`    |
+| `/clear`             | Clear the queue                 | `music-plugin.admin`    |
+| `/remove <position>` | Remove track from queue         | `music-plugin.queue`    |
+| `/seek <time>`       | Seek to position in track       | `music-plugin.play`     |
+| `/playlist <action>` | Manage playlists                | `music-plugin.playlist` |
 
 ## 🔧 Installation & Configuration
 

@@ -109,7 +109,7 @@ public class MusicPlugin extends AbstractPlugin {
     private void registerPermissions() {
         registerPermissionNode("play", "Allows playing tracks", PermissionDefault.TRUE);
         registerPermissionNode("skip", "Allows skipping current track", PermissionDefault.TRUE);
-        registerPermissionNode("queue", "Allows viewing the queue", PermissionDefault.TRUE);
+        registerPermissionNode("queue", "Allows viewing and reordering the queue", PermissionDefault.TRUE);
         registerPermissionNode("volume", "Allows changing playback volume", PermissionDefault.OP);
         registerPermissionNode("playlist", "Allows managing playlists", PermissionDefault.TRUE);
         registerPermissionNode("admin", "Allows moderator music actions", PermissionDefault.OP);
@@ -147,7 +147,9 @@ public class MusicPlugin extends AbstractPlugin {
 
     private void registerCommands() {
         musicCommand("play", builder -> {
-            builder.aliases("p")
+            builder
+                    .permission(permissionKey("play"))
+                    .aliases("p")
                     .stringOption("query", text("music.command.play.option.query"), true, this::suggestRecentTracks)
                     .booleanOption("now", text("music.command.play.option.now"), false)
                     .executor((ctx, cmd) -> {
@@ -159,14 +161,18 @@ public class MusicPlugin extends AbstractPlugin {
         });
 
         musicCommand("pause", builder -> {
-            builder.executor((ctx, cmd) -> {
+            builder
+                    .permission(permissionKey("play"))
+                    .executor((ctx, cmd) -> {
                         new PauseCommand(this).execute(ctx);
                         return CommandResult.success();
                     });
         });
 
         musicCommand("skip", builder -> {
-            builder.aliases("s", "next")
+            builder
+                    .permission(permissionKey("skip"))
+                    .aliases("s", "next")
                     .executor((ctx, cmd) -> {
                         new SkipCommand(this).execute(ctx);
                         return CommandResult.success();
@@ -174,14 +180,18 @@ public class MusicPlugin extends AbstractPlugin {
         });
 
         musicCommand("stop", builder -> {
-            builder.executor((ctx, cmd) -> {
+            builder
+                    .permission(permissionKey("play"))
+                    .executor((ctx, cmd) -> {
                         new StopCommand(this).execute(ctx);
                         return CommandResult.success();
                     });
         });
 
         musicCommand("queue", builder -> {
-            builder.aliases("q")
+            builder
+                    .permission(permissionKey("queue"))
+                    .aliases("q")
                     .integerOption("page", text("music.command.queue.option.page"), false, 1, 100, this::suggestQueuePages)
                     .executor((ctx, cmd) -> {
                         int page = ctx.getOption("page", 1);
@@ -191,7 +201,9 @@ public class MusicPlugin extends AbstractPlugin {
         });
 
         musicCommand("nowplaying", builder -> {
-            builder.aliases("np", "current")
+            builder
+                    .permission(permissionKey("queue"))
+                    .aliases("np", "current")
                     .executor((ctx, cmd) -> {
                         new NowPlayingCommand(this).execute(ctx);
                         return CommandResult.success();
@@ -199,7 +211,9 @@ public class MusicPlugin extends AbstractPlugin {
         });
 
         musicCommand("volume", builder -> {
-            builder.aliases("vol")
+            builder
+                    .permission(permissionKey("volume"))
+                    .aliases("vol")
                     .integerOption("level", text("music.command.volume.option.level"), false, 0, 100, this::suggestVolumes)
                     .executor((ctx, cmd) -> {
                         Integer level = ctx.<Integer>getOption("level").orElse(null);
@@ -209,7 +223,9 @@ public class MusicPlugin extends AbstractPlugin {
         });
 
         musicCommand("loop", builder -> {
-            builder.stringOption(
+            builder
+                    .permission(permissionKey("queue"))
+                    .stringOption(
                             "mode",
                             text("music.command.loop.option.mode"),
                             false,
@@ -225,7 +241,9 @@ public class MusicPlugin extends AbstractPlugin {
         });
 
         musicCommand("shuffle", builder -> {
-            builder.executor((ctx, cmd) -> {
+            builder
+                    .permission(permissionKey("queue"))
+                    .executor((ctx, cmd) -> {
                         new ShuffleCommand(this).execute(ctx);
                         return CommandResult.success();
                     });
@@ -240,7 +258,9 @@ public class MusicPlugin extends AbstractPlugin {
         });
 
         musicCommand("remove", builder -> {
-            builder.integerOption("position", text("music.command.remove.option.position"), true, 1, 1000, this::suggestQueuePositions)
+            builder
+                    .permission(permissionKey("queue"))
+                    .integerOption("position", text("music.command.remove.option.position"), true, 1, 1000, this::suggestQueuePositions)
                     .executor((ctx, cmd) -> {
                         int position = ctx.getRequiredOption("position");
                         new RemoveCommand(this).execute(ctx, position);
@@ -249,7 +269,9 @@ public class MusicPlugin extends AbstractPlugin {
         });
 
         musicCommand("seek", builder -> {
-            builder.stringOption("time", text("music.command.seek.option.time"), true, this::suggestSeekPositions)
+            builder
+                    .permission(permissionKey("play"))
+                    .stringOption("time", text("music.command.seek.option.time"), true, this::suggestSeekPositions)
                     .executor((ctx, cmd) -> {
                         String time = ctx.getRequiredOption("time");
                         new SeekCommand(this).execute(ctx, time);

@@ -210,9 +210,17 @@ class ButtonHandlerTest {
     }
 
     @Test
-    void loopAndShuffleAreOpenToEveryoneInTheChannel() {
-        // Deliberate today: only playback-altering actions are gated. Recorded here so that a change of
-        // mind is a change of test rather than a surprise.
+    void loopAndShuffleNeedTheSamePermissionAsTheirCommands() {
+        // A permission gates an action, not the way it was invoked: /loop and the loop button must agree,
+        // otherwise a restriction is bypassable by using the other one.
+        press("loop");
+        press("loopqueue");
+        press("shuffle");
+
+        verify(event, times(3)).reply("music.error.no_permission");
+        verifyNoInteractions(player);
+
+        allow("queue");
         press("loop");
         press("loopqueue");
         press("shuffle");
@@ -220,7 +228,6 @@ class ButtonHandlerTest {
         verify(player).toggleLoop();
         verify(player).toggleLoopQueue();
         verify(player).toggleShuffle();
-        verify(event, never()).reply(anyString());
     }
 
     @Test

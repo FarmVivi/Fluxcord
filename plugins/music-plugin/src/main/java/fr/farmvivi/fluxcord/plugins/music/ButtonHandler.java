@@ -135,16 +135,28 @@ public class ButtonHandler {
                 break;
 
             case "loop":
+                if (!hasPermission(member, "music.queue")) {
+                    replyNoPermission(event);
+                    return;
+                }
                 event.deferEdit().queue();
                 player.toggleLoop();
                 break;
 
             case "loopqueue":
+                if (!hasPermission(member, "music.queue")) {
+                    replyNoPermission(event);
+                    return;
+                }
                 event.deferEdit().queue();
                 player.toggleLoopQueue();
                 break;
 
             case "shuffle":
+                if (!hasPermission(member, "music.queue")) {
+                    replyNoPermission(event);
+                    return;
+                }
                 event.deferEdit().queue();
                 player.toggleShuffle();
                 break;

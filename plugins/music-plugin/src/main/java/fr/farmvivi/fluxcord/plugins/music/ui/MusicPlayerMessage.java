@@ -4,6 +4,7 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import fr.farmvivi.fluxcord.api.language.PluginLanguageAdapter;
 import fr.farmvivi.fluxcord.api.storage.ScopedStorage;
 import fr.farmvivi.fluxcord.plugins.music.player.MusicPlayer;
+import fr.farmvivi.fluxcord.plugins.music.util.ProgressBar;
 import fr.farmvivi.fluxcord.plugins.music.utils.TimeParser;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.components.MessageTopLevelComponent;
@@ -261,24 +262,7 @@ public class MusicPlayerMessage {
      * Creates a progress bar for the current track.
      */
     private String createProgressBar(AudioTrack track) {
-        int barLength = 20;
-        long position = track.getPosition();
-        long duration = track.getDuration();
-
-        int progress = (int) ((position * barLength) / duration);
-        StringBuilder bar = new StringBuilder();
-
-        for (int i = 0; i < barLength; i++) {
-            if (i == progress) {
-                bar.append("🔘");
-            } else if (i < progress) {
-                bar.append("▬");
-            } else {
-                bar.append("▬");
-            }
-        }
-
-        return bar.toString();
+        return ProgressBar.of(track.getPosition(), track.getDuration());
     }
 
     /**
