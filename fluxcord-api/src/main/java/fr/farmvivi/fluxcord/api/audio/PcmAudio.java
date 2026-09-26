@@ -3,6 +3,8 @@ package fr.farmvivi.fluxcord.api.audio;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * A block of signed 16-bit little-endian PCM audio, with the format needed to interpret it.
@@ -249,5 +251,37 @@ public record PcmAudio(byte[] samples, int sampleRate, int channels) {
     /** @return true when there is no audio at all */
     public boolean isEmpty() {
         return samples.length == 0;
+    }
+
+    /**
+     * Value equality over the samples themselves.
+     *
+     * <p>A record holding an array compares it by identity, so two blocks carrying the same audio would
+     * be unequal — surprising for a value type, and wrong for anything that puts audio in a set or
+     * compares an expected block with a produced one.
+     */
+    @Override
+    public boolean equals(Object other) {
+        return other instanceof PcmAudio audio
+                && sampleRate == audio.sampleRate
+                && channels == audio.channels
+                && Arrays.equals(samples, audio.samples);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(sampleRate, channels, Arrays.hashCode(samples));
+    }
+
+    /**
+     * A summary, never the samples.
+     *
+     * <p>A record's generated {@code toString} would print the array's identity, which says nothing; a
+     * naive fix would print megabytes of audio into a log line.
+     */
+    @Override
+    public String toString() {
+        return "PcmAudio[" + sampleRate + " Hz, " + channels + " ch, " + duration()
+                + ", " + samples.length + " bytes]";
     }
 }

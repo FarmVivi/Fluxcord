@@ -38,7 +38,7 @@ class ConfigurationKeysTest {
      * literals are translation keys.
      */
     private static final Pattern CONFIG_READ = Pattern.compile(
-            "(?:getConfiguration\\(\\)|[A-Za-z_]*[Cc]onfig(?:uration)?)\\s*\\.\\s*"
+            "(\\w+)\\s*(?:\\(\\))?\\s*\\.\\s*"
                     + "get(?:String|Int|Boolean|Long|Double|StringList)\\s*\\(\\s*\"([^\"]+)\"");
 
     /** Read by the framework itself, not by any code path of this module. */
@@ -70,6 +70,18 @@ class ConfigurationKeysTest {
                 "these settings are shipped but never read: they look like settings and change nothing");
     }
 
+    /**
+     * Whether a receiver is a configuration rather than, say, the language manager, whose methods have the
+     * same names.
+     *
+     * <p>Decided here instead of inside the pattern: expressing "an identifier ending in config" needs a
+     * repetition that overlaps what follows it, and that backtracks badly on long non-matching lines.
+     */
+    private boolean isConfigurationReceiver(String receiver) {
+        return receiver.equals("getConfiguration")
+                || receiver.toLowerCase(java.util.Locale.ROOT).contains("config");
+    }
+
     /** Every key literal the module hands to a configuration getter. */
     private Set<String> keysReadInSources() {
         Path sources = Path.of("src/main/java");
@@ -79,7 +91,9 @@ class ConfigurationKeysTest {
             files.filter(path -> path.toString().endsWith(".java")).forEach(path -> {
                 Matcher matcher = CONFIG_READ.matcher(read(path));
                 while (matcher.find()) {
-                    keys.add(matcher.group(1));
+                    if (isConfigurationReceiver(matcher.group(1))) {
+                        keys.add(matcher.group(2));
+                    }
                 }
             });
         } catch (IOException e) {

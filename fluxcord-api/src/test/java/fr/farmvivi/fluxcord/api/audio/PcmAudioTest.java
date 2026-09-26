@@ -171,4 +171,41 @@ class PcmAudioTest {
         assertThrows(IllegalArgumentException.class, () -> audio.resample(0, 1));
         assertThrows(IllegalArgumentException.class, () -> audio.resample(48_000, 5));
     }
+
+    @Test
+    void twoBlocksCarryingTheSameAudioAreEqual() {
+        // A record holding an array compares it by identity, which makes a value type behave like a
+        // reference: two identical blocks would be unequal, and a set would hold both.
+        PcmAudio first = new PcmAudio(new byte[]{1, 2, 3, 4}, 48_000, 2);
+        PcmAudio same = new PcmAudio(new byte[]{1, 2, 3, 4}, 48_000, 2);
+
+        assertEquals(first, same);
+        assertEquals(first.hashCode(), same.hashCode());
+        // Set.of would throw on the duplicate, which is itself proof; a HashSet states it as a size.
+        assertEquals(1, new java.util.HashSet<>(java.util.List.of(first, same)).size());
+    }
+
+    @Test
+    void blocksDifferingInAnyWayAreNotEqual() {
+        PcmAudio reference = new PcmAudio(new byte[]{1, 2, 3, 4}, 48_000, 2);
+
+        assertNotEquals(reference, new PcmAudio(new byte[]{1, 2, 3, 5}, 48_000, 2));
+        assertNotEquals(reference, new PcmAudio(new byte[]{1, 2, 3, 4}, 24_000, 2));
+        assertNotEquals(reference, new PcmAudio(new byte[]{1, 2, 3, 4}, 48_000, 1));
+        assertNotEquals(reference, "not audio");
+        assertNotEquals(null, reference);
+    }
+
+    @Test
+    void printingAudioSummarisesItInsteadOfDumpingIt() {
+        // The generated toString would print the array's identity; printing its contents would put
+        // megabytes in a log line.
+        String printed = new PcmAudio(new byte[48_000 * 4], 48_000, 2).toString();
+
+        assertTrue(printed.contains("48000 Hz"), printed);
+        assertTrue(printed.contains("2 ch"), printed);
+        assertTrue(printed.contains("192000 bytes"), printed);
+        assertTrue(printed.length() < 100, "a summary, not the samples");
+    }
 }
+
