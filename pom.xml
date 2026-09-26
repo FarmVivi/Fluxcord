@@ -35,7 +35,7 @@
         <sonar.skip>true</sonar.skip>
 
         <!-- Dependency versions -->
-        <slf4j.version>2.0.19</slf4j.version>
+        <slf4j.version>2.0.20</slf4j.version>
         <logback.version>1.6.3</logback.version>
         <jda.version>6.6.0</jda.version>
         <!-- JDAVE: DAVE (Discord E2EE) protocol implementation required for JDA audio.
