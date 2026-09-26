@@ -37,7 +37,7 @@ jobs:
 
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v6.0.0
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: surefire-reports
           path: '**/target/surefire-reports/'
@@ -45,7 +45,7 @@ jobs:
 
       - name: Upload coverage reports (JaCoCo)
         if: success()
-        uses: actions/upload-artifact@v6.0.0
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: jacoco-reports
           path: '**/target/site/jacoco/'
