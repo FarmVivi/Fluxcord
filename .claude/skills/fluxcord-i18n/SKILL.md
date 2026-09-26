@@ -45,3 +45,5 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 ## Known issues / open questions
 - Missing-key signalling by string equality; consider `Optional<String> find(...)` in the api (API addition, backwards compatible).
+
+- 2026-09-26: the MessageFormat quoting rule bites in **both** directions, and it is worth a test rather than a habit. A value the code formats (`getString(key, args)`) must double its apostrophes or the placeholders after it are swallowed; a value the code never formats must **not**, or the user reads `n''a pas` literally. `ai-audio-plugin`'s `LanguageFilesTest` pins this: a `FORMATTED_KEYS` set, single quotes forbidden inside it, doubled quotes forbidden outside it, plus a check that every value containing a `{0}` is listed. Copy it into any module whose French strings take arguments.

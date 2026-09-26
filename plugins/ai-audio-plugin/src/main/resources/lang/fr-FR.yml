@@ -1,46 +1,43 @@
 commands:
-  transcribe: "Commencer la transcription audio du salon vocal"
-  speak: "Convertir le texte en parole et jouer dans le salon vocal"
-  analyze: "Analyser les motifs et caractéristiques audio"
-  voicecommands: "Activer/désactiver la reconnaissance de commandes vocales"
-  setvoice: "Définir la voix de synthèse vocale"
-  setlanguage: "Définir la langue de reconnaissance vocale"
-  confidence: "Afficher les niveaux de confiance de reconnaissance"
-  privacy: "Gérer vos paramètres de confidentialité"
+  speak:
+    description: "Dire quelque chose à voix haute dans ton salon vocal"
+    option:
+      text: "Ce que le bot doit dire"
+      voice: "Voix à utiliser à la place de celle configurée"
+  silence:
+    description: "Faire taire le bot et annuler ce qu'il lui restait à dire"
+  transcribe:
+    description: "Écrire ce qui est dit dans le salon vocal"
+    start: "Démarrer"
+    stop: "Arrêter"
+    option:
+      action: "Démarrer ou arrêter la transcription"
+  forget:
+    description: "Effacer ce que le bot retient des conversations"
+    me: "Seulement ce que j'ai dit"
+    channel: "Ce salon vocal"
+    server: "Tout le serveur"
+    option:
+      scope: "Ce qu'il faut effacer (ton propre historique par défaut)"
 
 messages:
-  plugin_enabled: "Plugin Audio IA activé !"
-  plugin_disabled: "Plugin Audio IA désactivé !"
-  transcription_started: "Transcription audio démarrée"
-  transcription_stopped: "Transcription audio arrêtée"
-  voice_commands_enabled: "Commandes vocales activées"
-  voice_commands_disabled: "Commandes vocales désactivées"
-  speaking: "Parole : {text}"
-  transcribed: "Transcrit : {text}"
-  confidence_level: "Confiance de reconnaissance : {confidence}%"
-  voice_changed: "Voix TTS changée vers : {voice}"
-  language_changed: "Langue de reconnaissance changée vers : {language}"
-  analysis_complete: "Analyse audio terminée"
+  speaking: "Je dis : {0}"
+  silenced: "J'arrête de parler."
+  already_silent: "Je ne disais rien."
+  transcription_started: "Transcription démarrée. Tout ce qui est dit en vocal arrive ici."
+  transcription_stopped: "Transcription arrêtée."
+  forgot_me: "J'ai oublié tout ce que tu as dit."
+  forgot_channel: "J''ai oublié la conversation de {0}."
+  forgot_server: "J''ai oublié tout ce qui a été dit sur {0}."
 
 errors:
-  no_voice_channel: "Vous devez être dans un salon vocal !"
-  no_permission: "Vous n'avez pas la permission d'utiliser cette commande"
-  api_key_missing: "Clé API IA non configurée"
-  recognition_failed: "Échec de la reconnaissance vocale : {error}"
-  synthesis_failed: "Échec de la synthèse vocale : {error}"
-  invalid_voice: "Voix invalide : {voice}"
-  invalid_language: "Langue invalide : {language}"
-  text_too_long: "Texte trop long (max {max} caractères)"
-  rate_limit_exceeded: "Limite de débit dépassée. Réessayez plus tard."
-
-privacy:
-  opted_out: "Vous avez refusé le traitement audio IA"
-  opted_in: "Vous avez accepté le traitement audio IA"
-  data_deleted: "Vos données audio ont été supprimées"
-
-voice_commands:
-  wake_word_detected: "Mot d'éveil détecté, écoute de la commande..."
-  command_recognized: "Commande reconnue : {command}"
-  command_executed: "Commande exécutée avec succès"
-  command_failed: "Échec de l'exécution de la commande : {error}"
-  listening_timeout: "Délai d'écoute dépassé, réessayez"
+  guild_only: "Cette commande ne fonctionne que sur un serveur."
+  no_voice_channel: "Rejoins d'abord un salon vocal."
+  not_connected: "Je ne suis dans aucun salon vocal."
+  nothing_to_say: "Il n'y a rien à dire."
+  text_too_long: "C''est trop long : {0} caractères au maximum."
+  api_key_missing: "Aucune clé d'API IA n'est configurée. Renseignes-en une, ou pointe le plugin vers ton propre serveur."
+  synthesis_failed: "Je n''ai pas pu parler : {0}"
+  no_permission: "Tu n'as pas le droit de faire ça."
+  already_transcribing: "Je transcris déjà ce serveur."
+  not_transcribing: "Je ne transcrivais rien."

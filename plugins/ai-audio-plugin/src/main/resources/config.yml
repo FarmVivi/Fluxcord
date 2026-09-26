@@ -1,101 +1,77 @@
 # AI Audio Plugin Configuration
-config_version: 1
+#
+# Every key below is read by the plugin. Nothing here is decorative: if a setting is listed, changing
+# it changes behaviour. (The previous version of this file documented three times more settings than
+# the code ever looked at, and four of the keys it did read did not exist here at all.)
+#
+# The plugin talks to the AI services over the OpenAI HTTP API, so it does not care who answers.
+# Point base_url at OpenAI, at a server on your LAN, or at a service next to the bot in the cluster --
+# only the URL changes. Known-compatible self-hosted servers:
+#   transcription : Speaches, faster-whisper-server, whisper.cpp (whisper-server), LocalAI
+#   speech        : Kokoro-FastAPI, openedai-speech (Piper/Coqui), LocalAI
+# A local server usually needs no api_key; leave it empty and no Authorization header is sent.
+config_version: 2
 
-# API Configuration
-ai:
-  # OpenAI API key for GPT integration
-  openai_api_key: "${OPENAI_API_KEY:}"
-  
-  # Google Cloud credentials path
-  google_credentials_path: "${GOOGLE_CREDENTIALS_PATH:}"
-  
-  # Azure Cognitive Services key
-  azure_speech_key: "${AZURE_SPEECH_KEY:}"
-  azure_speech_region: "${AZURE_SPEECH_REGION:eastus}"
+# Speech to text: what the bot hears.
+speech_to_text:
+  base_url: "${AI_AUDIO_STT_URL:https://api.openai.com/v1}"
+  api_key: "${OPENAI_API_KEY:}"
+  model: "whisper-1"
 
-# Speech Recognition Settings
-speech_recognition:
-  # Language for transcription (en-US, fr-FR, es-ES, etc.)
-  language: "en-US"
-  
-  # Confidence threshold for accepting transcriptions (0.0-1.0)
-  confidence_threshold: 0.8
-  
-  # Enable continuous recognition
-  continuous_recognition: true
-  
-  # Enable speaker identification
-  speaker_identification: true
+  # Expected language, as a BCP 47 tag (fr-FR, en-US). The region is dropped before the request, which
+  # wants a bare language code. Use "auto" to let the provider detect it -- slightly slower and less
+  # accurate on short sentences.
+  language: "auto"
 
-# Text-to-Speech Settings
+# Text to speech: the bot's own voice.
 text_to_speech:
-  # Default voice for TTS
-  default_voice: "en-US-Standard-A"
-  
-  # Speech rate (0.25-4.0, 1.0 = normal)
-  speech_rate: 1.0
-  
-  # Pitch adjustment (-20.0 to 20.0, 0.0 = normal)
-  pitch: 0.0
-  
-  # Volume gain (-96.0 to 16.0 dB)
-  volume_gain: 0.0
+  base_url: "${AI_AUDIO_TTS_URL:https://api.openai.com/v1}"
+  api_key: "${OPENAI_API_KEY:}"
+  model: "gpt-4o-mini-tts"
 
-# Voice Commands
-voice_commands:
-  # Enable voice command recognition
-  enabled: true
-  
-  # Wake word to activate voice commands
-  wake_word: "hey bot"
-  
-  # Command timeout in milliseconds
-  timeout: 5000
-  
-  # Require wake word for every command
-  require_wake_word: true
+  # Voice name, as the provider spells it. OpenAI: alloy, echo, fable, onyx, nova, shimmer.
+  # Kokoro: af_heart, af_bella... Piper voices are named after their model file.
+  voice: "alloy"
 
-# Audio Processing
-audio_processing:
-  # Enable noise reduction
-  noise_reduction: true
-  
-  # Enable automatic gain control
-  auto_gain_control: true
-  
-  # Enable echo cancellation
-  echo_cancellation: true
-  
-  # Audio quality (low/medium/high)
-  quality: "medium"
+  # Playback volume of the bot's voice (0-100).
+  volume: 100
 
-# Cost Management
-cost_management:
-  # Maximum monthly API requests
-  max_monthly_requests: 10000
-  
-  # Cache transcription results
-  cache_responses: true
-  
-  # Cache duration in seconds
-  cache_duration: 3600  # 1 hour
-  
-  # Enable usage warnings
-  usage_warnings: true
-  
-  # Warning threshold (percentage of monthly limit)
-  warning_threshold: 0.8
+  # Audio priority (0-100). At or above the core's ducking threshold (70 by default), the music plugin
+  # is faded down while the bot speaks instead of covering it.
+  priority: 80
 
-# Privacy Settings
-privacy:
-  # Store audio recordings (for debugging)
-  store_recordings: false
-  
-  # Recording retention days
-  recording_retention_days: 7
-  
-  # Allow users to opt out
-  allow_opt_out: true
-  
-  # Data encryption
-  encrypt_data: true
+# How a voice stream is cut into sentences worth transcribing.
+transcription:
+  # How long a speaker must be quiet before what they said is sent for transcription.
+  silence_ms: 1200
+
+  # Longest stretch transcribed in one request, so somebody talking without pause is still transcribed.
+  max_segment_seconds: 25
+
+  # Utterances shorter than this are dropped instead of sent: a cough or a keyboard would otherwise
+  # cost a request and produce nonsense.
+  min_segment_ms: 400
+
+# What the bot remembers of the conversations. Each history is independent and 0 turns it off, so a bot
+# can follow a live conversation without keeping any long-term record of the people in it.
+memory:
+  # Turns kept per voice channel: the conversation in progress.
+  channel_turns: 40
+
+  # Turns kept per server, across its channels.
+  server_turns: 200
+
+  # Turns kept per person, across every server. This is what lets the AI remember someone who told it
+  # something elsewhere; each turn keeps the server and channel it was said in.
+  user_turns: 100
+
+# Request limits.
+request:
+  # How long to wait for a provider before giving up. A local model on a busy GPU can be slow.
+  timeout_seconds: 30
+
+  # Longest text /speak accepts.
+  max_text_length: 1000
+
+  # Seconds a user must wait between two /speak calls. 0 disables the cooldown; the core enforces it.
+  cooldown_seconds: 5

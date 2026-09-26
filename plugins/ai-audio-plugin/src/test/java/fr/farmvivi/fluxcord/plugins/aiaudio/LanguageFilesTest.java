@@ -13,15 +13,35 @@ import java.util.TreeSet;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * The plugin has no user-facing string yet, but its language files do — and they carried the same
- * redundant top-level wrapper ({@code aiaudio:}) that made every lookup miss in the other generated
- * plugins. Keeping the two locales in step now means the commands added later only have to use the
- * keys; add them to {@code USED_KEYS} as they are implemented.
+ * The language files, against the keys the code actually looks up.
+ *
+ * <p>Three separate failures are guarded here, each of which has really happened in this repository: a
+ * redundant top-level wrapper making every lookup miss, a key translated in one locale only (which falls
+ * back silently), and the MessageFormat quoting rule — a single apostrophe swallows the placeholders of a
+ * formatted string, while a doubled one shows up literally in a string that is never formatted.
  */
 class LanguageFilesTest {
 
-    /** Keys the plugin will look up once its commands exist; none is used yet. */
-    private static final List<String> USED_KEYS = List.of();
+    /** Every key the plugin looks up. Kept by hand, and asserted against both locales. */
+    private static final List<String> USED_KEYS = List.of(
+            "commands.speak.description", "commands.speak.option.text", "commands.speak.option.voice",
+            "commands.silence.description",
+            "commands.transcribe.description", "commands.transcribe.option.action",
+            "commands.transcribe.start", "commands.transcribe.stop",
+            "commands.forget.description", "commands.forget.option.scope",
+            "commands.forget.me", "commands.forget.channel", "commands.forget.server",
+            "messages.speaking", "messages.silenced", "messages.already_silent",
+            "messages.transcription_started", "messages.transcription_stopped",
+            "messages.forgot_me", "messages.forgot_channel", "messages.forgot_server",
+            "errors.guild_only", "errors.no_voice_channel", "errors.not_connected",
+            "errors.nothing_to_say", "errors.text_too_long", "errors.api_key_missing",
+            "errors.synthesis_failed", "errors.no_permission",
+            "errors.already_transcribing", "errors.not_transcribing");
+
+    /** The keys whose value goes through MessageFormat, because the code passes arguments. */
+    private static final Set<String> FORMATTED_KEYS = Set.of(
+            "messages.speaking", "messages.forgot_channel", "messages.forgot_server",
+            "errors.text_too_long", "errors.synthesis_failed");
 
     private Map<String, String> load(String locale) {
         try (InputStream in = getClass().getResourceAsStream("/lang/" + locale + ".yml")) {
@@ -52,8 +72,8 @@ class LanguageFilesTest {
         Map<String, String> english = load("en-US");
 
         assertFalse(english.isEmpty());
-        assertTrue(english.containsKey("commands.transcribe"),
-                "a wrapper would make this 'aiaudio.commands.transcribe' and every lookup would miss");
+        assertTrue(english.containsKey("commands.transcribe.description"),
+                "a wrapper would make this 'aiaudio.commands.transcribe.description' and the lookup would miss");
     }
 
     @Test
@@ -82,6 +102,39 @@ class LanguageFilesTest {
 
         english.forEach((key, value) -> assertEquals(placeholders(value), placeholders(french.get(key)),
                 "'" + key + "' does not take the same arguments in both locales"));
+    }
+
+    @Test
+    void onlyTheFormattedStringsDoubleTheirApostrophes() {
+        // MessageFormat eats a single quote and everything that follows up to the next one, so a
+        // formatted value must double its apostrophes -- and a value that is never formatted must not,
+        // or the user reads "n''a pas".
+        for (String locale : List.of("en-US", "fr-FR")) {
+            load(locale).forEach((key, value) -> {
+                if (FORMATTED_KEYS.contains(key)) {
+                    assertEquals(0, countSingleQuotes(value),
+                            locale + ": '" + key + "' is formatted, so its apostrophes must be doubled");
+                } else {
+                    assertFalse(value.contains("''"),
+                            locale + ": '" + key + "' is never formatted, so a doubled apostrophe is shown as is");
+                }
+            });
+        }
+    }
+
+    @Test
+    void everyPlaceholderBearingKeyIsDeclaredAsFormatted() {
+        // Keeps the list above honest: a new {0} without its entry would be a quoting bug waiting to happen.
+        load("en-US").forEach((key, value) -> {
+            if (!placeholders(value).isEmpty()) {
+                assertTrue(FORMATTED_KEYS.contains(key), "'" + key + "' takes arguments but is not listed");
+            }
+        });
+    }
+
+    /** Apostrophes that are not part of a doubled pair. */
+    private long countSingleQuotes(String value) {
+        return value.replace("''", "").chars().filter(c -> c == '\'').count();
     }
 
     private Set<String> placeholders(String value) {

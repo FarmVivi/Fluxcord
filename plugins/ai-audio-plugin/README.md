@@ -1,191 +1,116 @@
 # AI Audio Plugin
 
-AI-powered voice processing and interaction plugin for Fluxcord, bringing advanced speech recognition, text-to-speech,
-and audio analysis capabilities to Discord bots.
+Voice AI for Fluxcord: the bot speaks in a voice channel, writes down what it hears, and remembers the
+conversation.
 
-## Features
+Everything goes through the **OpenAI audio HTTP API**, which is also what the self-hosted servers
+implement. So where the models run is configuration, not code: the hosted API, a machine on your LAN, or a
+service next to the bot in the cluster. No native library, no SDK, nothing bundled — the plugin uses
+`java.net.http` from the JDK and the core's Gson.
 
-### 🎤 Speech Recognition
+## What works today
 
-- **Real-time Transcription**: Live voice-to-text conversion
-- **Multi-language Support**: Support for dozens of languages
-- **High Accuracy**: Advanced AI models for precise transcription
-- **Custom Vocabulary**: Add domain-specific terms and names
-- **Speaker Identification**: Distinguish between different speakers
+| Command | What it does | Permission |
+| --- | --- | --- |
+| `/speak <text> [voice]` | Says something out loud in your voice channel | `ai-audio-plugin.tts` |
+| `/silence` | Stops the bot talking, drops what was still queued | `ai-audio-plugin.tts` |
+| `/transcribe <start\|stop>` | Writes what is said in the voice channel into the text channel | `ai-audio-plugin.transcribe` |
+| `/forget <me\|channel\|server>` | Erases remembered conversation | none for `me`, `ai-audio-plugin.admin` for the rest |
 
-### 🗣️ Text-to-Speech
+Transcription is **per speaker**: the plugin asks JDA for per-user audio (`canReceiveUser`), so two people
+talking at once produce two separate transcriptions, each attributed to the name that person uses on that
+server. The bot's voice is registered as a PCM source with a priority above the core's ducking threshold,
+so the music plugin fades down while it speaks instead of covering it.
 
-- **Natural Voices**: High-quality, human-like speech synthesis
-- **Multiple Languages**: Support for various languages and accents
-- **Voice Selection**: Choose from different voice personalities
-- **SSML Support**: Advanced speech markup for natural delivery
-- **Customizable Speed**: Adjust speech rate and pitch
+## What it remembers
 
-### 📊 Audio Analysis
+Three independent histories, each sized on its own in `config.yml`, each turned off by setting it to `0`:
 
-- **Audio Quality Assessment**: Analyze audio clarity and quality
-- **Noise Detection**: Identify and filter background noise
-- **Emotion Recognition**: Detect emotional tone in speech
-- **Content Analysis**: Identify inappropriate content
-- **Pattern Recognition**: Analyze speaking patterns and habits
+| History | Scope | Answers |
+| --- | --- | --- |
+| `memory.channel_turns` | one voice channel | what was just said in this conversation |
+| `memory.server_turns` | one server, all its channels | the longer-running memory of a community |
+| `memory.user_turns` | one person, **across every server** | what somebody told the bot elsewhere |
 
-### 🎯 Voice Commands
+Each turn keeps who said it (id and display name), where (server and channel, both id and name) and when.
+Nothing is a prompt: names and text stay in their own fields, because a Discord nickname is chosen by its
+owner and must never be able to become an instruction to a model.
 
-- **Natural Language Processing**: Understand conversational commands
-- **Context Awareness**: Maintain conversation context
-- **Custom Wake Words**: Configure personalized activation phrases
-- **Command Chaining**: Execute multiple commands in sequence
-- **Intent Recognition**: Understand user intentions beyond literal commands
+## Running the models locally
 
-### 🤖 AI Integration
+Nothing here is specific to OpenAI — point each `base_url` at a compatible server and leave `api_key`
+empty. Tested shapes of request, so any server implementing these two routes works:
 
-- **OpenAI Integration**: Leverage GPT models for conversation
-- **Google Cloud AI**: Advanced speech and language processing
-- **Custom Models**: Support for self-hosted AI models
-- **Multi-provider Support**: Failover between different AI services
-- **Cost Optimization**: Smart usage management and caching
+| Capability | Route the plugin calls | Servers known to implement it |
+| --- | --- | --- |
+| transcription | `POST {base_url}/audio/transcriptions` (multipart WAV) | Speaches, faster-whisper-server, `whisper-server` (whisper.cpp), LocalAI |
+| speech | `POST {base_url}/audio/speech` (JSON, `response_format: wav`) | Kokoro-FastAPI, openedai-speech (Piper/Coqui), LocalAI |
 
-## Commands
+```yaml
+speech_to_text:
+  base_url: "http://192.168.1.20:8000/v1"
+  api_key: ""
+  model: "Systran/faster-whisper-small"
+  language: "fr-FR"
 
-| Command               | Description                 | Permission              |
-|-----------------------|-----------------------------|-------------------------|
-| `/transcribe`         | Start voice transcription   | `aiaudio.transcribe`    |
-| `/speak <text>`       | Convert text to speech      | `aiaudio.tts`           |
-| `/analyze`            | Analyze current audio       | `aiaudio.analyze`       |
-| `/voicecommands`      | Toggle voice command mode   | `aiaudio.voicecommands` |
-| `/setvoice <voice>`   | Change TTS voice            | `aiaudio.tts`           |
-| `/setlanguage <lang>` | Set recognition language    | `aiaudio.transcribe`    |
-| `/confidence`         | Show recognition confidence | `aiaudio.analyze`       |
-| `/noise-filter`       | Toggle noise filtering      | `aiaudio.admin`         |
+text_to_speech:
+  base_url: "http://192.168.1.20:8880/v1"
+  api_key: ""
+  model: "kokoro"
+  voice: "af_heart"
+```
 
-## Installation
+The same applies when the bot runs in a container or an orchestrator: it reaches the models over HTTP, so
+an in-cluster service URL is no different from a LAN address. Set the URLs through the `AI_AUDIO_STT_URL` /
+`AI_AUDIO_TTS_URL` environment variables rather than editing the file baked into the image.
 
-1. **Prerequisites**
-    - OpenAI API key (for GPT integration)
-    - Google Cloud credentials (for advanced features)
-    - Sufficient server resources for AI processing
+### On an AMD RDNA 2 GPU
 
-2. **Build the plugin**
-   ```bash
-   cd plugins/ai-audio-plugin
-   mvn clean package
-   ```
+Nothing runs inside the bot, so the GPU only matters for the server you host. Two things to know about
+the RDNA 2 cards ROCm treats as unsupported (gfx1031, which covers the RX 6700 series):
 
-3. **Install the plugin**
-   ```bash
-   cp target/ai-audio-plugin-*.jar ../../plugins/
-   ```
+- ROCm does not list it as officially supported; the usual workaround is
+  `HSA_OVERRIDE_GFX_VERSION=10.3.0` in the server's environment, which makes it present itself as the
+  supported gfx1030.
+- For **speech synthesis**, a GPU is not worth it: Piper and Kokoro run comfortably on CPU and answer in
+  well under a second. Keep the card for the LLM.
 
-4. **Configure API keys**
-   ```yaml
-   ai:
-     openai_api_key: "your-openai-api-key"
-     google_credentials_path: "/path/to/google-credentials.json"
-   ```
-
-5. **Restart the bot** to load the AI audio plugin
+Raise `request.timeout_seconds` when a model shares the card with something else — a cold first request on
+a loaded GPU can take a long time.
 
 ## Configuration
 
-```yaml
-ai:
-  # API Configuration
-  openai_api_key: ""
-  google_credentials_path: ""
-  
-  # Speech Recognition
-  transcription_language: "en-US"
-  confidence_threshold: 0.8
-  enable_speaker_identification: true
-  
-  # Text-to-Speech
-  tts_voice: "en-US-Standard-A"
-  speech_rate: 1.0
-  pitch: 0.0
-  
-  # Voice Commands
-  enable_voice_commands: true
-  wake_word: "hey bot"
-  command_timeout: 5000  # milliseconds
-  
-  # Audio Processing
-  enable_noise_reduction: true
-  auto_gain_control: true
-  echo_cancellation: true
-  
-  # Cost Management
-  max_monthly_requests: 10000
-  cache_responses: true
-  cache_duration: 3600  # seconds
+`src/main/resources/config.yml` is the reference and documents every key. **Every key in it is read by the
+code**; there is nothing decorative left. If a setting is not in that file, the plugin does not have it.
+
+An API key is only required when the endpoint is a hosted one: the plugin warns at startup if
+`api.openai.com` is used without a key, and stays quiet for a local server.
+
+## Build and install
+
+```bash
+mvn -pl plugins/ai-audio-plugin -am package
+cp plugins/ai-audio-plugin/target/ai-audio-plugin-*.jar fluxcord-core/run/plugins/
 ```
 
-## Permissions
+The jar is a plain plugin jar: `fluxcord-api`, JDA, SLF4J and Gson are all `provided`, since the core
+class loader owns them (`PluginClassLoader.CORE_PACKAGES`). Nothing is shaded, so there is nothing to
+relocate.
 
-- `aiaudio.transcribe` - Use voice transcription features
-- `aiaudio.tts` - Access text-to-speech functionality
-- `aiaudio.analyze` - Perform audio analysis
-- `aiaudio.voicecommands` - Use voice command features
-- `aiaudio.admin` - Administrative AI audio controls
+## What is next
 
-## AI Service Setup
+Answering out loud on its own — hearing a question in the voice channel and replying by voice. The
+groundwork is what is described above: transcription gives it ears, `/speak` gives it a voice, and the
+memory gives it the context of who is in the conversation and what has been said. The remaining piece is
+the LLM turn in between, which will use the same OpenAI-compatible HTTP surface (so Ollama serves it
+locally or remotely with no code change) and expose the three memory lookups as tool calls, letting the
+model ask for what it needs instead of being handed everything.
 
-### OpenAI Configuration
+## Tests
 
-1. Get an API key from [OpenAI Platform](https://platform.openai.com/)
-2. Add the key to your configuration
-3. Configure usage limits to control costs
+`mvn -o clean test -pl plugins/ai-audio-plugin`
 
-### Google Cloud Setup
-
-1. Create a Google Cloud project
-2. Enable the Speech-to-Text and Text-to-Speech APIs
-3. Download service account credentials
-4. Configure the credentials path
-
-### Custom Models
-
-Support for self-hosted models is planned for future releases.
-
-## Privacy & Security
-
-- **Data Handling**: Audio is processed in real-time and not stored by default
-- **Encryption**: All API communications use secure HTTPS
-- **Opt-out**: Users can disable AI processing for their voice
-- **Compliance**: GDPR and privacy-friendly configurations available
-
-## Development Status
-
-🚧 **Under Development** - This plugin is currently being implemented.
-
-Core features planned:
-
-- [x] Basic plugin structure and commands
-- [ ] Speech recognition service integration
-- [ ] Text-to-speech implementation
-- [ ] Audio analysis capabilities
-- [ ] Voice command processing
-- [ ] AI service integrations (OpenAI, Google Cloud)
-- [ ] Privacy controls and data management
-- [ ] Performance optimization and caching
-
-## Performance Considerations
-
-- **CPU Usage**: AI processing can be CPU-intensive
-- **Memory**: Models may require significant RAM
-- **Latency**: Real-time processing adds some delay
-- **Bandwidth**: API calls require stable internet connection
-- **Costs**: AI services have usage-based pricing
-
-## Contributing
-
-This plugin is part of the Fluxcord ecosystem. Contributions welcome!
-
-1. Fork the repository
-2. Create a feature branch for AI audio enhancements
-3. Implement your changes with proper testing
-4. Ensure privacy and security best practices
-5. Submit a pull request with detailed documentation
-
-## License
-
-Part of Fluxcord - Licensed under MIT License
+The HTTP clients are tested against a real `com.sun.net.httpserver.HttpServer` on a loopback port rather
+than a mocked client: what has to be right is the shape of the bytes on the wire — a multipart body a
+Whisper server accepts, the right JSON field names — and only a real server observes that. Those same
+tests are the local-server case, since a local server differs from a hosted one only by this URL.

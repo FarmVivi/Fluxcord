@@ -38,19 +38,13 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- JSON processing -->
+        <!-- JSON processing. Provided, not bundled: gson is one of the core's shared packages
+             (PluginClassLoader.CORE_PACKAGES), so a plugin copy would never be the one loaded.
+             HTTP needs no dependency at all - the plugin uses java.net.http from the JDK. -->
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
-            <scope>compile</scope>
-        </dependency>
-
-        <!-- HTTP client for AI service integration -->
-        <dependency>
-            <groupId>com.squareup.okhttp3</groupId>
-            <artifactId>okhttp</artifactId>
-            <version>5.5.0</version>
-            <scope>compile</scope>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -93,53 +87,6 @@
         </resources>
 
         <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.6.2</version>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
-                        <configuration>
-                            <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <relocations>
-                                <relocation>
-                                    <pattern>okhttp3</pattern>
-                                    <shadedPattern>fr.farmvivi.fluxcord.shaded.okhttp3</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>okio</pattern>
-                                    <shadedPattern>fr.farmvivi.fluxcord.shaded.okio</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>com.google.gson</pattern>
-                                    <shadedPattern>fr.farmvivi.fluxcord.shaded.com.google.gson</shadedPattern>
-                                </relocation>
-                            </relocations>
-                            <filters>
-                                <filter>
-                                    <artifact>*:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/*.SF</exclude>
-                                        <exclude>META-INF/*.DSA</exclude>
-                                        <exclude>META-INF/*.RSA</exclude>
-                                        <!-- A shaded jar is a plain classpath jar: the module descriptors of the
-                                             bundled libraries cannot apply and shade warns about each one. -->
-                                        <exclude>module-info.class</exclude>
-                                        <exclude>META-INF/versions/*/module-info.class</exclude>
-                                        <!-- Rewritten by ManifestResourceTransformer / informational only -->
-                                        <exclude>META-INF/MANIFEST.MF</exclude>
-                                        <exclude>META-INF/DEPENDENCIES</exclude>
-                                    </excludes>
-                                </filter>
-                            </filters>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>

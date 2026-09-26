@@ -1,58 +1,76 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio;
 
+import fr.farmvivi.fluxcord.api.command.CommandBuilder;
+import fr.farmvivi.fluxcord.api.command.CommandResult;
+import fr.farmvivi.fluxcord.api.command.option.OptionChoice;
 import fr.farmvivi.fluxcord.api.permissions.Permission;
 import fr.farmvivi.fluxcord.api.permissions.PermissionDefault;
 import fr.farmvivi.fluxcord.api.plugin.AbstractPlugin;
-import net.dv8tion.jda.api.events.guild.voice.GuildVoiceUpdateEvent;
-import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiEndpoint;
+import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiSpeechToText;
+import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiTextToSpeech;
+import fr.farmvivi.fluxcord.plugins.aiaudio.commands.ForgetCommand;
+import fr.farmvivi.fluxcord.plugins.aiaudio.commands.SilenceCommand;
+import fr.farmvivi.fluxcord.plugins.aiaudio.commands.SpeakCommand;
+import fr.farmvivi.fluxcord.plugins.aiaudio.commands.TranscribeCommand;
+import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
+
+import java.net.http.HttpClient;
+import java.time.Duration;
+import java.util.function.Consumer;
 
 /**
- * AI-powered audio plugin for Fluxcord.
+ * Voice AI for Fluxcord: the bot speaks in a voice channel, and writes down what it hears.
  *
- * <p><strong>This plugin is a skeleton</strong>: the services below do nothing yet (see their
- * TODOs). What is wired here is the plugin lifecycle — permissions, configuration and the voice
- * listener — so that adding a real implementation is the only thing left to do.
+ * <p>Everything reaches the AI over the OpenAI HTTP API, which is what OpenAI and the self-hosted servers
+ * both speak, so where the models run is a matter of configuration rather than of code — the hosted APIs,
+ * a machine on the LAN, or a service beside the bot in the cluster. Nothing here is native and nothing is
+ * bundled, so the plugin jar stays small and runs the same in a container.
  *
- * <p>Planned features: voice transcription, text-to-speech, audio analysis, and voice commands on
- * top of them.
+ * <p>What works today: {@code /speak}, {@code /silence}, {@code /transcribe} and {@code /forget}.
+ * Answering out loud on its own — the actual goal — is the next step, and this is the groundwork for it:
+ * transcription gives the AI its ears, speech its voice, and {@link ConversationMemory} the context of who
+ * is talking and what has been said.
  */
 public class AIAudioPlugin extends AbstractPlugin {
 
     private SpeechRecognitionService speechRecognition;
     private TextToSpeechService textToSpeech;
-    private AudioAnalysisService audioAnalysis;
+    private ConversationMemory memory;
+    private HttpClient http;
 
-    private AISettings settings = AISettings.defaults();
+    private AiSettings settings = AiSettings.defaults();
+
+    @Override
+    public void onPreEnable() {
+        // Permissions have to exist before any command referring to them is registered.
+        registerPermission("transcribe", "Allows transcribing a voice channel", PermissionDefault.TRUE);
+        registerPermission("tts", "Allows making the bot speak", PermissionDefault.TRUE);
+        registerPermission("admin", "Allows clearing what the bot remembers of a server",
+                PermissionDefault.OP);
+        logger.debug("AI Audio permissions registered: {}", getPermissions().getRegisteredPermissions());
+    }
 
     @Override
     public void onEnable() {
-        logger.info("AI Audio Plugin enabling...");
-
-        registerPermissions();
-
-        // Configuration and services first: the listener registered below can fire immediately.
-        settings = loadSettings();
+        settings = AiSettings.from(getConfiguration(), logger);
         initializeServices();
+        registerCommands();
 
-        // Discord events reach plugins through JDA listeners, never through @EventHandler.
-        addDiscordListeners(new ListenerAdapter() {
-            @Override
-            public void onGuildVoiceUpdate(GuildVoiceUpdateEvent event) {
-                onVoiceUpdate(event);
-            }
-        });
-
-        logger.info("AI Audio Plugin enabled: language={}, voice={}, voiceCommands={}, threshold={}, "
-                        + "openAiKeySet={}, googleCredentialsSet={}",
-                settings.transcriptionLanguage(), settings.ttsVoice(), settings.voiceCommandsEnabled(),
-                settings.confidenceThreshold(), !settings.openAiKey().isEmpty(),
-                !settings.googleCredentialsPath().isEmpty());
+        if (settings.synthesisNeedsKey() || settings.transcriptionNeedsKey()) {
+            logger.warn("No API key configured for api.openai.com; set one, or point "
+                    + "speech_to_text.base_url / text_to_speech.base_url at your own server");
+        }
+        logger.info("AI Audio enabled: transcription {} ({}), speech {} (voice {}), memory {}",
+                settings.speechToText().model(), settings.transcriptionLanguage(),
+                settings.textToSpeech().model(), settings.voice(),
+                memory.isDisabled() ? "off" : settings.channelTurns() + "/" + settings.serverTurns()
+                        + "/" + settings.userTurns() + " turns per channel/server/person");
     }
 
     @Override
     public void onDisable() {
-        logger.info("AI Audio Plugin disabling...");
-
+        // Idempotent: a failed enable, a reload and a shutdown all land here.
         if (speechRecognition != null) {
             speechRecognition.shutdown();
             speechRecognition = null;
@@ -61,25 +79,92 @@ public class AIAudioPlugin extends AbstractPlugin {
             textToSpeech.shutdown();
             textToSpeech = null;
         }
-        if (audioAnalysis != null) {
-            audioAnalysis.shutdown();
-            audioAnalysis = null;
+        if (http != null) {
+            http.close();
+            http = null;
         }
-
-        logger.info("AI Audio Plugin disabled!");
+        memory = null;
+        logger.info("AI Audio disabled");
     }
 
-    private void registerPermissions() {
-        registerPermission("transcribe", "Allows transcription of voice channels", PermissionDefault.TRUE);
-        registerPermission("tts", "Allows text-to-speech usage", PermissionDefault.TRUE);
-        registerPermission("analyze", "Allows advanced audio analysis", PermissionDefault.OP);
-        registerPermission("voicecommands", "Allows voice command features", PermissionDefault.TRUE);
-        registerPermission("admin", "Allows administrative AI audio actions", PermissionDefault.OP);
-        logger.debug("AI Audio permissions registered: {}", getPermissions().getRegisteredPermissions());
+    /**
+     * Builds the services, in the order their dependencies require: one HTTP client, the two providers
+     * reading their own endpoint, the memory, then the services that use them.
+     */
+    private void initializeServices() {
+        http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+        memory = new ConversationMemory(getStorage(), settings.channelTurns(), settings.serverTurns(),
+                settings.userTurns());
+        textToSpeech = new TextToSpeechService(this,
+                new OpenAiTextToSpeech(settings.textToSpeech(), http));
+        speechRecognition = new SpeechRecognitionService(this,
+                new OpenAiSpeechToText(settings.speechToText(), http), memory);
+    }
+
+    private void registerCommands() {
+        command("speak", builder -> builder
+                .permission(permissionKey("tts"))
+                .cooldown(getConfiguration().getInt("request.cooldown_seconds", 0))
+                .stringOption("text", text("commands.speak.option.text"), true)
+                .stringOption("voice", text("commands.speak.option.voice"), false)
+                .executor((ctx, cmd) -> {
+                    new SpeakCommand(this).execute(ctx, ctx.getRequiredOption("text"),
+                            ctx.getOption("voice", null));
+                    return CommandResult.success();
+                }));
+
+        command("silence", builder -> builder
+                .permission(permissionKey("tts"))
+                .executor((ctx, cmd) -> {
+                    new SilenceCommand(this).execute(ctx);
+                    return CommandResult.success();
+                }));
+
+        command("transcribe", builder -> builder
+                .permission(permissionKey("transcribe"))
+                .stringOption("action", text("commands.transcribe.option.action"), true,
+                        choice("commands.transcribe.start", TranscribeCommand.START),
+                        choice("commands.transcribe.stop", TranscribeCommand.STOP))
+                .executor((ctx, cmd) -> {
+                    new TranscribeCommand(this).execute(ctx, ctx.getRequiredOption("action"));
+                    return CommandResult.success();
+                }));
+
+        // No permission here: erasing one's own history is always allowed. The wider scopes check the
+        // admin permission themselves, since only some of the choices need it.
+        command("forget", builder -> builder
+                .stringOption("scope", text("commands.forget.option.scope"), false,
+                        choice("commands.forget.me", ForgetCommand.ME),
+                        choice("commands.forget.channel", ForgetCommand.CHANNEL),
+                        choice("commands.forget.server", ForgetCommand.SERVER))
+                .executor((ctx, cmd) -> {
+                    new ForgetCommand(this).execute(ctx, ctx.getOption("scope", ForgetCommand.ME));
+                    return CommandResult.success();
+                }));
+    }
+
+    /** Fills in what every command of this plugin shares: its name, description and category. */
+    private void command(String name, Consumer<CommandBuilder> configurer) {
+        getCommands().registerCommand(builder -> {
+            builder.name(name)
+                    .description(text("commands." + name + ".description"))
+                    .category("AI Audio");
+            configurer.accept(builder);
+        });
+    }
+
+    /** A named choice whose label is translated and whose value is what the executor receives. */
+    private OptionChoice<String> choice(String labelKey, String value) {
+        return OptionChoice.of(text(labelKey), value);
+    }
+
+    /** A translated string in the bot's default locale, for the texts Discord stores once. */
+    private String text(String key) {
+        return getLanguage().getString(key);
     }
 
     private void registerPermission(String node, String description, PermissionDefault defaultValue) {
-        getPermissions().registerPermission(new AIPermission(permissionKey(node), description, defaultValue));
+        getPermissions().registerPermission(new AiPermission(permissionKey(node), description, defaultValue));
     }
 
     /** @return the fully qualified name of one of this plugin's permission nodes */
@@ -87,92 +172,28 @@ public class AIAudioPlugin extends AbstractPlugin {
         return getId() + "." + node;
     }
 
-    private void initializeServices() {
-        this.speechRecognition = new SpeechRecognitionService(this);
-        this.textToSpeech = new TextToSpeechService(this);
-        this.audioAnalysis = new AudioAnalysisService(this);
-    }
-
-    /**
-     * Reads {@code config.yml}. The keys must match the shipped file: the previous version read
-     * {@code ai.transcription_language}, {@code ai.tts_voice}, {@code ai.enable_voice_commands} and
-     * {@code ai.confidence_threshold}, none of which exist there, so every one of those settings
-     * silently fell back to its default and the documented configuration did nothing.
-     */
-    AISettings loadSettings() {
-        return new AISettings(
-                getConfiguration().getString("ai.openai_api_key", ""),
-                getConfiguration().getString("ai.google_credentials_path", ""),
-                getConfiguration().getString("speech_recognition.language", "en-US"),
-                confidenceThreshold(),
-                getConfiguration().getString("text_to_speech.default_voice", "en-US-Standard-A"),
-                getConfiguration().getBoolean("voice_commands.enabled", true),
-                getConfiguration().getString("voice_commands.wake_word", "hey bot"));
-    }
-
-    /** {@code Configuration} has no {@code getDouble}, so the ratio is read as text and parsed. */
-    private double confidenceThreshold() {
-        String raw = getConfiguration().getString("speech_recognition.confidence_threshold", "0.8");
-        try {
-            return Double.parseDouble(raw);
-        } catch (NumberFormatException e) {
-            logger.warn("Invalid speech_recognition.confidence_threshold '{}', falling back to 0.8", raw);
-            return 0.8;
-        }
-    }
-
-    /**
-     * Called by the JDA listener registered in {@link #onEnable()}.
-     *
-     * <p>TODO: this is where a voice channel is turned into audio for the AI services. Commands
-     * (transcribe, say, analyse) are registered with {@code getCommands().registerCommand(builder ->
-     * ...)}, like every other plugin — see {@code MusicPlugin} or the command example.
-     */
-    void onVoiceUpdate(GuildVoiceUpdateEvent event) {
-        if (speechRecognition != null) {
-            speechRecognition.handleVoiceUpdate(event);
-        }
-    }
-
     /** @return the settings read from {@code config.yml} at enable time */
-    public AISettings getSettings() {
+    public AiSettings getSettings() {
         return settings;
     }
 
+    /** @return the transcription service, or null before {@code onEnable} */
     public SpeechRecognitionService getSpeechRecognition() {
         return speechRecognition;
     }
 
+    /** @return the speech service, or null before {@code onEnable} */
     public TextToSpeechService getTextToSpeech() {
         return textToSpeech;
     }
 
-    public AudioAnalysisService getAudioAnalysis() {
-        return audioAnalysis;
-    }
-
-    /**
-     * Everything this plugin reads from {@code config.yml}, in one place.
-     *
-     * @param openAiKey             OpenAI API key, empty when not configured
-     * @param googleCredentialsPath path to the Google Cloud credentials, empty when not configured
-     * @param transcriptionLanguage language tag used for speech recognition
-     * @param confidenceThreshold   minimum confidence for accepting a transcription (0.0-1.0)
-     * @param ttsVoice              default voice used for text-to-speech
-     * @param voiceCommandsEnabled  whether spoken commands are listened for
-     * @param wakeWord              the phrase that activates voice commands
-     */
-    public record AISettings(String openAiKey, String googleCredentialsPath, String transcriptionLanguage,
-                             double confidenceThreshold, String ttsVoice, boolean voiceCommandsEnabled,
-                             String wakeWord) {
-
-        static AISettings defaults() {
-            return new AISettings("", "", "en-US", 0.8, "en-US-Standard-A", true, "hey bot");
-        }
+    /** @return what the bot remembers of the conversations, or null before {@code onEnable} */
+    public ConversationMemory getMemory() {
+        return memory;
     }
 
     /** Minimal {@link Permission} carrier; the plugin only needs a name, a description and a default. */
-    private record AIPermission(String name, String description, PermissionDefault defaultValue)
+    private record AiPermission(String name, String description, PermissionDefault defaultValue)
             implements Permission {
 
         @Override
