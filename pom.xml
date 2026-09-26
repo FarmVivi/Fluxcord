@@ -37,7 +37,7 @@
         <!-- Dependency versions -->
         <slf4j.version>2.0.19</slf4j.version>
         <logback.version>1.6.3</logback.version>
-        <jda.version>6.6.0</jda.version>
+        <jda.version>6.7.0</jda.version>
         <!-- JDAVE: DAVE (Discord E2EE) protocol implementation required for JDA audio.
              Uses the Java 25 Foreign Function & Memory API. https://github.com/MinnDevelopment/jdave
 
