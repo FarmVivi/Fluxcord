@@ -3,6 +3,7 @@ package fr.farmvivi.fluxcord.plugins.aiaudio;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.SpeechToText;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.Turn;
+import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaStore;
 import fr.farmvivi.fluxcord.plugins.aiaudio.transcription.SpeechSegmenter;
 import fr.farmvivi.fluxcord.plugins.aiaudio.transcription.TranscriptionSession;
 import net.dv8tion.jda.api.entities.Guild;
@@ -163,12 +164,29 @@ public class SpeechRecognitionService {
         memory.remember(Turn.now(userId, speaker, guild.getId(), guild.getName(),
                 channel.map(AudioChannel::getId).orElse(null),
                 channel.map(AudioChannel::getName).orElse(null), text));
+        liftMood(guild, channel.map(AudioChannel::getId).orElse(null));
         logger.debug("[{}] {}: {}", guild.getId(), speaker, text);
         try {
             session.output.sendMessage("**" + speaker + "** " + text).queue();
         } catch (RuntimeException e) {
             logger.warn("Could not post a transcription: {}", e.getMessage());
         }
+    }
+
+    /**
+     * A sentence spoken in the channel makes the bot a little more lively.
+     *
+     * <p>Only the energy: whether a conversation is warm or cold cannot be told from the fact that it is
+     * happening, and guessing it from keywords would be worse than not guessing. The mood fades back on its
+     * own, so a channel that goes quiet calms down without anything having to run.
+     */
+    private void liftMood(Guild guild, String channelId) {
+        AiSettings.PersonaSettings persona = plugin.getSettings().persona();
+        PersonaStore store = plugin.getPersonaStore();
+        if (!persona.moodEnabled() || store == null || channelId == null) {
+            return;
+        }
+        store.nudgeMood(guild.getId(), channelId, persona.energyPerTurn(), 0, clock.getAsLong());
     }
 
     /**

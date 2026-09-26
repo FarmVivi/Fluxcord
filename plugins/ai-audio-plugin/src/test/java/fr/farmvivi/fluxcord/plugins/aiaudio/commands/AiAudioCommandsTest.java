@@ -104,14 +104,16 @@ class AiAudioCommandsTest {
     private AiSettings localSettings() {
         AiEndpoint local = new AiEndpoint("http://localhost:8000/v1", "", "m", Duration.ofSeconds(5));
         return new AiSettings(local, AiSettings.SpeechApi.OPENAI, "fr-FR", local, "alloy", 100, 80, 20,
-                Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 10, 10, 10);
+                Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 10, 10, 10,
+                AiSettings.PersonaSettings.defaults());
     }
 
     /** Same, but pointing at OpenAI without a key — the misconfiguration users hit first. */
     private AiSettings hostedWithoutKey() {
         AiEndpoint hosted = new AiEndpoint("https://api.openai.com/v1", "", "m", Duration.ofSeconds(5));
         return new AiSettings(hosted, AiSettings.SpeechApi.OPENAI, "fr-FR", hosted, "alloy", 100, 80, 1000,
-                Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 10, 10, 10);
+                Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 10, 10, 10,
+                AiSettings.PersonaSettings.defaults());
     }
 
     private void inVoiceChannel(String name) {

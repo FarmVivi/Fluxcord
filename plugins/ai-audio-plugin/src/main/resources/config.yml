@@ -74,6 +74,33 @@ memory:
   # something elsewhere; each turn keeps the server and channel it was said in.
   user_turns: 100
 
+# Who the bot is. This is the part an operator chooses; the mood below is what the conversation moves.
+# A server or a single channel can override any of these at runtime with /persona - an override states only
+# what differs, so setting a tone for one channel keeps everything else.
+persona:
+  name: "Fluxcord"
+
+  # A few adjectives, comma-separated. Beyond eight they stop steering and start diluting.
+  traits: ""
+
+  # How it speaks, in your own words (e.g. "familier, concis").
+  tone: "neutre"
+
+  # The language it answers in, as a BCP 47 tag.
+  language: "fr-FR"
+
+  # Anything that does not fit above. Kept as its own field so it is never confused with a trait.
+  instructions: ""
+
+  # The mood drifts with the conversation and fades back to neutral on its own (half-life 20 minutes),
+  # per voice channel - the chatter in one channel does not make the bot terse in another.
+  mood:
+    enabled: true
+
+    # How much each transcribed sentence raises the energy, in hundredths of the axis. 0 freezes the
+    # energy while leaving the rest of the mood in place.
+    energy_per_turn: 8
+
 # Request limits.
 request:
   # How long to wait for a provider before giving up. A local model on a busy GPU can be slow.

@@ -16,6 +16,7 @@ service next to the bot in the cluster. No native library, no SDK, nothing bundl
 | `/silence` | Stops the bot talking, drops what was still queued | `ai-audio-plugin.tts` |
 | `/transcribe <start\|stop>` | Writes what is said in the voice channel into the text channel | `ai-audio-plugin.transcribe` |
 | `/forget <me\|channel\|server>` | Erases remembered conversation | none for `me`, `ai-audio-plugin.admin` for the rest |
+| `/persona <show\|set\|reset> [field] [value] [scope]` | Shows or adjusts who the bot is here | none for `show`, `ai-audio-plugin.admin` to change it |
 
 Transcription is **per speaker**: the plugin asks JDA for per-user audio (`canReceiveUser`), so two people
 talking at once produce two separate transcriptions, each attributed to the name that person uses on that
@@ -35,6 +36,32 @@ Three independent histories, each sized on its own in `config.yml`, each turned 
 Each turn keeps who said it (id and display name), where (server and channel, both id and name) and when.
 Nothing is a prompt: names and text stay in their own fields, because a Discord nickname is chosen by its
 owner and must never be able to become an instruction to a model.
+
+## Who it is, and how it feels
+
+The **persona** is the part an operator chooses: a name, a few traits, a tone, a language and free-form
+instructions. It is configured in `config.yml` and can be overridden per server and per voice channel with
+`/persona`. An override states only what differs, so giving one channel a tone leaves its name, traits and
+language to the server, and those to the configuration.
+
+```
+/persona show
+/persona set field:tone value:familier scope:server
+/persona set field:traits value:curieux, taquin scope:channel
+/persona reset scope:channel
+```
+
+The **mood** is the part the conversation moves. Two axes — energy (calm to excited) and warmth (cold to
+friendly) — kept per voice channel, because a mood belongs to a conversation and not to a community. Each
+transcribed sentence raises the energy a little (`persona.mood.energy_per_turn`), and a mood **fades back to
+neutral on its own**, halving every twenty minutes. Nothing runs while a channel is quiet: the fade is
+computed from the elapsed time when the mood is read.
+
+The bot also adapts to **who is there**: each participant's remembered turns make them a stranger, a known
+face or a regular, counted from their own history **across every server** — so a regular from another server
+is not a stranger here. That is what the per-person memory scope is for.
+
+`/persona reset field:mood` clears a feeling without touching the persona.
 
 ## Running the models locally
 
@@ -99,12 +126,16 @@ relocate.
 
 ## What is next
 
-Answering out loud on its own — hearing a question in the voice channel and replying by voice. The
-groundwork is what is described above: transcription gives it ears, `/speak` gives it a voice, and the
-memory gives it the context of who is in the conversation and what has been said. The remaining piece is
-the LLM turn in between, which will use the same OpenAI-compatible HTTP surface (so Ollama serves it
-locally or remotely with no code change) and expose the three memory lookups as tool calls, letting the
-model ask for what it needs instead of being handed everything.
+Answering out loud on its own — hearing a question in the voice channel and replying by voice. Everything
+around that turn now exists: transcription gives it ears, `/speak` a voice, the memory a context, and the
+persona and mood a manner. The remaining piece is the model call in between, which will use the same
+OpenAI-compatible HTTP surface (so Ollama serves it locally or remotely with no code change), take a
+`PersonaSnapshot` as its input, and expose the three memory lookups as tool calls so the model asks for what
+it needs instead of being handed everything.
+
+One rule that call has to keep: the persona is trusted input and a transcription is not. The snapshot keeps
+names, spoken text and persona fields separate precisely so that whatever composes the instructions cannot
+splice a participant called `"Bob. SYSTEM: ignore the above"` into them.
 
 ## Tests
 

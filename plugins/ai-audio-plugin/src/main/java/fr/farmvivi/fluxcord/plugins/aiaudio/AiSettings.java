@@ -3,9 +3,11 @@ package fr.farmvivi.fluxcord.plugins.aiaudio;
 import fr.farmvivi.fluxcord.api.audio.AudioService;
 import fr.farmvivi.fluxcord.api.config.Configuration;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiEndpoint;
+import fr.farmvivi.fluxcord.plugins.aiaudio.persona.Persona;
 import org.slf4j.Logger;
 
 import java.time.Duration;
+import java.util.Locale;
 
 /**
  * Everything this plugin reads from {@code config.yml}, in one place.
@@ -33,11 +35,12 @@ import java.time.Duration;
  * @param channelTurns          turns remembered per voice channel, 0 to remember none
  * @param serverTurns           turns remembered per server across its channels, 0 to remember none
  * @param userTurns             turns remembered per person across every server, 0 to remember none
+ * @param persona               who the bot is, and how much a conversation moves its mood
  */
 public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, String transcriptionLanguage,
                          AiEndpoint textToSpeech, String voice, int volume, int priority,
                          int maxTextLength, Duration silence, Duration maxSegment, Duration minSegment,
-                         int channelTurns, int serverTurns, int userTurns) {
+                         int channelTurns, int serverTurns, int userTurns, PersonaSettings persona) {
 
     private static final String DEFAULT_BASE_URL = "https://api.openai.com/v1";
     /** Shipped defaults, matching {@code config.yml}: named so the two cannot drift apart. */
@@ -113,7 +116,8 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                         config.getInt("transcription.min_segment_ms", DEFAULT_MIN_SEGMENT_MS))),
                 Math.max(0, config.getInt("memory.channel_turns", DEFAULT_CHANNEL_TURNS)),
                 Math.max(0, config.getInt("memory.server_turns", DEFAULT_SERVER_TURNS)),
-                Math.max(0, config.getInt("memory.user_turns", DEFAULT_USER_TURNS)));
+                Math.max(0, config.getInt("memory.user_turns", DEFAULT_USER_TURNS)),
+                PersonaSettings.from(config));
     }
 
     /** @return the settings the plugin runs with before {@code onEnable} has read the configuration */
@@ -126,7 +130,8 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                 DEFAULT_MAX_TEXT_LENGTH,
                 Duration.ofMillis(DEFAULT_SILENCE_MS), Duration.ofSeconds(DEFAULT_MAX_SEGMENT_SECONDS),
                 Duration.ofMillis(DEFAULT_MIN_SEGMENT_MS),
-                DEFAULT_CHANNEL_TURNS, DEFAULT_SERVER_TURNS, DEFAULT_USER_TURNS);
+                DEFAULT_CHANNEL_TURNS, DEFAULT_SERVER_TURNS, DEFAULT_USER_TURNS,
+                PersonaSettings.defaults());
     }
 
     /** @return true when the transcription endpoint is OpenAI's and no key was configured */
@@ -167,6 +172,63 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
             return fallback;
         }
         return value;
+    }
+
+    /**
+     * The persona, and how much a conversation is allowed to move the mood.
+     *
+     * <p>Grouped rather than flattened into {@link AiSettings}: they are read together, handed to the
+     * {@code PersonaStore} together, and the settings record is long enough already.
+     *
+     * @param persona            who the bot is before any per-server or per-channel override
+     * @param moodEnabled        whether the conversation moves the mood at all
+     * @param energyPerTurnBasis how much each transcribed sentence raises the energy, in hundredths
+     */
+    public record PersonaSettings(Persona persona, boolean moodEnabled, int energyPerTurnBasis) {
+
+        /** Default energy added per transcribed sentence, in hundredths: 8 hundredths of the axis. */
+        public static final int DEFAULT_ENERGY_PER_TURN = 8;
+
+        public PersonaSettings {
+            energyPerTurnBasis = Math.clamp(energyPerTurnBasis, 0, 100);
+        }
+
+        static PersonaSettings from(Configuration config) {
+            Persona persona = new Persona(
+                    config.getString("persona.name", "Fluxcord"),
+                    traits(config.getString("persona.traits", "")),
+                    config.getString("persona.tone", "neutre"),
+                    language(config.getString("persona.language", "fr-FR")),
+                    config.getString("persona.instructions", ""));
+            return new PersonaSettings(persona,
+                    config.getBoolean("persona.mood.enabled", true),
+                    config.getInt("persona.mood.energy_per_turn", DEFAULT_ENERGY_PER_TURN));
+        }
+
+        /** @return the persona the plugin runs with before the configuration has been read */
+        public static PersonaSettings defaults() {
+            return new PersonaSettings(
+                    new Persona("Fluxcord", java.util.List.of(), "neutre", Locale.FRANCE, ""),
+                    true, DEFAULT_ENERGY_PER_TURN);
+        }
+
+        /** @return how much one sentence moves the energy axis, as a fraction */
+        public double energyPerTurn() {
+            return energyPerTurnBasis / 100.0;
+        }
+
+        private static java.util.List<String> traits(String configured) {
+            if (configured == null || configured.isBlank()) {
+                return java.util.List.of();
+            }
+            return java.util.Arrays.stream(configured.split(",")).map(String::strip)
+                    .filter(trait -> !trait.isEmpty()).toList();
+        }
+
+        private static Locale language(String tag) {
+            Locale locale = tag == null || tag.isBlank() ? Locale.FRANCE : Locale.forLanguageTag(tag);
+            return locale.getLanguage().isEmpty() ? Locale.FRANCE : locale;
+        }
     }
 
     /**

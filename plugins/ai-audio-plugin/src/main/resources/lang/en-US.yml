@@ -20,6 +20,27 @@ commands:
     option:
       scope: "What to erase (your own history by default)"
 
+  persona:
+    description: "Show or adjust who the bot is here"
+    show: "Show"
+    set: "Set"
+    reset: "Reset"
+    option:
+      action: "Show, set or reset"
+      field: "Which part of the persona"
+      value: "The new value"
+      scope: "This server, or only the voice channel"
+    field:
+      name: "Name"
+      traits: "Traits"
+      tone: "Tone"
+      language: "Language"
+      instructions: "Instructions"
+      mood: "Mood"
+    scope:
+      server: "This server"
+      channel: "This voice channel"
+
 messages:
   speaking: "Speaking: {0}"
   silenced: "Stopped talking."
@@ -29,6 +50,13 @@ messages:
   forgot_me: "I have forgotten everything you said."
   forgot_channel: "I have forgotten the conversation in {0}."
   forgot_server: "I have forgotten everything said in {0}."
+  persona_shown: "**{0}** — traits: {1} — tone: {2} — language: {3} — instructions: {4} — mood: {5}"
+  persona_set: "{0} set to \u201c{1}\u201d for {2}."
+  persona_reset: "The persona of {0} is back to the configured one."
+  persona_nothing_to_reset: "{0} had no persona of its own."
+  mood_reset: "Mood cleared."
+  scope_server: "this server"
+  scope_channel: "this voice channel"
 
 errors:
   guild_only: "This command only works in a server."
@@ -41,3 +69,13 @@ errors:
   no_permission: "You are not allowed to do that."
   already_transcribing: "I am already transcribing this server."
   not_transcribing: "I was not transcribing anything."
+  persona_usage: "Say which field and which value: /persona set field:tone value:familier"
+  persona_unknown_field: "There is no persona field called {0}."
+
+mood:
+  neutral: "neutral"
+  enthusiastic: "enthusiastic"
+  subdued: "subdued"
+  tense: "tense"
+  warm: "warm"
+  distant: "distant"

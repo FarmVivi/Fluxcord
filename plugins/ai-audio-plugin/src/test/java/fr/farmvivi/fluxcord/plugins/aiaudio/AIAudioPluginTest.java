@@ -154,7 +154,7 @@ class AIAudioPluginTest {
 
         List<RecordedCommand> registered = registeredCommands();
 
-        assertEquals(List.of("speak", "silence", "transcribe", "forget"),
+        assertEquals(List.of("speak", "silence", "transcribe", "persona", "forget"),
                 registered.stream().map(RecordedCommand::name).toList());
         RecordedCommand speak = registered.get(0);
         assertEquals(PLUGIN_ID + ".tts", speak.permission());
@@ -162,8 +162,11 @@ class AIAudioPluginTest {
         assertEquals(PLUGIN_ID + ".transcribe", registered.get(2).permission());
         assertEquals(List.of("action"), registered.get(2).options());
         assertNull(registered.get(3).permission(),
+                "showing the persona is open; setting it checks admin in the command");
+        assertEquals(List.of("action", "field", "value", "scope"), registered.get(3).options());
+        assertNull(registered.get(4).permission(),
                 "erasing one's own history needs no permission; the wider scopes check admin themselves");
-        assertEquals(List.of("scope"), registered.get(3).options());
+        assertEquals(List.of("scope"), registered.get(4).options());
     }
 
     @Test

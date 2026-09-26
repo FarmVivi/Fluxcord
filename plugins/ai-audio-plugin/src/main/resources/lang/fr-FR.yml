@@ -20,6 +20,27 @@ commands:
     option:
       scope: "Ce qu'il faut effacer (ton propre historique par défaut)"
 
+  persona:
+    description: "Voir ou ajuster qui est le bot ici"
+    show: "Afficher"
+    set: "Définir"
+    reset: "Réinitialiser"
+    option:
+      action: "Afficher, définir ou réinitialiser"
+      field: "Quelle partie de la personnalité"
+      value: "La nouvelle valeur"
+      scope: "Ce serveur, ou seulement le salon vocal"
+    field:
+      name: "Nom"
+      traits: "Traits"
+      tone: "Ton"
+      language: "Langue"
+      instructions: "Instructions"
+      mood: "Humeur"
+    scope:
+      server: "Ce serveur"
+      channel: "Ce salon vocal"
+
 messages:
   speaking: "Je dis : {0}"
   silenced: "J'arrête de parler."
@@ -29,6 +50,13 @@ messages:
   forgot_me: "J'ai oublié tout ce que tu as dit."
   forgot_channel: "J''ai oublié la conversation de {0}."
   forgot_server: "J''ai oublié tout ce qui a été dit sur {0}."
+  persona_shown: "**{0}** — traits : {1} — ton : {2} — langue : {3} — instructions : {4} — humeur : {5}"
+  persona_set: "{0} défini sur \u201c{1}\u201d pour {2}."
+  persona_reset: "La personnalité de {0} revient à celle configurée."
+  persona_nothing_to_reset: "{0} n''avait pas de personnalité propre."
+  mood_reset: "Humeur remise à zéro."
+  scope_server: "ce serveur"
+  scope_channel: "ce salon vocal"
 
 errors:
   guild_only: "Cette commande ne fonctionne que sur un serveur."
@@ -41,3 +69,13 @@ errors:
   no_permission: "Tu n'as pas le droit de faire ça."
   already_transcribing: "Je transcris déjà ce serveur."
   not_transcribing: "Je ne transcrivais rien."
+  persona_usage: "Précise le champ et la valeur : /persona set field:tone value:familier"
+  persona_unknown_field: "Il n''existe pas de champ de personnalité nommé {0}."
+
+mood:
+  neutral: "neutre"
+  enthusiastic: "enthousiaste"
+  subdued: "posée"
+  tense: "tendue"
+  warm: "chaleureuse"
+  distant: "distante"

@@ -36,12 +36,27 @@ class LanguageFilesTest {
             "errors.guild_only", "errors.no_voice_channel", "errors.not_connected",
             "errors.nothing_to_say", "errors.text_too_long", "errors.api_key_missing",
             "errors.synthesis_failed", "errors.no_permission",
-            "errors.already_transcribing", "errors.not_transcribing");
+            "errors.already_transcribing", "errors.not_transcribing",
+            "commands.persona.description", "commands.persona.show", "commands.persona.set",
+            "commands.persona.reset", "commands.persona.option.action", "commands.persona.option.field",
+            "commands.persona.option.value", "commands.persona.option.scope",
+            "commands.persona.field.name", "commands.persona.field.traits", "commands.persona.field.tone",
+            "commands.persona.field.language", "commands.persona.field.instructions",
+            "commands.persona.field.mood",
+            "commands.persona.scope.server", "commands.persona.scope.channel",
+            "messages.persona_shown", "messages.persona_set", "messages.persona_reset",
+            "messages.persona_nothing_to_reset", "messages.mood_reset",
+            "messages.scope_server", "messages.scope_channel",
+            "errors.persona_usage", "errors.persona_unknown_field",
+            "mood.neutral", "mood.enthusiastic", "mood.subdued", "mood.tense", "mood.warm",
+            "mood.distant");
 
     /** The keys whose value goes through MessageFormat, because the code passes arguments. */
     private static final Set<String> FORMATTED_KEYS = Set.of(
             "messages.speaking", "messages.forgot_channel", "messages.forgot_server",
-            "errors.text_too_long", "errors.synthesis_failed");
+            "errors.text_too_long", "errors.synthesis_failed",
+            "messages.persona_shown", "messages.persona_set", "messages.persona_reset",
+            "messages.persona_nothing_to_reset", "errors.persona_unknown_field");
 
     private Map<String, String> load(String locale) {
         try (InputStream in = getClass().getResourceAsStream("/lang/" + locale + ".yml")) {

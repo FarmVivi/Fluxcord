@@ -12,10 +12,12 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiSpeechToText;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.SpeechToText;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiTextToSpeech;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.ForgetCommand;
+import fr.farmvivi.fluxcord.plugins.aiaudio.commands.PersonaCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.SilenceCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.SpeakCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.TranscribeCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
+import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaStore;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -44,6 +46,7 @@ public class AIAudioPlugin extends AbstractPlugin {
     private SpeechRecognitionService speechRecognition;
     private TextToSpeechService textToSpeech;
     private ConversationMemory memory;
+    private PersonaStore personaStore;
     private HttpClient http;
 
     private AiSettings settings = AiSettings.defaults();
@@ -68,6 +71,10 @@ public class AIAudioPlugin extends AbstractPlugin {
             logger.warn("No API key configured for api.openai.com; set one, or point "
                     + "speech_to_text.base_url / text_to_speech.base_url at your own server");
         }
+        logger.info("AI Audio persona: {} ({}), tone {}, language {}, mood {}",
+                settings.persona().persona().name(), settings.persona().persona().traitsAsText(),
+                settings.persona().persona().tone(), settings.persona().persona().language().toLanguageTag(),
+                settings.persona().moodEnabled() ? "on" : "off");
         logger.info("AI Audio enabled: transcription {} via {} ({}), speech {} (voice {}), memory {}",
                 settings.speechToText().model(), settings.speechToTextApi(), settings.transcriptionLanguage(),
                 settings.textToSpeech().model(), settings.voice(),
@@ -91,6 +98,7 @@ public class AIAudioPlugin extends AbstractPlugin {
             http = null;
         }
         memory = null;
+        personaStore = null;
         logger.info("AI Audio disabled");
     }
 
@@ -102,6 +110,7 @@ public class AIAudioPlugin extends AbstractPlugin {
         http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
         memory = new ConversationMemory(getStorage(), settings.channelTurns(), settings.serverTurns(),
                 settings.userTurns());
+        personaStore = new PersonaStore(getStorage(), settings.persona().persona());
         textToSpeech = new TextToSpeechService(this,
                 new OpenAiTextToSpeech(settings.textToSpeech(), http));
         speechRecognition = new SpeechRecognitionService(this, speechToText(), memory);
@@ -146,6 +155,33 @@ public class AIAudioPlugin extends AbstractPlugin {
                         choice("commands.transcribe.stop", TranscribeCommand.STOP))
                 .executor((ctx, cmd) -> {
                     new TranscribeCommand(this).execute(ctx, ctx.getRequiredOption("action"));
+                    return CommandResult.success();
+                }));
+
+        // Showing the persona is open; setting and resetting it check the admin permission themselves,
+        // because only some of the actions need it.
+        command("persona", builder -> builder
+                .stringOption("action", text("commands.persona.option.action"), false,
+                        choice("commands.persona.show", PersonaCommand.SHOW),
+                        choice("commands.persona.set", PersonaCommand.SET),
+                        choice("commands.persona.reset", PersonaCommand.RESET))
+                .stringOption("field", text("commands.persona.option.field"), false,
+                        choice("commands.persona.field.name", PersonaCommand.FIELD_NAME),
+                        choice("commands.persona.field.traits", PersonaCommand.FIELD_TRAITS),
+                        choice("commands.persona.field.tone", PersonaCommand.FIELD_TONE),
+                        choice("commands.persona.field.language", PersonaCommand.FIELD_LANGUAGE),
+                        choice("commands.persona.field.instructions", PersonaCommand.FIELD_INSTRUCTIONS),
+                        choice("commands.persona.field.mood", PersonaCommand.FIELD_MOOD))
+                .stringOption("value", text("commands.persona.option.value"), false)
+                .stringOption("scope", text("commands.persona.option.scope"), false,
+                        choice("commands.persona.scope.server", PersonaCommand.SCOPE_SERVER),
+                        choice("commands.persona.scope.channel", PersonaCommand.SCOPE_CHANNEL))
+                .executor((ctx, cmd) -> {
+                    new PersonaCommand(this).execute(ctx,
+                            ctx.getOption("action", PersonaCommand.SHOW),
+                            ctx.getOption("field", null),
+                            ctx.getOption("value", null),
+                            ctx.getOption("scope", PersonaCommand.SCOPE_SERVER));
                     return CommandResult.success();
                 }));
 
@@ -204,6 +240,11 @@ public class AIAudioPlugin extends AbstractPlugin {
     /** @return the speech service, or null before {@code onEnable} */
     public TextToSpeechService getTextToSpeech() {
         return textToSpeech;
+    }
+
+    /** @return the persona and mood store, or null before {@code onEnable} */
+    public PersonaStore getPersonaStore() {
+        return personaStore;
     }
 
     /** @return what the bot remembers of the conversations, or null before {@code onEnable} */
