@@ -15,6 +15,7 @@ import java.time.Duration;
  * {@link AiEndpoint} instead of sharing one base URL and key.
  *
  * @param speechToText          where to send audio for transcription
+ * @param speechToTextApi       which HTTP shape that endpoint speaks
  * @param transcriptionLanguage BCP 47 tag of the expected speech, or {@code auto} to let the provider
  *                              detect it
  * @param textToSpeech          where to send text for synthesis
@@ -33,7 +34,7 @@ import java.time.Duration;
  * @param serverTurns           turns remembered per server across its channels, 0 to remember none
  * @param userTurns             turns remembered per person across every server, 0 to remember none
  */
-public record AiSettings(AiEndpoint speechToText, String transcriptionLanguage,
+public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, String transcriptionLanguage,
                          AiEndpoint textToSpeech, String voice, int volume, int priority,
                          int maxTextLength, Duration silence, Duration maxSegment, Duration minSegment,
                          int channelTurns, int serverTurns, int userTurns) {
@@ -87,6 +88,7 @@ public record AiSettings(AiEndpoint speechToText, String transcriptionLanguage,
 
         return new AiSettings(
                 stt,
+                SpeechApi.of(config.getString("speech_to_text.api", SpeechApi.OPENAI.name()), logger),
                 nonBlank(config.getString("speech_to_text.language", "auto"), "auto"),
                 tts,
                 nonBlank(config.getString("text_to_speech.voice", "alloy"), "alloy"),
@@ -112,7 +114,7 @@ public record AiSettings(AiEndpoint speechToText, String transcriptionLanguage,
     public static AiSettings defaults() {
         Duration timeout = Duration.ofSeconds(DEFAULT_TIMEOUT_SECONDS);
         return new AiSettings(
-                new AiEndpoint(DEFAULT_BASE_URL, "", "whisper-1", timeout), "auto",
+                new AiEndpoint(DEFAULT_BASE_URL, "", "whisper-1", timeout), SpeechApi.OPENAI, "auto",
                 new AiEndpoint(DEFAULT_BASE_URL, "", "gpt-4o-mini-tts", timeout), "alloy",
                 AudioService.DEFAULT_VOLUME, AudioService.DEFAULT_PRIORITY_THRESHOLD,
                 DEFAULT_MAX_TEXT_LENGTH,
@@ -123,7 +125,7 @@ public record AiSettings(AiEndpoint speechToText, String transcriptionLanguage,
 
     /** @return true when the transcription endpoint is OpenAI's and no key was configured */
     public boolean transcriptionNeedsKey() {
-        return needsKey(speechToText);
+        return speechToTextApi == SpeechApi.OPENAI && needsKey(speechToText);
     }
 
     /** @return true when the synthesis endpoint is OpenAI's and no key was configured */
@@ -159,5 +161,35 @@ public record AiSettings(AiEndpoint speechToText, String transcriptionLanguage,
             return fallback;
         }
         return value;
+    }
+
+    /**
+     * Which HTTP shape the transcription endpoint speaks.
+     *
+     * <p>Not a detail that can be guessed from the URL: the two are different routes with different
+     * bodies, and a server may expose either.
+     */
+    public enum SpeechApi {
+        /**
+         * {@code POST /audio/transcriptions} with a multipart WAV — OpenAI, Speaches, whisper.cpp,
+         * faster-whisper-server, LocalAI.
+         */
+        OPENAI,
+        /**
+         * {@code POST /api/chat} asking a multimodal model to write down what it hears — Ollama, which
+         * has no transcription route but can serve a model that accepts audio. One server then covers
+         * transcription, reasoning and tool calls.
+         */
+        OLLAMA;
+
+        static SpeechApi of(String value, Logger logger) {
+            for (SpeechApi api : values()) {
+                if (api.name().equalsIgnoreCase(value == null ? "" : value.trim())) {
+                    return api;
+                }
+            }
+            logger.warn("Unknown speech_to_text.api '{}'; using {}", value, OPENAI);
+            return OPENAI;
+        }
     }
 }

@@ -14,6 +14,15 @@ config_version: 2
 
 # Speech to text: what the bot hears.
 speech_to_text:
+  # Which HTTP shape the endpoint speaks. This cannot be guessed from the URL.
+  #   OPENAI - POST {base_url}/audio/transcriptions with a multipart WAV. OpenAI, Speaches,
+  #            whisper.cpp (whisper-server), faster-whisper-server, LocalAI.
+  #   OLLAMA - POST {base_url}/api/chat asking a multimodal model to write down what it hears.
+  #            Ollama has no transcription route, but a model that accepts audio does the job - and
+  #            the same server then covers transcription, reasoning and tool calls in one round trip.
+  #            The model must list "audio" in its capabilities (/api/show): Gemma 4 does, Qwen 3.5
+  #            does not. With OLLAMA, base_url is the server root, without /v1, and api_key is unused.
+  api: OPENAI
   base_url: "${AI_AUDIO_STT_URL:https://api.openai.com/v1}"
   api_key: "${OPENAI_API_KEY:}"
   model: "whisper-1"

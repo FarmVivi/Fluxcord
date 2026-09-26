@@ -7,7 +7,9 @@ import fr.farmvivi.fluxcord.api.permissions.Permission;
 import fr.farmvivi.fluxcord.api.permissions.PermissionDefault;
 import fr.farmvivi.fluxcord.api.plugin.AbstractPlugin;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiEndpoint;
+import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OllamaSpeechToText;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiSpeechToText;
+import fr.farmvivi.fluxcord.plugins.aiaudio.ai.SpeechToText;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiTextToSpeech;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.ForgetCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.SilenceCommand;
@@ -61,8 +63,8 @@ public class AIAudioPlugin extends AbstractPlugin {
             logger.warn("No API key configured for api.openai.com; set one, or point "
                     + "speech_to_text.base_url / text_to_speech.base_url at your own server");
         }
-        logger.info("AI Audio enabled: transcription {} ({}), speech {} (voice {}), memory {}",
-                settings.speechToText().model(), settings.transcriptionLanguage(),
+        logger.info("AI Audio enabled: transcription {} via {} ({}), speech {} (voice {}), memory {}",
+                settings.speechToText().model(), settings.speechToTextApi(), settings.transcriptionLanguage(),
                 settings.textToSpeech().model(), settings.voice(),
                 memory.isDisabled() ? "off" : settings.channelTurns() + "/" + settings.serverTurns()
                         + "/" + settings.userTurns() + " turns per channel/server/person");
@@ -97,8 +99,20 @@ public class AIAudioPlugin extends AbstractPlugin {
                 settings.userTurns());
         textToSpeech = new TextToSpeechService(this,
                 new OpenAiTextToSpeech(settings.textToSpeech(), http));
-        speechRecognition = new SpeechRecognitionService(this,
-                new OpenAiSpeechToText(settings.speechToText(), http), memory);
+        speechRecognition = new SpeechRecognitionService(this, speechToText(), memory);
+    }
+
+    /**
+     * The transcription client the configuration asked for.
+     *
+     * @return a client for {@code POST /audio/transcriptions}, or one that asks a multimodal model over
+     *         Ollama's {@code /api/chat} when that is where the models live
+     */
+    private SpeechToText speechToText() {
+        return switch (settings.speechToTextApi()) {
+            case OPENAI -> new OpenAiSpeechToText(settings.speechToText(), http);
+            case OLLAMA -> new OllamaSpeechToText(settings.speechToText(), http);
+        };
     }
 
     private void registerCommands() {

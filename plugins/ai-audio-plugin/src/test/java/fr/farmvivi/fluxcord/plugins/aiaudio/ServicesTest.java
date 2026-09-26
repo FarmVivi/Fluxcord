@@ -106,7 +106,7 @@ class ServicesTest {
 
     private AiSettings settings() {
         AiEndpoint local = new AiEndpoint("http://localhost:8000/v1", "", "m", Duration.ofSeconds(5));
-        return new AiSettings(local, "fr-FR", local, "alloy", 60, 85, 1000,
+        return new AiSettings(local, AiSettings.SpeechApi.OPENAI, "fr-FR", local, "alloy", 60, 85, 1000,
                 Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 10, 10, 10);
     }
 

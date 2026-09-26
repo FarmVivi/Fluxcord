@@ -74,6 +74,12 @@ class OpenAiClientsTest {
         return new AiEndpoint(baseUrl, apiKey, model, Duration.ofSeconds(5));
     }
 
+    /** Ollama is addressed at the server root: its routes are /api/..., not /v1/api/.... */
+    private AiEndpoint ollamaEndpoint(String model) {
+        return new AiEndpoint(baseUrl.substring(0, baseUrl.lastIndexOf("/v1")), "", model,
+                Duration.ofSeconds(5));
+    }
+
     private static byte[] wav(int sampleRate, int channels, short... samples) {
         ByteBuffer pcm = ByteBuffer.allocate(samples.length * 2).order(ByteOrder.LITTLE_ENDIAN);
         for (short sample : samples) {
@@ -260,5 +266,72 @@ class OpenAiClientsTest {
                 () -> new AiEndpoint(baseUrl, "", " ", Duration.ofSeconds(1)));
         assertThrows(IllegalArgumentException.class,
                 () -> new AiEndpoint(baseUrl, "", "m", Duration.ZERO));
+    }
+
+    // Transcription through Ollama, which has no transcription route
+
+    @Test
+    void ollamaTranscriptionPutsTheWavInImagesBecauseThatIsWhereMediaGoes() {
+        // The trap this test exists for: an "audio" field is accepted and silently ignored, and the
+        // model then answers that it was given nothing to transcribe.
+        answer("/api/chat", 200, "application/json",
+                "{\"message\":{\"role\":\"assistant\",\"content\":\"  bonjour tout le monde \"}}"
+                        .getBytes(StandardCharsets.UTF_8));
+
+        String text = new OllamaSpeechToText(ollamaEndpoint("gemma4:e4b-it-qat"), http)
+                .transcribe(new PcmAudio(new byte[16_000 * 2], 16_000, 1), "fr-FR");
+
+        assertEquals("bonjour tout le monde", text);
+        assertEquals("/api/chat", lastPath.get());
+        JsonObject sent = JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject();
+        assertEquals("gemma4:e4b-it-qat", sent.get("model").getAsString());
+        assertFalse(sent.get("stream").getAsBoolean());
+        assertFalse(sent.get("think").getAsBoolean(), "a thinking block is pure latency here");
+        JsonObject message = sent.getAsJsonArray("messages").get(0).getAsJsonObject();
+        assertTrue(message.has("images"), "media travels in 'images', never in 'audio'");
+        assertFalse(message.has("audio"));
+        assertEquals(1, message.getAsJsonArray("images").size());
+        // What is sent is a real WAV, base64-encoded.
+        byte[] decoded = java.util.Base64.getDecoder()
+                .decode(message.getAsJsonArray("images").get(0).getAsString());
+        assertEquals("RIFF", new String(decoded, 0, 4, StandardCharsets.US_ASCII));
+        assertTrue(message.get("content").getAsString().contains("fr"),
+                "naming the language helps a general-purpose model");
+    }
+
+    @Test
+    void ollamaTranscriptionLetsTheModelDetectTheLanguageWhenAsked() {
+        answer("/api/chat", 200, "application/json",
+                "{\"message\":{\"content\":\"hello\"}}".getBytes(StandardCharsets.UTF_8));
+
+        new OllamaSpeechToText(ollamaEndpoint("gemma4:e4b-it-qat"), http)
+                .transcribe(new PcmAudio(new byte[3200], 16_000, 1), "auto");
+
+        JsonObject sent = JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject();
+        String instruction = sent.getAsJsonArray("messages").get(0).getAsJsonObject()
+                .get("content").getAsString();
+        assertFalse(instruction.contains("The audio is in"), "no language is imposed");
+    }
+
+    @Test
+    void ollamaTranscriptionReportsAnAnswerItCannotRead() {
+        answer("/api/chat", 200, "text/html", "<html>not ollama</html>".getBytes(StandardCharsets.UTF_8));
+
+        AiRequestException failure = assertThrows(AiRequestException.class,
+                () -> new OllamaSpeechToText(ollamaEndpoint("gemma4"), http)
+                        .transcribe(new PcmAudio(new byte[3200], 16_000, 1), "fr"));
+
+        assertTrue(failure.getMessage().contains("did not answer JSON"), failure.getMessage());
+    }
+
+    @Test
+    void ollamaTranscriptionRefusesEmptyAudioBeforeSendingAnything() {
+        OllamaSpeechToText stt = new OllamaSpeechToText(ollamaEndpoint("gemma4"), http);
+        PcmAudio empty = new PcmAudio(new byte[0], 16_000, 1);
+
+        assertThrows(IllegalArgumentException.class, () -> stt.transcribe(empty, "fr"));
+        assertNull(lastPath.get());
     }
 }
