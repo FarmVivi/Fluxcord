@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio.conversation;
 
+import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.ChatModel;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.Turn;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.Mood;
@@ -47,6 +48,25 @@ public final class ConversationPrompt {
      */
     public static List<ChatModel.Message> build(PersonaSnapshot snapshot, Turn question, int historyLimit,
                                                 String botUserId) {
+        return build(snapshot, question, historyLimit, botUserId, null);
+    }
+
+    /**
+     * Builds the messages for one turn, letting the model hear the sentence it is answering.
+     *
+     * <p>Only the sentence being answered carries its recording. The history stays text: recordings would grow
+     * the request by a megabyte a minute, and providers expire the audio they hand back, so a replayed history
+     * of audio would start failing after a few minutes anyway. The transcript is the durable record.
+     *
+     * @param snapshot      who the bot is, how it feels, where it is and who is there
+     * @param question      the sentence to answer
+     * @param historyLimit  how many earlier turns of this channel to include
+     * @param botUserId     the bot's own user id, so its past answers are recognised as its own
+     * @param questionAudio the recording of the sentence, or null to send the transcript alone
+     * @return the messages, system first
+     */
+    public static List<ChatModel.Message> build(PersonaSnapshot snapshot, Turn question, int historyLimit,
+                                                String botUserId, PcmAudio questionAudio) {
         List<ChatModel.Message> messages = new ArrayList<>();
         messages.add(ChatModel.Message.system(systemMessage(snapshot.persona(), snapshot.mood())));
         messages.add(ChatModel.Message.user(context(snapshot)));
@@ -63,7 +83,7 @@ public final class ConversationPrompt {
                     ? ChatModel.Message.assistant(turn.text())
                     : ChatModel.Message.user(spoken(turn)));
         }
-        messages.add(ChatModel.Message.user(spoken(question)));
+        messages.add(ChatModel.Message.user(spoken(question), questionAudio));
         return List.copyOf(messages);
     }
 

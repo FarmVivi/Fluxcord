@@ -6,6 +6,7 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.AIAudioPlugin;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AiSettings;
 import fr.farmvivi.fluxcord.plugins.aiaudio.SpeechRecognitionService;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiEndpoint;
+import fr.farmvivi.fluxcord.plugins.aiaudio.ai.ChatAudio;
 import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.ConversationService;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.GuildVoiceState;
@@ -94,7 +95,8 @@ class ConverseCommandTest {
         return new AiSettings(local, AiSettings.SpeechApi.OLLAMA, "fr-FR", local, "alloy", 100, 80, 1000,
                 Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 20, 20, 20,
                 AiSettings.PersonaSettings.defaults(),
-                new AiSettings.ChatSettings(chat, enabled, wakeWord, 8, 120, 0.7, "none", "low", false, 3));
+                new AiSettings.ChatSettings(chat, enabled, wakeWord, 8, 120, 0.7, "none", "low", false, 3,
+                        ChatAudio.off()));
     }
 
     /** OpenAI with no key: the misconfiguration users hit first. */

@@ -8,6 +8,7 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.AiSettings;
 import fr.farmvivi.fluxcord.plugins.aiaudio.TextToSpeechService;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiEndpoint;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiRequestException;
+import fr.farmvivi.fluxcord.plugins.aiaudio.ai.ChatAudio;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.ChatModel;
 import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
@@ -120,12 +121,17 @@ class ConversationServiceTest {
     }
 
     private AiSettings settings(boolean enabled, String wakeWord, boolean memoryTools, int maxToolRounds) {
+        return settings(enabled, wakeWord, memoryTools, maxToolRounds, ChatAudio.off());
+    }
+
+    private AiSettings settings(boolean enabled, String wakeWord, boolean memoryTools, int maxToolRounds,
+                                ChatAudio audio) {
         AiEndpoint local = new AiEndpoint("http://localhost:11434/v1", "", "m", Duration.ofSeconds(5));
         return new AiSettings(local, AiSettings.SpeechApi.OLLAMA, "fr-FR", local, "alloy", 100, 80, 1000,
                 Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 20, 20, 20,
                 AiSettings.PersonaSettings.defaults(),
                 new AiSettings.ChatSettings(local, enabled, wakeWord, 8, 120, 0.7, "none", "low",
-                        memoryTools, maxToolRounds));
+                        memoryTools, maxToolRounds, audio));
     }
 
     /** A service whose model answers {@code reply} and records what it was asked. */
@@ -363,7 +369,7 @@ class ConversationServiceTest {
     // Memory as tool calls
 
     private static ChatModel.Answer asksFor(String tool, String arguments) {
-        return new ChatModel.Answer("", List.of(new ChatModel.ToolCall("call_1", tool, arguments)));
+        return new ChatModel.Answer("", null, List.of(new ChatModel.ToolCall("call_1", tool, arguments)));
     }
 
     /** Waits for the model to have been called {@code n} times. */
@@ -443,5 +449,137 @@ class ConversationServiceTest {
 
         verify(tts, timeout(5_000)).speak(any(), eq("je ne peux pas chercher"), isNull());
         assertTrue(asked.get().get(asked.get().size() - 1).content().contains("no tool"));
+    }
+
+    // Speech to speech
+
+    /** A recording of somebody talking, short enough to compare sample by sample. */
+    private static PcmAudio aVoice() {
+        return new PcmAudio(new byte[]{1, 0, 2, 0, 3, 0, 4, 0}, 16_000, 1);
+    }
+
+    private static ChatModel.Answer answeredOutLoud(String transcript, PcmAudio voice) {
+        return new ChatModel.Answer(transcript, voice, List.of());
+    }
+
+    @Test
+    void theRecordingReachesAModelThatCanHearIt() throws Exception {
+        when(plugin.getSettings()).thenReturn(settings(true, "", false, 3,
+                new ChatAudio(true, false, "alloy", "wav")));
+        ConversationService service = serviceAnswering("ok");
+        service.start(guild);
+
+        service.onTranscription(guild, heard("salut"), aVoice());
+        waitForAnswer();
+
+        ChatModel.Message question = asked.get().get(asked.get().size() - 1);
+        assertTrue(question.hasAudio(), "the model was told it can listen, so it gets the voice");
+        assertEquals(aVoice(), question.audio());
+        assertTrue(question.content().contains("salut"),
+                "and the transcript stays: it carries who said it");
+    }
+
+    @Test
+    void theRecordingIsWithheldFromAModelThatCannotHear() throws Exception {
+        // Sending an input_audio part to a text-only model is how a working bot starts refusing every turn.
+        ConversationService service = serviceAnswering("ok");
+        service.start(guild);
+
+        service.onTranscription(guild, heard("salut"), aVoice());
+        waitForAnswer();
+
+        assertFalse(asked.get().get(asked.get().size() - 1).hasAudio());
+    }
+
+    @Test
+    void onlyTheSentenceBeingAnsweredCarriesItsRecording() throws Exception {
+        // History as audio would grow the request by a megabyte a minute, and providers expire the audio.
+        when(plugin.getSettings()).thenReturn(settings(true, "", false, 3,
+                new ChatAudio(true, false, "alloy", "wav")));
+        memory.remember(new Turn(NOW - 60_000, "u2", "Alice", GUILD_ID, "My Server", CHANNEL_ID,
+                "General", "on parlait de rhubarbe"));
+        ConversationService service = serviceAnswering("ok");
+        service.start(guild);
+
+        service.onTranscription(guild, heard("salut"), aVoice());
+        waitForAnswer();
+
+        List<ChatModel.Message> messages = asked.get();
+        assertEquals(1, messages.stream().filter(ChatModel.Message::hasAudio).count(),
+                "exactly one message carries audio, and it is the last");
+        assertTrue(messages.get(messages.size() - 1).hasAudio());
+    }
+
+    @Test
+    void aSpokenAnswerIsPlayedInsteadOfBeingSynthesised() throws Exception {
+        when(plugin.getSettings()).thenReturn(settings(true, "", false, 3,
+                new ChatAudio(true, true, "alloy", "wav")));
+        PcmAudio voice = aVoice();
+        conversation = serviceAnswering(List.of(answeredOutLoud("il est six heures", voice)));
+        conversation.start(guild);
+
+        conversation.onTranscription(guild, heard("quelle heure"), aVoice());
+
+        verify(tts, timeout(5_000)).play(same(guild), eq(voice));
+        verify(tts, never()).speak(any(), anyString(), any());
+    }
+
+    @Test
+    void aSpokenAnswerIsRememberedByItsTranscript() throws Exception {
+        when(plugin.getSettings()).thenReturn(settings(true, "", false, 3,
+                new ChatAudio(true, true, "alloy", "wav")));
+        conversation = serviceAnswering(List.of(answeredOutLoud("il est six heures", aVoice())));
+        conversation.start(guild);
+
+        conversation.onTranscription(guild, heard("quelle heure"), aVoice());
+        verify(tts, timeout(5_000)).play(any(), any());
+
+        assertTrue(memory.channelHistory(GUILD_ID, CHANNEL_ID, 10).stream()
+                        .anyMatch(turn -> "il est six heures".equals(turn.text())),
+                "the audio is played once, the words are what the next turn reads");
+    }
+
+    @Test
+    void audioWithoutATranscriptIsStillPlayedButNotRemembered() throws Exception {
+        // A placeholder in the memory would be quoted back later as something the bot really said.
+        when(plugin.getSettings()).thenReturn(settings(true, "", false, 3,
+                new ChatAudio(true, true, "alloy", "wav")));
+        conversation = serviceAnswering(List.of(answeredOutLoud("", aVoice())));
+        conversation.start(guild);
+
+        conversation.onTranscription(guild, heard("quelle heure"), aVoice());
+
+        verify(tts, timeout(5_000)).play(any(), any());
+        assertTrue(memory.channelHistory(GUILD_ID, CHANNEL_ID, 10).stream()
+                .noneMatch(turn -> BOT_ID.equals(turn.userId())));
+    }
+
+    @Test
+    void aProviderThatIgnoresTheAudioRequestFallsBackToSynthesis() throws Exception {
+        // Measured against Ollama 0.34: modalities is accepted and silently ignored - it answers in text with
+        // no error. So asking for a voice must degrade to synthesising the text, not to silence.
+        when(plugin.getSettings()).thenReturn(settings(true, "", false, 3,
+                new ChatAudio(true, true, "alloy", "wav")));
+        ConversationService service = serviceAnswering("il est six heures");
+        service.start(guild);
+
+        service.onTranscription(guild, heard("quelle heure"), aVoice());
+
+        verify(tts, timeout(5_000)).speak(same(guild), eq("il est six heures"), isNull());
+        verify(tts, never()).play(any(), any());
+    }
+
+    @Test
+    void aModelThatSaysNothingInEitherFormStaysSilent() throws Exception {
+        when(plugin.getSettings()).thenReturn(settings(true, "", false, 3,
+                new ChatAudio(true, true, "alloy", "wav")));
+        conversation = serviceAnswering(List.of(ChatModel.Answer.spoken("")));
+        conversation.start(guild);
+
+        conversation.onTranscription(guild, heard("salut"), aVoice());
+        waitForCalls(1);
+
+        verify(tts, never()).play(any(), any());
+        verify(tts, never()).speak(any(), anyString(), any());
     }
 }

@@ -7,10 +7,13 @@ import com.google.gson.JsonParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import fr.farmvivi.fluxcord.api.audio.PcmAudio;
+
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -34,8 +37,15 @@ import java.util.Map;
  * on whether tools were offered: {@code toolReasoningEffort} while it may still ask for something, and the
  * plain {@code reasoningEffort} on the round that only has to answer, which is the one whose latency is heard.
  *
+ * <p><strong>A spoken turn uses this same route.</strong> An audio model takes the recording as an
+ * {@code input_audio} content part and answers in {@code message.audio} — base64 audio plus the provider's own
+ * transcript of it — as soon as {@code modalities} asks for it. So speech to speech, with no transcription and
+ * no synthesis in between, is a model and an endpoint away rather than a second protocol. Audio output is only
+ * ever asked for on the round that answers: a round that ends in a tool call would throw the synthesis away.
+ *
  * <p>This class is the only place that knows how a tool is spelled on the wire; {@link ChatModel.Tool}
- * describes one in plain Java and the JSON schema is built here.
+ * describes one in plain Java and the JSON schema is built here. The same holds for audio: {@link ChatAudio}
+ * says what is wanted, and how it is spelled is this class's business.
  */
 public class OpenAiChatModel implements ChatModel {
 
@@ -46,12 +56,18 @@ public class OpenAiChatModel implements ChatModel {
     private final double temperature;
     private final String reasoningEffort;
     private final String toolReasoningEffort;
+    private final ChatAudio audio;
 
     /** What a round that offers tools asks for when nothing else was configured. See the class comment. */
     public static final String DEFAULT_TOOL_REASONING_EFFORT = "low";
 
     public OpenAiChatModel(AiEndpoint endpoint, HttpClient http, double temperature, String reasoningEffort) {
         this(endpoint, http, temperature, reasoningEffort, DEFAULT_TOOL_REASONING_EFFORT);
+    }
+
+    public OpenAiChatModel(AiEndpoint endpoint, HttpClient http, double temperature, String reasoningEffort,
+                           String toolReasoningEffort) {
+        this(endpoint, http, temperature, reasoningEffort, toolReasoningEffort, ChatAudio.off());
     }
 
     /**
@@ -62,14 +78,17 @@ public class OpenAiChatModel implements ChatModel {
      *                            field entirely, which is what a model that rejects the parameter needs
      * @param toolReasoningEffort what to ask on a round that offers tools, where {@code none} means no tool
      *                            call ever comes back
+     * @param audio               whether to ask for a spoken answer, and in which voice; {@link ChatAudio#off()}
+     *                            for a text-only model
      */
     public OpenAiChatModel(AiEndpoint endpoint, HttpClient http, double temperature, String reasoningEffort,
-                           String toolReasoningEffort) {
+                           String toolReasoningEffort, ChatAudio audio) {
         this.endpoint = endpoint;
         this.http = http;
         this.temperature = Math.clamp(temperature, 0, 2);
         this.reasoningEffort = reasoningEffort == null ? "" : reasoningEffort.strip();
         this.toolReasoningEffort = toolReasoningEffort == null ? "" : toolReasoningEffort.strip();
+        this.audio = audio == null ? ChatAudio.off() : audio;
     }
 
     @Override
@@ -91,6 +110,16 @@ public class OpenAiChatModel implements ChatModel {
         if (withTools) {
             body.add("tools", wireTools(tools));
         }
+        if (audio.speak() && !withTools) {
+            JsonArray modalities = new JsonArray();
+            modalities.add("text");
+            modalities.add("audio");
+            body.add("modalities", modalities);
+            JsonObject spoken = new JsonObject();
+            spoken.addProperty("voice", audio.voice());
+            spoken.addProperty("format", audio.format());
+            body.add("audio", spoken);
+        }
 
         HttpRequest request = AiHttp.request(endpoint, "/chat/completions")
                 .header("Content-Type", "application/json")
@@ -107,7 +136,11 @@ public class OpenAiChatModel implements ChatModel {
         for (Message message : messages) {
             JsonObject entry = new JsonObject();
             entry.addProperty("role", message.role().wireName());
-            entry.addProperty("content", message.content());
+            if (message.hasAudio()) {
+                entry.add("content", wireContentParts(message));
+            } else {
+                entry.addProperty("content", message.content());
+            }
             if (message.toolCallId() != null) {
                 entry.addProperty("tool_call_id", message.toolCallId());
             }
@@ -117,6 +150,31 @@ public class OpenAiChatModel implements ChatModel {
             wire.add(entry);
         }
         return wire;
+    }
+
+    /**
+     * A message carrying a recording, as the parts an audio model reads.
+     *
+     * <p>The text part comes first and is kept even though the model can hear: it carries the attribution, and
+     * it is what a model that only reads text would have seen. The recording is sent as WAV because that is
+     * self-describing — the provider needs no out-of-band agreement on the sample rate.
+     */
+    private JsonArray wireContentParts(ChatModel.Message message) {
+        JsonArray parts = new JsonArray();
+        if (!message.content().isBlank()) {
+            JsonObject text = new JsonObject();
+            text.addProperty("type", "text");
+            text.addProperty("text", message.content());
+            parts.add(text);
+        }
+        JsonObject recording = new JsonObject();
+        recording.addProperty("data", Base64.getEncoder().encodeToString(message.audio().toWav()));
+        recording.addProperty("format", ChatAudio.WAV);
+        JsonObject part = new JsonObject();
+        part.addProperty("type", "input_audio");
+        part.add("input_audio", recording);
+        parts.add(part);
+        return parts;
     }
 
     /** The assistant turn is replayed so the provider can match each result to the call it answers. */
@@ -188,18 +246,51 @@ public class OpenAiChatModel implements ChatModel {
                 throw new AiRequestException("Chat completion answered without a message");
             }
             List<ToolCall> calls = readToolCalls(message);
+            JsonObject spoken = message.getAsJsonObject("audio");
+            PcmAudio voice = spoken == null ? null : readSpokenAudio(spoken);
             String content = message.has("content") && !message.get("content").isJsonNull()
                     ? message.get("content").getAsString()
                     : "";
-            if (content.isBlank() && calls.isEmpty()) {
+            if (content.isBlank() && spoken != null && spoken.has("transcript")
+                    && !spoken.get("transcript").isJsonNull()) {
+                // An audio answer puts its words in the transcript and leaves content null.
+                content = spoken.get("transcript").getAsString();
+            }
+            if (content.isBlank() && calls.isEmpty() && voice == null) {
                 throw new AiRequestException("Chat completion answered without any content"
                         + " (a reasoning model may have spent the whole token budget thinking)");
             }
-            return new Answer(content, calls);
+            return new Answer(content, voice, calls);
         } catch (JsonParseException | IllegalStateException | ClassCastException e) {
             throw new AiRequestException("Chat completion did not answer the expected JSON: "
                     + (raw.length() > 120 ? raw.substring(0, 120) + "..." : raw), e);
         }
+    }
+
+    /**
+     * The spoken answer, decoded.
+     *
+     * <p>Only the formats {@link ChatAudio#isDecodable()} covers are accepted, and an unexpected one is named in
+     * the failure: silently treating raw samples as a WAV file would play the header as a click and then noise.
+     * {@code pcm16} is headerless, so its sample rate is the one the API defines rather than one that was read.
+     */
+    private PcmAudio readSpokenAudio(JsonObject spoken) {
+        if (!spoken.has("data") || spoken.get("data").isJsonNull()) {
+            return null;
+        }
+        byte[] decoded = Base64.getDecoder().decode(spoken.get("data").getAsString());
+        if (decoded.length == 0) {
+            return null;
+        }
+        String format = audio.format();
+        if (ChatAudio.PCM16.equals(format)) {
+            return new PcmAudio(decoded, ChatAudio.PCM16_SAMPLE_RATE, 1);
+        }
+        if (!ChatAudio.WAV.equals(format)) {
+            throw new AiRequestException("Chat completion answered with audio in " + format
+                    + ", which this plugin cannot decode");
+        }
+        return PcmAudio.fromWav(decoded);
     }
 
     private List<ToolCall> readToolCalls(JsonObject message) {

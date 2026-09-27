@@ -3,6 +3,7 @@ package fr.farmvivi.fluxcord.plugins.aiaudio;
 import fr.farmvivi.fluxcord.api.audio.AudioService;
 import fr.farmvivi.fluxcord.api.config.Configuration;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiEndpoint;
+import fr.farmvivi.fluxcord.plugins.aiaudio.ai.ChatAudio;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiChatModel;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.Persona;
 import org.slf4j.Logger;
@@ -194,10 +195,13 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
      *                       last turns; needs a model that supports tool calls
      * @param maxToolRounds  how many times in a row the model may ask for something before it has to answer,
      *                       a guard against a loop that never ends
+     * @param audio          whether the model hears the voice and answers with one, which needs a model that
+     *                       declares an audio modality and replaces transcription and synthesis in the turn
      */
     public record ChatSettings(AiEndpoint endpoint, boolean enabled, String wakeWord, int historyTurns,
                                int maxReplyTokens, double temperature, String reasoningEffort,
-                               String toolReasoningEffort, boolean memoryTools, int maxToolRounds) {
+                               String toolReasoningEffort, boolean memoryTools, int maxToolRounds,
+                               ChatAudio audio) {
 
         private static final String DEFAULT_CHAT_MODEL = "gpt-4o-mini";
         private static final int DEFAULT_HISTORY_TURNS = 8;
@@ -210,6 +214,8 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
          * budget thinking and answers with empty content.
          */
         private static final String DEFAULT_REASONING_EFFORT = "none";
+        /** OpenAI's default audio voice, and the name the other providers copied. */
+        private static final String DEFAULT_AUDIO_VOICE = "alloy";
 
         public ChatSettings {
             historyTurns = Math.clamp(historyTurns, 0, 50);
@@ -219,6 +225,7 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
             reasoningEffort = reasoningEffort == null ? "" : reasoningEffort.strip();
             toolReasoningEffort = toolReasoningEffort == null ? "" : toolReasoningEffort.strip();
             maxToolRounds = Math.clamp(maxToolRounds, 0, 10);
+            audio = audio == null ? ChatAudio.off() : audio;
         }
 
         static ChatSettings from(Configuration config, int timeoutSeconds) {
@@ -237,7 +244,13 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                     config.getString("chat.tool_reasoning_effort",
                             OpenAiChatModel.DEFAULT_TOOL_REASONING_EFFORT),
                     config.getBoolean("conversation.memory_tools", false),
-                    config.getInt("conversation.max_tool_rounds", DEFAULT_MAX_TOOL_ROUNDS));
+                    config.getInt("conversation.max_tool_rounds", DEFAULT_MAX_TOOL_ROUNDS),
+                    new ChatAudio(
+                            config.getBoolean("conversation.audio.hear", false),
+                            config.getBoolean("conversation.audio.speak", false),
+                            nonBlank(config.getString("conversation.audio.voice", DEFAULT_AUDIO_VOICE),
+                                    DEFAULT_AUDIO_VOICE),
+                            config.getString("conversation.audio.format", ChatAudio.WAV)));
         }
 
         /** @return the settings used before the configuration has been read */
@@ -246,7 +259,7 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                     new AiEndpoint(DEFAULT_BASE_URL, "", DEFAULT_CHAT_MODEL, Duration.ofSeconds(30)),
                     false, "", DEFAULT_HISTORY_TURNS, DEFAULT_MAX_REPLY_TOKENS, DEFAULT_TEMPERATURE / 100.0,
                     DEFAULT_REASONING_EFFORT, OpenAiChatModel.DEFAULT_TOOL_REASONING_EFFORT, false,
-                    DEFAULT_MAX_TOOL_ROUNDS);
+                    DEFAULT_MAX_TOOL_ROUNDS, ChatAudio.off());
         }
 
         /** @return true when a key is needed for this endpoint and none was given */

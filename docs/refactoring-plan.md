@@ -205,8 +205,40 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
   - Honest limit, measured over three attempts each with all three tools offered: Qwen 3.5 9B called one 3/3 times (1.7–5.6 s asking, 2.9 s answering), Gemma 4 E4B only 1/3. The model fast enough for a conversation is the one that skips the call, so `memory_tools` defaults to **false** and the README states the trade-off rather than implying the feature is free.
   - MCP was considered and set aside: it is the right answer for letting *other* agents read the bot's memory, not for the bot reading its own inside one turn.
   - 12 tests for `MemoryTools`, 4 for the loop in `ConversationService`, 6 for the wire shape in `OpenAiClientsTest`.
+- [x] **Speech to speech, the turn-based half** (2026-09-27, Victor: "je veux un vrai voice to voice sans passer
+  par tts, speech to text"). The model is handed the recording and answers with a voice of its own, over the
+  `/chat/completions` the plugin already speaks — `conversation.audio.hear` / `.speak`, off by default.
+  - It is the same route, not a second protocol: the recording is an `input_audio` content part, the answer is
+    `message.audio` (base64 plus the provider's transcript), and `modalities` is what asks for it. `ChatAudio`
+    says what is wanted and `OpenAiChatModel` stays the only class that knows how it is spelled, exactly as for
+    tools. `TextToSpeechService.play` reuses the existing per-guild handler so the spoken answer shares the
+    volume, priority and queue with `/speak` instead of fighting it for the connection.
+  - **Measured on the local Ollama, and it moved a decision.** `/v1` *does* accept `input_audio`: Gemma 4 E4B
+    transcribed a French sentence exactly, in **0.30-0.34 s warm**. Audio input had only ever been measured on
+    the native `/api/chat` route (where it has to travel in `images`), so the OpenAI-compatible route was
+    assumed text-only. Consequence: `hear: true` runs on Victor's own hardware today.
+  - **Third flag on this route accepted and silently dropped**, after `think: false` and `reasoning_effort`:
+    Ollama takes `modalities: ["text","audio"]` without error and answers in text. So asking for a voice
+    degrades to synthesising the text rather than to silence, and a test pins that fallback.
+  - Audio output is only asked for on the round that answers - a round that ends in a tool call would throw the
+    synthesis away. Same split as the reasoning effort.
+  - What deliberately stays: transcription (a wake word cannot be matched against samples, and the memory keeps
+    words), and audio on the answered sentence only (history as audio grows the request by a megabyte a minute
+    and providers expire what they hand back). A spoken answer with no transcript is played but **not**
+    remembered - a placeholder would be quoted back later as something the bot really said.
+  - Self-hosting the *speaking* half needs an omni model served by `vllm-omni`; the 30B-A3B MoE wants ~17 GB at
+    Q4 and ROCm is validated on datacenter parts, so it does not fit a 12 GB RDNA 2 card. `hear: true` with
+    `speak: false` is the fully local configuration.
+  - 17 tests (9 on the wire in `OpenAiClientsTest`, 8 on the turn in `ConversationServiceTest`); module 235 ->
+    252.
+- [ ] **Full-duplex Realtime**, the other half of what Victor asked for on 2026-09-27 ("les deux : par tour puis
+  realtime"): a WebSocket session rather than a turn, so the bot can be interrupted mid-sentence. Needs its own
+  transport (`java.net.http` has a WebSocket client, so no new dependency), its own tool-call plumbing, and a
+  decision on a problem the turn-based path does not have - a Realtime session is a single stream, so per-user
+  attribution, which this plugin is built around, has to be injected separately or given up.
 - [ ] **Web search for `ai-audio-plugin`** — decided 2026-09-26, not built yet. Backend: **SearxNG**, which Victor already self-hosts, so queries never leave his network. Shape: a `WebSearch` interface with one implementation per API, selected by config exactly like `speech_to_text.api` — SearxNG first, with room for Ollama's own `/api/web_search`, an OpenAI-style endpoint and any OpenAPI-described service, since the repository is public and other people's deployments will differ. The model reaches it as a **tool call** (`tools` in `/api/chat`; Gemma 4 and Qwen 3.5 both declare `tools`), so the plugin runs the search and hands back results. **Security requirement, decided up front**: a fetched page is untrusted input — results must be passed as delimited data and never as instructions, the same rule already applied to Discord nicknames. Worth stating in the README too: with any hosted backend, what people say in a voice channel would leave the network.
-- [ ] **Next on `ai-audio-plugin`**: the voice-to-voice turn — the LLM step between ears and voice, on the same OpenAI-compatible surface (so Ollama serves it locally or remotely unchanged), with the three memory lookups exposed as **tool calls** so the model asks for the context it needs. Victor asked about MCP for this: function calling is the direct path since the memory is in the same JVM, and MCP only becomes relevant to let *other* agents read the bot's memory.
+- [ ] **A mood the model reports** rather than one inferred from the fact somebody spoke: `Mood` currently drifts on activity alone, so the bot sounds cheerful about bad news. The chat turn already carries the persona; the model could return its own reading of the room alongside the answer.
+- [ ] `/converse` cannot speak until a text-to-speech server exists to point `text_to_speech.base_url` at (Piper or Kokoro, Victor's side). Transcription and the chat turn are measured against a real server; the spoken half is only covered by tests.
 - [ ] The audit checklist built from all these plugins lives in `.claude/skills/fluxcord-plugin-dev/SKILL.md` ("Audit checklist for a generated plugin"): language wrapper, config keys read vs declared, framework features reimplemented by hand, permission names, lifecycle ordering, dependency scopes, dead/lying code, untestable inner classes, missing test setup.
 - [ ] In `music-plugin` the untested mass is now `MusicPlayerMessage` alone, plus the network-facing parts of `AudioPlayerManager` (source clients) and the JDA voice glue in `MusicPlayer`.
 

@@ -227,8 +227,62 @@ Three properties this loop is held to, each pinned by a test:
 Results come back with the `tool` role and say in their first line that they are information and not
 instructions — a transcript of somebody saying "ignore your instructions" is exactly what this path carries.
 
+### Speech to speech: letting the model hear and answer with a voice
+
+By default a turn is a relay: speech becomes text, text becomes an answer, the answer becomes speech again.
+Each step throws something away — the first one throws away *how* it was said, which is most of what a voice
+carries. `conversation.audio` removes the steps instead:
+
+```yaml
+conversation:
+  audio:
+    hear: false     # send the recording to the model, next to the transcript
+    speak: false    # ask the model to answer with audio of its own
+    voice: "alloy"
+    format: "wav"   # or "pcm16"
+```
+
+It is not a second protocol. The same `/chat/completions` carries the recording as an `input_audio` content
+part and answers in `message.audio` — base64 audio plus the provider's own transcript of it — as soon as
+`modalities` asks for it. So an endpoint and a model are all that separate OpenAI's audio models from a
+self-hosted omni server, exactly as for the other three capabilities.
+
+**What each half needs, measured rather than assumed:**
+
+| | Works on a local Ollama | Works on OpenAI | Notes |
+| --- | --- | --- | --- |
+| `hear` | **yes** — Gemma 4 E4B, 0.30–0.34 s warm, transcribed a French sentence exactly | yes, with an audio model | `/v1` accepts `input_audio`; this had only ever been measured on the native `/api/chat` route, where audio has to travel in `images` |
+| `speak` | **no** — Ollama does not generate audio at all, whatever the model | yes, with an audio model | Ollama accepts `modalities` and **silently ignores it**: it answers in text with no error |
+
+That silent ignore is why asking for a voice degrades to synthesising the text rather than to silence — the
+same trap as `think: false` and `reasoning_effort`, and the third time a latency or modality flag on this
+route has been accepted and dropped. A test pins the fallback.
+
+Two things stay in place whichever way it is configured:
+
+- **Transcription still runs.** A wake word cannot be matched against samples, so the text is what decides
+  whether a sentence is addressed to the bot at all. It is also what the memory keeps: words are durable,
+  recordings are not, and providers expire the audio they hand back.
+- **Only the sentence being answered carries its recording.** History as audio would grow the request by about
+  a megabyte a minute and would start failing once the provider expired it. The transcript is the record.
+
+Audio output is only ever asked for on the round that answers. A round that comes back as a tool call would
+have thrown the synthesis away, which is the same split the reasoning effort already makes.
+
+**Self-hosting the speaking half** needs a model that generates speech, which today means an omni model —
+`Qwen3-Omni` and the like — served by `vllm-omni`, whose three stages (Thinker → Talker → Code2Wav) sit behind
+an OpenAI-compatible route. Budget for it accordingly: the 30B-A3B is a MoE, so it wants the VRAM of all 30B
+even though a pass touches 3B, around 17 GB at Q4, and ROCm is validated on datacenter parts rather than
+consumer RDNA 2. Until then `hear: true` with `speak: false` is the configuration that runs entirely on a
+local box.
+
 ## What is next
 
+- **Full-duplex Realtime**, the other half of speech to speech: a WebSocket session instead of a turn, so the
+  bot can be interrupted mid-sentence and answers without waiting for a whole utterance to end. It needs its
+  own transport, its own tool-call plumbing, and an answer to a problem the turn-based path does not have —
+  a Realtime session is one stream, so "who is speaking" is lost unless it is injected separately, and hearing
+  each person separately is the thing this plugin was built around.
 - **Web search**, so the bot can answer something it does not know. Decided: a `WebSearch` interface with one
   implementation per API, selected by configuration exactly like `speech_to_text.api`, starting with a
   self-hosted SearxNG. The model reaches it as a tool call. A fetched page is untrusted input and will be

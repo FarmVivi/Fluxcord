@@ -1,5 +1,7 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio.ai;
 
+import fr.farmvivi.fluxcord.api.audio.PcmAudio;
+
 import java.util.List;
 import java.util.Map;
 
@@ -32,10 +34,17 @@ public interface ChatModel {
      * <p>Never both in practice, but the shape allows both because some providers send a sentence alongside
      * their calls.
      *
-     * @param content   what to say, trimmed; empty when the model only wants to call something
+     * <p>When the model answered with a voice, {@code audio} carries it and {@code content} carries the
+     * provider's transcript of that same voice. Both matter: the audio is what gets played, the transcript is
+     * what the memory and the next turn's history can read. A provider that sends audio without a transcript
+     * leaves the turn playable but unrememberable, which the caller logs rather than papers over.
+     *
+     * @param content   what to say, trimmed; the transcript when {@code audio} is set, and empty when the
+     *                  model only wants to call something
+     * @param audio     the spoken answer, or null when the model answered in text
      * @param toolCalls what it wants called, in order
      */
-    record Answer(String content, List<ToolCall> toolCalls) {
+    record Answer(String content, PcmAudio audio, List<ToolCall> toolCalls) {
 
         public Answer {
             content = content == null ? "" : content.strip();
@@ -43,12 +52,22 @@ public interface ChatModel {
         }
 
         public static Answer spoken(String content) {
-            return new Answer(content, List.of());
+            return new Answer(content, null, List.of());
         }
 
         /** @return true when the model asked for something before answering */
         public boolean hasToolCalls() {
             return !toolCalls.isEmpty();
+        }
+
+        /** @return true when the model answered with a voice rather than with text to synthesise */
+        public boolean hasAudio() {
+            return audio != null && !audio.isEmpty();
+        }
+
+        /** @return true when there is nothing to say at all, in either form */
+        public boolean isSilent() {
+            return content.isBlank() && !hasAudio();
         }
     }
 
@@ -102,27 +121,52 @@ public interface ChatModel {
      * up. Nothing from a conversation may ever be given the system role — that is how a spoken sentence would
      * become an instruction.
      *
+     * <p>An audio message is the same trust boundary seen from the other side: a recording is something
+     * somebody said, so it only ever rides on a {@link Role#USER} message, next to the text rather than
+     * instead of it. The text stays because it is what the model reads if it cannot hear, and because the
+     * attribution — who said this — lives there.
+     *
      * @param role       who is speaking
      * @param content    what they said
+     * @param audio      what it sounded like, on a user message only; null when there is no recording
      * @param toolCallId set only on a {@link Role#TOOL} message: which call this answers
      * @param toolCalls  set only on an {@link Role#ASSISTANT} message replaying the model's own calls
      */
-    record Message(Role role, String content, String toolCallId, List<ToolCall> toolCalls) {
+    record Message(Role role, String content, PcmAudio audio, String toolCallId, List<ToolCall> toolCalls) {
 
         public Message {
             toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
         }
 
         public static Message system(String content) {
-            return new Message(Role.SYSTEM, content, null, List.of());
+            return new Message(Role.SYSTEM, content, null, null, List.of());
         }
 
         public static Message user(String content) {
-            return new Message(Role.USER, content, null, List.of());
+            return new Message(Role.USER, content, null, null, List.of());
+        }
+
+        /**
+         * What somebody said, with the recording of them saying it.
+         *
+         * <p>Only a model that declares an audio modality can read the recording; the text is what every other
+         * model sees, so a turn built this way stays usable either way.
+         *
+         * @param content what was said, attributed
+         * @param audio   the recording, or null to fall back to the text alone
+         * @return the message to send
+         */
+        public static Message user(String content, PcmAudio audio) {
+            return new Message(Role.USER, content, audio, null, List.of());
         }
 
         public static Message assistant(String content) {
-            return new Message(Role.ASSISTANT, content, null, List.of());
+            return new Message(Role.ASSISTANT, content, null, null, List.of());
+        }
+
+        /** @return true when this message carries a recording for the model to listen to */
+        public boolean hasAudio() {
+            return audio != null && !audio.isEmpty();
         }
 
         /**
@@ -132,7 +176,7 @@ public interface ChatModel {
          * @return the message to send back
          */
         public static Message assistantToolCalls(List<ToolCall> toolCalls) {
-            return new Message(Role.ASSISTANT, "", null, toolCalls);
+            return new Message(Role.ASSISTANT, "", null, null, toolCalls);
         }
 
         /**
@@ -143,7 +187,7 @@ public interface ChatModel {
          * @return the message to send back
          */
         public static Message toolResult(String toolCallId, String content) {
-            return new Message(Role.TOOL, content, toolCallId, List.of());
+            return new Message(Role.TOOL, content, null, toolCallId, List.of());
         }
     }
 

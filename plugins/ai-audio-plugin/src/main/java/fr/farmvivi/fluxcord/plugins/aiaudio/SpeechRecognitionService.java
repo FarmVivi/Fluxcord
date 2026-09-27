@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio;
 
+import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.SpeechToText;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.Turn;
@@ -150,15 +151,21 @@ public class SpeechRecognitionService {
                 if (text == null || text.isBlank()) {
                     return;
                 }
-                publish(guild, session, segment.userId(), text.trim());
+                publish(guild, session, segment.userId(), text.trim(), segment.audio());
             } catch (RuntimeException e) {
                 logger.warn("Transcription failed for guild {}: {}", guild.getId(), e.getMessage());
             }
         });
     }
 
-    /** Records the turn and posts it, with the speaker's name as seen in that server. */
-    private void publish(Guild guild, Session session, String userId, String text) {
+    /**
+     * Records the turn and posts it, with the speaker's name as seen in that server.
+     *
+     * <p>The recording travels with the text as far as the conversation service, which is the only thing that
+     * may want it: a model that can listen answers the voice rather than the transcript. It is not stored - the
+     * memory keeps words, and keeping audio would mean keeping everything ever said in a voice channel.
+     */
+    private void publish(Guild guild, Session session, String userId, String text, PcmAudio audio) {
         String speaker = displayName(guild, userId);
         Optional<AudioChannel> channel = connectedChannel(guild);
         Turn turn = Turn.now(userId, speaker, guild.getId(), guild.getName(),
@@ -168,7 +175,7 @@ public class SpeechRecognitionService {
         liftMood(guild, channel.map(AudioChannel::getId).orElse(null));
         // Remembered first, then offered for an answer: the model must see the sentence it is answering.
         if (plugin.getConversation() != null) {
-            plugin.getConversation().onTranscription(guild, turn);
+            plugin.getConversation().onTranscription(guild, turn, audio);
         }
         logger.debug("[{}] {}: {}", guild.getId(), speaker, text);
         try {

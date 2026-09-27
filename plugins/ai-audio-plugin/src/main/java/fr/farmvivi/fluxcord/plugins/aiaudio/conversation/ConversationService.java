@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio.conversation;
 
+import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AIAudioPlugin;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AiSettings;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.ChatModel;
@@ -25,7 +26,14 @@ import java.util.function.LongSupplier;
  *
  * <p>Sits between the two services rather than inside either, because both ends are already busy: the
  * transcription service must not block on a model call, and the speech service knows nothing about
- * conversations. What arrives here is text and what leaves is text; the audio is somebody else's problem.
+ * conversations.
+ *
+ * <p>Two shapes of turn go through here, and the difference is only how much of the voice survives. In the
+ * text shape the model reads a transcript and its answer is synthesised. In the <strong>spoken shape</strong>
+ * ({@code conversation.audio.*}) the model is handed the recording and answers with a voice of its own, so
+ * neither transcription nor synthesis sits between the two people talking. What stays in both is the
+ * transcript: it gates the turn - a wake word cannot be matched against samples - and it is what the memory
+ * keeps.
  *
  * <p>The model call runs on its own worker: it is the slowest step of the chain (a second or more) and it must
  * not hold up the next transcription.
@@ -96,6 +104,17 @@ public class ConversationService {
      * @param turn  what was said, as it was recorded
      */
     public void onTranscription(Guild guild, Turn turn) {
+        onTranscription(guild, turn, null);
+    }
+
+    /**
+     * Called for every sentence the transcription service produced, with the recording of it.
+     *
+     * @param guild the guild it was said in
+     * @param turn  what was said, as it was recorded
+     * @param audio the voice that said it, passed on to the model when it can listen; null when it cannot
+     */
+    public void onTranscription(Guild guild, Turn turn, PcmAudio audio) {
         AiSettings.ChatSettings chat = plugin.getSettings().chat();
         if (!chat.enabled() || !isActive(guild) || turn.text() == null || turn.text().isBlank()) {
             return;
@@ -108,37 +127,63 @@ public class ConversationService {
         if (channel == null) {
             return;
         }
-        worker.execute(() -> answer(guild, channel, turn, chat));
+        worker.execute(() -> answer(guild, channel, turn, chat, audio));
     }
 
     /** Asks the model and speaks the answer. Runs on the worker. */
-    private void answer(Guild guild, AudioChannel channel, Turn question, AiSettings.ChatSettings chat) {
+    private void answer(Guild guild, AudioChannel channel, Turn question, AiSettings.ChatSettings chat,
+                        PcmAudio questionAudio) {
         try {
             PersonaSnapshot snapshot = PersonaSnapshot.of(plugin.getPersonaStore(), memory,
                     ConversationContext.of(channel, memory, chat.historyTurns(), 0), clock.getAsLong());
 
             String botId = botUserId(guild);
-            List<ChatModel.Message> messages = new ArrayList<>(
-                    ConversationPrompt.build(snapshot, question, chat.historyTurns(), botId));
-            String reply = converse(messages, snapshot, chat);
-            if (reply == null || reply.isBlank()) {
+            List<ChatModel.Message> messages = new ArrayList<>(ConversationPrompt.build(snapshot, question,
+                    chat.historyTurns(), botId, chat.audio().hear() ? questionAudio : null));
+            ChatModel.Answer answer = converse(messages, snapshot, chat);
+            if (answer.isSilent()) {
                 logger.debug("The model chose to stay silent");
                 return;
             }
 
-            // Remembered before it is spoken: what the bot said is part of the conversation, and the next turn
-            // has to see it even if the synthesis fails.
-            memory.remember(Turn.now(botId, snapshot.persona().name(), guild.getId(),
-                    guild.getName(), channel.getId(), channel.getName(), reply));
-            logger.debug("Answering: {}", reply);
-            plugin.getTextToSpeech().speak(guild, reply, null).exceptionally(error -> {
-                Throwable cause = error.getCause() == null ? error : error.getCause();
-                logger.warn("Could not speak the answer: {}", cause.getMessage());
-                return null;
-            });
+            remember(guild, channel, snapshot, botId, answer);
+            say(guild, answer);
         } catch (RuntimeException e) {
             logger.warn("Could not answer in guild {}: {}", guild.getId(), e.getMessage());
         }
+    }
+
+    /**
+     * Records what the bot said, before it says it.
+     *
+     * <p>Before, because the next turn has to see this one even if the playback fails. A spoken answer is
+     * remembered by its transcript, and a provider that sends audio without one leaves nothing to remember -
+     * said out loud rather than filled in with a placeholder, which would end up quoted back as if the bot had
+     * really said it.
+     */
+    private void remember(Guild guild, AudioChannel channel, PersonaSnapshot snapshot, String botId,
+                          ChatModel.Answer answer) {
+        if (answer.content().isBlank()) {
+            logger.warn("The model answered with audio but no transcript; the turn cannot be remembered");
+            return;
+        }
+        memory.remember(Turn.now(botId, snapshot.persona().name(), guild.getId(), guild.getName(),
+                channel.getId(), channel.getName(), answer.content()));
+    }
+
+    /** Plays the answer: the model's own voice when it has one, a synthesised reading of its text otherwise. */
+    private void say(Guild guild, ChatModel.Answer answer) {
+        if (answer.hasAudio()) {
+            logger.debug("Answering out loud ({}): {}", answer.audio().duration(), answer.content());
+            plugin.getTextToSpeech().play(guild, answer.audio());
+            return;
+        }
+        logger.debug("Answering: {}", answer.content());
+        plugin.getTextToSpeech().speak(guild, answer.content(), null).exceptionally(error -> {
+            Throwable cause = error.getCause() == null ? error : error.getCause();
+            logger.warn("Could not speak the answer: {}", cause.getMessage());
+            return null;
+        });
     }
 
     /**
@@ -149,17 +194,17 @@ public class ConversationService {
      * would otherwise hold the voice channel silent forever. On the last round the tools are withheld, which is
      * how it is told to answer with what it has rather than being cut off mid-thought.
      *
-     * @return what to say, possibly empty when the model chose to stay silent
+     * @return what to say, in text or in audio, possibly nothing when the model chose to stay silent
      */
-    private String converse(List<ChatModel.Message> messages, PersonaSnapshot snapshot,
-                            AiSettings.ChatSettings chat) {
+    private ChatModel.Answer converse(List<ChatModel.Message> messages, PersonaSnapshot snapshot,
+                                      AiSettings.ChatSettings chat) {
         List<ChatModel.Tool> tools = chat.memoryTools() ? memoryTools.declarations() : List.of();
         for (int round = 0; round <= chat.maxToolRounds(); round++) {
             boolean lastRound = round == chat.maxToolRounds();
             ChatModel.Answer answer = model.reply(messages, lastRound ? List.of() : tools,
                     chat.maxReplyTokens());
             if (!answer.hasToolCalls()) {
-                return answer.content();
+                return answer;
             }
             messages.add(ChatModel.Message.assistantToolCalls(answer.toolCalls()));
             for (ChatModel.ToolCall call : answer.toolCalls()) {
@@ -169,7 +214,7 @@ public class ConversationService {
             }
         }
         // Reached only if the model asked for something on a round where it had been offered nothing.
-        return "";
+        return ChatModel.Answer.spoken("");
     }
 
     /**

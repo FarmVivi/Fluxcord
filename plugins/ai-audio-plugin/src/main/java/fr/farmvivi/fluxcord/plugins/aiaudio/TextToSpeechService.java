@@ -67,6 +67,24 @@ public class TextToSpeechService {
     }
 
     /**
+     * Queues audio that is already spoken, without synthesising anything.
+     *
+     * <p>This is the speech-to-speech path: when the chat model answers with a voice of its own there is nothing
+     * to synthesise, but the playback side is identical — same handler, same volume, same priority — so it goes
+     * through the same queue rather than a second one that would fight it for the connection.
+     *
+     * @param guild the guild to speak in
+     * @param audio what to play, in any sample rate
+     * @return the audio as it was queued, converted to what Discord takes
+     */
+    public PcmAudio play(Guild guild, PcmAudio audio) {
+        PcmAudio queued = audio.toDiscordFormat();
+        handlerFor(guild, plugin.getSettings()).enqueue(queued);
+        logger.debug("Queued {} of spoken answer for guild {}", queued.duration(), guild.getId());
+        return queued;
+    }
+
+    /**
      * Registers the guild's send handler on first use.
      *
      * <p>Registering is idempotent on the core side, but the handler instance must be the same one

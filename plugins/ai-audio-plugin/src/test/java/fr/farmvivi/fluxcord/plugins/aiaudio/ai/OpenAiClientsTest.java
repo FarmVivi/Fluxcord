@@ -16,6 +16,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -605,5 +606,151 @@ class OpenAiClientsTest {
         assertEquals("call_abc", result.get("tool_call_id").getAsString());
         assertEquals("V said hello", result.get("content").getAsString());
     }
-}
 
+    // Speech to speech: the same route, with the voice carried both ways.
+
+    /** A tiny WAV, so the assertions can compare samples rather than lengths. */
+    private static PcmAudio aRecording() {
+        return new PcmAudio(new byte[]{1, 0, 2, 0, 3, 0, 4, 0}, 16_000, 1);
+    }
+
+    @Test
+    void anAnsweringRoundAsksForAudioWhenTheModelCanSpeak() {
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiChatModel(endpoint("k", "gpt-audio"), http, 0.7, "none", "low",
+                new ChatAudio(true, true, "verse", "wav"))
+                .reply(List.of(ChatModel.Message.user("a")), List.of(), 60);
+
+        JsonObject body = JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject();
+        assertEquals(List.of("text", "audio"), body.getAsJsonArray("modalities").asList().stream()
+                .map(element -> element.getAsString()).toList());
+        assertEquals("verse", body.getAsJsonObject("audio").get("voice").getAsString());
+        assertEquals("wav", body.getAsJsonObject("audio").get("format").getAsString());
+    }
+
+    @Test
+    void aRoundThatOffersToolsAsksForNoAudio() {
+        // Synthesising a round that comes back as a tool call throws the audio away.
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiChatModel(endpoint("k", "gpt-audio"), http, 0.7, "none", "low",
+                new ChatAudio(true, true, "verse", "wav"))
+                .reply(List.of(ChatModel.Message.user("a")), List.of(A_TOOL), 60);
+
+        JsonObject body = JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject();
+        assertFalse(body.has("modalities"), "no audio is asked for while a tool may still be called");
+        assertFalse(body.has("audio"));
+    }
+
+    @Test
+    void aTextOnlyModelIsNeverSentTheAudioFields() {
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiChatModel(endpoint("k", "m"), http, 0.7, "none")
+                .reply(List.of(ChatModel.Message.user("a", aRecording())), List.of(), 60);
+
+        JsonObject body = JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject();
+        assertFalse(body.has("modalities"));
+        assertFalse(body.has("audio"), "a model that was not told it can speak must not be asked to");
+    }
+
+    @Test
+    void aRecordingRidesAlongsideTheTextAsAContentPart() {
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiChatModel(endpoint("k", "gpt-audio"), http, 0.7, "none", "low",
+                new ChatAudio(true, true, "verse", "wav"))
+                .reply(List.of(ChatModel.Message.user("\"Victor\" said: salut", aRecording())), List.of(), 60);
+
+        var parts = JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject().getAsJsonArray("messages").get(0).getAsJsonObject()
+                .getAsJsonArray("content");
+        assertEquals(2, parts.size(), "the text is kept: it carries who said it");
+        assertEquals("text", parts.get(0).getAsJsonObject().get("type").getAsString());
+        assertEquals("\"Victor\" said: salut", parts.get(0).getAsJsonObject().get("text").getAsString());
+        JsonObject recording = parts.get(1).getAsJsonObject();
+        assertEquals("input_audio", recording.get("type").getAsString());
+        assertEquals("wav", recording.getAsJsonObject("input_audio").get("format").getAsString());
+        byte[] sent = Base64.getDecoder()
+                .decode(recording.getAsJsonObject("input_audio").get("data").getAsString());
+        assertEquals(aRecording(), PcmAudio.fromWav(sent), "the samples survive the round trip");
+    }
+
+    @Test
+    void aMessageWithoutARecordingKeepsThePlainStringContent() {
+        // Every provider accepts a plain string; the array form is only needed when there is audio.
+        answer("/v1/chat/completions", 200, "application/json", A_REPLY.getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiChatModel(endpoint("k", "gpt-audio"), http, 0.7, "none", "low",
+                new ChatAudio(true, true, "verse", "wav"))
+                .reply(List.of(ChatModel.Message.user("salut")), List.of(), 60);
+
+        assertTrue(JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject().getAsJsonArray("messages").get(0).getAsJsonObject()
+                .get("content").isJsonPrimitive());
+    }
+
+    @Test
+    void aSpokenAnswerIsReadWithItsTranscript() {
+        PcmAudio voice = aRecording();
+        String wav = Base64.getEncoder().encodeToString(voice.toWav());
+        answer("/v1/chat/completions", 200, "application/json", ("""
+                {"choices":[{"message":{"role":"assistant","content":null,"audio":{
+                  "id":"audio_1","data":"%s","transcript":"  il est six heures  "}}}]}"""
+                .formatted(wav)).getBytes(StandardCharsets.UTF_8));
+
+        ChatModel.Answer read = new OpenAiChatModel(endpoint("k", "gpt-audio"), http, 0.7, "none", "low",
+                new ChatAudio(true, true, "verse", "wav"))
+                .reply(List.of(ChatModel.Message.user("a")), List.of(), 60);
+
+        assertTrue(read.hasAudio());
+        assertEquals(voice, read.audio());
+        assertEquals("il est six heures", read.content(),
+                "the transcript is the content: it is what the memory keeps");
+    }
+
+    @Test
+    void rawSamplesAreGivenTheRateTheApiDefinesSinceTheyCarryNoHeader() {
+        byte[] raw = {1, 0, 2, 0, 3, 0};
+        answer("/v1/chat/completions", 200, "application/json", ("""
+                {"choices":[{"message":{"content":null,"audio":{"data":"%s","transcript":"ok"}}}]}"""
+                .formatted(Base64.getEncoder().encodeToString(raw))).getBytes(StandardCharsets.UTF_8));
+
+        ChatModel.Answer read = new OpenAiChatModel(endpoint("k", "gpt-audio"), http, 0.7, "none", "low",
+                new ChatAudio(true, true, "verse", "pcm16"))
+                .reply(List.of(ChatModel.Message.user("a")), List.of(), 60);
+
+        assertEquals(new PcmAudio(raw, ChatAudio.PCM16_SAMPLE_RATE, 1), read.audio());
+    }
+
+    @Test
+    void anUndecodableFormatIsNamedInsteadOfPlayedAsNoise() {
+        // Reading an MP3 as a WAV plays the header as a click and then noise, which is worse than a failure.
+        answer("/v1/chat/completions", 200, "application/json", ("""
+                {"choices":[{"message":{"content":null,"audio":{"data":"AAAA","transcript":"ok"}}}]}""")
+                .getBytes(StandardCharsets.UTF_8));
+
+        AiRequestException failure = assertThrows(AiRequestException.class,
+                () -> new OpenAiChatModel(endpoint("k", "gpt-audio"), http, 0.7, "none", "low",
+                        new ChatAudio(true, true, "verse", "mp3"))
+                        .reply(List.of(ChatModel.Message.user("a")), List.of(), 60));
+
+        assertTrue(failure.getMessage().contains("mp3"), failure.getMessage());
+    }
+
+    @Test
+    void anAudioModelThatAnsweredNothingAtAllIsStillReportedAsSuch() {
+        answer("/v1/chat/completions", 200, "application/json",
+                "{\"choices\":[{\"message\":{\"content\":null,\"audio\":{\"data\":\"\"}}}]}"
+                        .getBytes(StandardCharsets.UTF_8));
+
+        assertThrows(AiRequestException.class,
+                () -> new OpenAiChatModel(endpoint("k", "gpt-audio"), http, 0.7, "none", "low",
+                        new ChatAudio(true, true, "verse", "wav"))
+                        .reply(List.of(ChatModel.Message.user("a")), List.of(), 60));
+    }
+}
