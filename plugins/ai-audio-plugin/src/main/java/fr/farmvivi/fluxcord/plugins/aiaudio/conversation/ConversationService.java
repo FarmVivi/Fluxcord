@@ -7,7 +7,9 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.ai.ChatModel;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationContext;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.Turn;
+import fr.farmvivi.fluxcord.plugins.aiaudio.persona.MoodReader;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaSnapshot;
+import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaStore;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.channel.middleman.AudioChannel;
 import org.slf4j.Logger;
@@ -44,6 +46,7 @@ public class ConversationService {
     private final ChatModel model;
     private final ConversationMemory memory;
     private final List<ToolSource> toolSources;
+    private final MoodReader moodReader;
     private final Logger logger;
     private final LongSupplier clock;
     private final ExecutorService worker;
@@ -73,6 +76,7 @@ public class ConversationService {
         this.plugin = plugin;
         this.model = model;
         this.memory = memory;
+        this.moodReader = new MoodReader(model);
         List<ToolSource> sources = new ArrayList<>();
         sources.add(new MemoryTools(memory));
         if (extraTools != null) {
@@ -166,6 +170,9 @@ public class ConversationService {
 
             remember(guild, channel, snapshot, botId, answer);
             say(guild, answer);
+            // After speaking, never before: reading the room is worth a third of a second and nobody should
+            // wait for it to hear the answer.
+            readTheRoom(guild, channel.getId(), snapshot, chat);
         } catch (RuntimeException e) {
             logger.warn("Could not answer in guild {}: {}", guild.getId(), e.getMessage());
         }
@@ -270,6 +277,31 @@ public class ConversationService {
         }
         logger.warn("The model asked for a tool that is not offered: {}", call.name());
         return "There is no tool called " + call.name() + ".";
+    }
+
+    /**
+     * Asks the model how the room actually feels, and moves the mood towards what it says.
+     *
+     * <p>This replaces adding a little energy per sentence, which measured activity rather than mood — the bot
+     * grew livelier while being told bad news. The reading covers the turns including the answer just given,
+     * which is why it happens here and not in the transcription service.
+     *
+     * @param chat the chat settings, only to know the history depth the model is shown
+     */
+    private void readTheRoom(Guild guild, String channelId, PersonaSnapshot snapshot,
+                             AiSettings.ChatSettings chat) {
+        AiSettings.PersonaSettings persona = plugin.getSettings().persona();
+        PersonaStore store = plugin.getPersonaStore();
+        if (!persona.moodEnabled() || !persona.moodFromModel() || store == null) {
+            return;
+        }
+        moodReader.read(memory.channelHistory(guild.getId(), channelId,
+                Math.max(MoodReader.MAX_TURNS, chat.historyTurns()))).ifPresent(reading -> {
+            double[] deltas = reading.deltasFrom(snapshot.mood(), persona.moodWeight());
+            store.nudgeMood(guild.getId(), channelId, deltas[0], deltas[1], clock.getAsLong());
+            logger.debug("The room reads energy {} warmth {}; moving the mood by {} and {}",
+                    reading.energy(), reading.warmth(), deltas[0], deltas[1]);
+        });
     }
 
     /**

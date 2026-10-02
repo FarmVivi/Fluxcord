@@ -13,6 +13,7 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.ai.ChatModel;
 import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.Turn;
+import fr.farmvivi.fluxcord.plugins.aiaudio.persona.Mood;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.Persona;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaSnapshot;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaStore;
@@ -134,9 +135,32 @@ class ConversationServiceTest {
         AiEndpoint local = new AiEndpoint("http://localhost:11434/v1", "", "m", Duration.ofSeconds(5));
         return new AiSettings(local, AiSettings.SpeechApi.OLLAMA, "fr-FR", local, "alloy", 100, 80, 1000,
                 Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 20, 20, 20,
-                AiSettings.PersonaSettings.defaults(),
+                persona(false),
                 new AiSettings.ChatSettings(local, enabled, wakeWord, 8, 120, 0.7, "none", "low",
                         memoryTools, maxToolRounds, audio, TOOL_TOKENS),
+                AiSettings.WebSearchSettings.disabled());
+    }
+
+    /**
+     * The persona settings, with the mood reading off unless a test is about it.
+     *
+     * <p>Reading the room is a second model call per answered turn, so leaving it on would add a phantom call
+     * to every other test here and shift the scripted answers.
+     */
+    private static AiSettings.PersonaSettings persona(boolean moodFromModel) {
+        return new AiSettings.PersonaSettings(
+                AiSettings.PersonaSettings.defaults().persona(), true,
+                AiSettings.PersonaSettings.DEFAULT_ENERGY_PER_TURN, moodFromModel, 100);
+    }
+
+    /** Settings whose mood is read by the model, at full weight so the assertion is exact. */
+    private AiSettings settingsReadingTheMood() {
+        AiEndpoint local = new AiEndpoint("http://localhost:11434/v1", "", "m", Duration.ofSeconds(5));
+        return new AiSettings(local, AiSettings.SpeechApi.OLLAMA, "fr-FR", local, "alloy", 100, 80, 1000,
+                Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 20, 20, 20,
+                persona(true),
+                new AiSettings.ChatSettings(local, true, "", 8, 120, 0.7, "none", "low", false, 3,
+                        ChatAudio.off(), TOOL_TOKENS),
                 AiSettings.WebSearchSettings.disabled());
     }
 
@@ -706,5 +730,65 @@ class ConversationServiceTest {
         assertTrue(offered.get(0).size() > 0, "and it really was offered them");
         assertEquals(120, budgets.get(1), "the round that only answers keeps the short budget");
         assertTrue(offered.get(1).isEmpty(), "because it is offered nothing");
+    }
+
+    // The mood the model reports
+
+    @Test
+    void theRoomIsReadAfterTheAnswerAndMovesTheMood() throws Exception {
+        when(plugin.getSettings()).thenReturn(settingsReadingTheMood());
+        // One scripted answer for the spoken turn, one for the mood reading that follows it.
+        ConversationService service = serviceAnswering(List.of(
+                ChatModel.Answer.spoken("ah mince"),
+                ChatModel.Answer.spoken("{\"energy\": -0.8, \"warmth\": 0.6}")));
+        service.start(guild);
+
+        service.onTranscription(guild, heard("mon chat est mort hier"));
+        waitForCalls(2);
+
+        Mood mood = personaStore.mood(GUILD_ID, CHANNEL_ID, NOW);
+        assertEquals(-0.8, mood.energy(), 1e-6, "the room was read as sad, so the energy went down");
+        assertEquals(0.6, mood.warmth(), 1e-6);
+    }
+
+    @Test
+    void theAnswerIsSpokenBeforeTheRoomIsRead() throws Exception {
+        // Nobody should wait a third of a second on a mood reading to hear the reply.
+        when(plugin.getSettings()).thenReturn(settingsReadingTheMood());
+        ConversationService service = serviceAnswering(List.of(
+                ChatModel.Answer.spoken("voilà"),
+                ChatModel.Answer.spoken("{\"energy\": 0.5, \"warmth\": 0.5}")));
+        service.start(guild);
+
+        service.onTranscription(guild, heard("salut"));
+
+        verify(tts, timeout(5_000)).speak(same(guild), eq("voilà"), isNull());
+        waitForCalls(2);
+    }
+
+    @Test
+    void aMoodReadingThatMakesNoSenseLeavesTheMoodWhereItWas() throws Exception {
+        when(plugin.getSettings()).thenReturn(settingsReadingTheMood());
+        ConversationService service = serviceAnswering(List.of(
+                ChatModel.Answer.spoken("voilà"),
+                ChatModel.Answer.spoken("je ne sais pas trop")));
+        service.start(guild);
+
+        service.onTranscription(guild, heard("salut"));
+        waitForCalls(2);
+
+        assertTrue(personaStore.mood(GUILD_ID, CHANNEL_ID, NOW).isNeutral());
+    }
+
+    @Test
+    void nothingIsAskedAboutTheRoomWhenTheConfigurationSaysNotTo() throws Exception {
+        ConversationService service = serviceAnswering("ok");
+        service.start(guild);
+
+        service.onTranscription(guild, heard("salut"));
+        waitForAnswer();
+        Thread.sleep(200);
+
+        assertEquals(1, calls.get(), "one turn, one request");
     }
 }

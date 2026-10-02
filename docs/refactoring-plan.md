@@ -272,7 +272,26 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 - [ ] **A SearxNG instance is reachable only from the network it runs on.** The bot in the cluster and a local
   run do not see the same one, so `web_search.base_url` is per-deployment configuration, not a shared default.
   Worth a line in the deployment notes rather than in code.
-- [ ] **A mood the model reports** rather than one inferred from the fact somebody spoke: `Mood` currently drifts on activity alone, so the bot sounds cheerful about bad news. The chat turn already carries the persona; the model could return its own reading of the room alongside the answer.
+- [x] **A mood the model reports** (2026-10-02). `persona.mood.from_model` (default true) asks the model, after
+  each answer, what the room feels like, and moves the mood that fraction of the way (`persona.mood.weight`).
+  Before, `energy` rose one notch per transcribed sentence — an activity counter wearing an emotion's name, so
+  the bot grew livelier while being told bad news. The per-sentence nudge stays as the fallback and the two
+  never run together.
+  - **A separate request, not a field of the answer**, and the audio turn is what settles it: asking for the
+    numbers alongside the spoken reply — as JSON or as a marker to strip — makes the bot *say them out loud* as
+    soon as it answers in audio. A tool call would cost a whole extra round (3-8 s measured). The separate call
+    is modality-independent and runs after playback, so nobody waits for it.
+  - **JSON, measured rather than chosen.** Four scenarios, on the local Ollama: asked for
+    `{"energy": …, "warmth": …}`, Gemma 4 E4B read the room sensibly **16/16** in 0.27-0.36 s and Qwen 3.5 9B
+    12/16; asked for the same two numbers as `energy=<n> warmth=<n>`, 6/12 and 3/12, up to 3.7 s. The flat form
+    makes them stop judging and repeat stereotyped pairs (`+0.00/+0.90`, `+0.50/+0.80`) whatever was said. The
+    flat form is still accepted on *reading*, since a model occasionally answers it anyway.
+  - A reading moves the mood part of the way, so one outlier does not swing the bot, and anything unparseable
+    leaves it untouched — this runs after the bot has spoken, so a failure must cost nothing.
+  - **Bug found by its own test**: the flat-form separator was "a few non-digits", which is greedy and ate the
+    minus sign — a reading of `-0.25` became a cheerful `+0.25`, which is precisely the failure the feature
+    exists to fix. A sign belongs to the number; four spellings of the separator are now pinned.
+  - 13 tests for `MoodReader`, 4 for the turn; module 285 -> 302.
 - [ ] `/converse` cannot speak until a text-to-speech server exists to point `text_to_speech.base_url` at (Piper or Kokoro, Victor's side). Transcription and the chat turn are measured against a real server; the spoken half is only covered by tests.
 - [ ] The audit checklist built from all these plugins lives in `.claude/skills/fluxcord-plugin-dev/SKILL.md` ("Audit checklist for a generated plugin"): language wrapper, config keys read vs declared, framework features reimplemented by hand, permission names, lifecycle ordering, dependency scopes, dead/lying code, untestable inner classes, missing test setup.
 - [ ] In `music-plugin` the untested mass is now `MusicPlayerMessage` alone, plus the network-facing parts of `AudioPlayerManager` (source clients) and the JDA voice glue in `MusicPlayer`.

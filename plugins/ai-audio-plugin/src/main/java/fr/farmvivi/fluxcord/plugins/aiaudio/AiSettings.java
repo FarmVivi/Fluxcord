@@ -308,13 +308,20 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
      * @param moodEnabled        whether the conversation moves the mood at all
      * @param energyPerTurnBasis how much each transcribed sentence raises the energy, in hundredths
      */
-    public record PersonaSettings(Persona persona, boolean moodEnabled, int energyPerTurnBasis) {
+    public record PersonaSettings(Persona persona, boolean moodEnabled, int energyPerTurnBasis,
+                                  boolean moodFromModel, int moodWeightBasis) {
 
         /** Default energy added per transcribed sentence, in hundredths: 8 hundredths of the axis. */
         public static final int DEFAULT_ENERGY_PER_TURN = 8;
+        /**
+         * How far one reading moves the mood towards it, in hundredths. Half way: a reading that agrees with
+         * the last one gets there quickly, a single outlier does not swing the bot.
+         */
+        public static final int DEFAULT_MOOD_WEIGHT = 50;
 
         public PersonaSettings {
             energyPerTurnBasis = Math.clamp(energyPerTurnBasis, 0, 100);
+            moodWeightBasis = Math.clamp(moodWeightBasis, 0, 100);
         }
 
         static PersonaSettings from(Configuration config) {
@@ -326,14 +333,21 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                     config.getString("persona.instructions", ""));
             return new PersonaSettings(persona,
                     config.getBoolean("persona.mood.enabled", true),
-                    config.getInt("persona.mood.energy_per_turn", DEFAULT_ENERGY_PER_TURN));
+                    config.getInt("persona.mood.energy_per_turn", DEFAULT_ENERGY_PER_TURN),
+                    config.getBoolean("persona.mood.from_model", true),
+                    config.getInt("persona.mood.weight", DEFAULT_MOOD_WEIGHT));
         }
 
         /** @return the persona the plugin runs with before the configuration has been read */
         public static PersonaSettings defaults() {
             return new PersonaSettings(
                     new Persona("Fluxcord", java.util.List.of(), "neutre", Locale.FRANCE, ""),
-                    true, DEFAULT_ENERGY_PER_TURN);
+                    true, DEFAULT_ENERGY_PER_TURN, true, DEFAULT_MOOD_WEIGHT);
+        }
+
+        /** @return how far one reading of the room moves the mood towards it, as a fraction */
+        public double moodWeight() {
+            return moodWeightBasis / 100.0;
         }
 
         /** @return how much one sentence moves the energy axis, as a fraction */

@@ -188,14 +188,16 @@ public class SpeechRecognitionService {
     /**
      * A sentence spoken in the channel makes the bot a little more lively.
      *
-     * <p>Only the energy: whether a conversation is warm or cold cannot be told from the fact that it is
-     * happening, and guessing it from keywords would be worse than not guessing. The mood fades back on its
-     * own, so a channel that goes quiet calms down without anything having to run.
+     * <p>This is a fallback, and an admittedly crude one: it is an activity counter wearing an emotion's name,
+     * so the bot gets livelier while being told bad news. It only runs when {@code persona.mood.from_model} is
+     * off — when it is on, the model reads the room after each answer instead, which is a judgement rather
+     * than a count. The mood fades back on its own either way, so a channel that goes quiet calms down
+     * without anything having to run.
      */
     private void liftMood(Guild guild, String channelId) {
         AiSettings.PersonaSettings persona = plugin.getSettings().persona();
         PersonaStore store = plugin.getPersonaStore();
-        if (!persona.moodEnabled() || store == null || channelId == null) {
+        if (!persona.moodEnabled() || persona.moodFromModel() || store == null || channelId == null) {
             return;
         }
         store.nudgeMood(guild.getId(), channelId, persona.energyPerTurn(), 0, clock.getAsLong());

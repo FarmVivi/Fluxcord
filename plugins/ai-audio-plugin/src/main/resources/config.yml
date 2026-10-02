@@ -215,8 +215,22 @@ persona:
   mood:
     enabled: true
 
-    # How much each transcribed sentence raises the energy, in hundredths of the axis. 0 freezes the
-    # energy while leaving the rest of the mood in place.
+    # Ask the model how the room actually feels, after each answer, and move the mood towards what it
+    # says. Without this the mood is an activity counter wearing an emotion's name: energy only ever went
+    # up, one notch per sentence, so the bot grew livelier while being told bad news.
+    #
+    # It is a small separate request, not a field of the spoken answer - asking for the numbers alongside
+    # the reply would make the bot say them out loud as soon as it answers in audio. Measured on a local
+    # Ollama over four scenarios: Gemma 4 E4B read the room sensibly 12 times out of 12 in 0.28-0.36 s,
+    # Qwen 3.5 9B 9 out of 12. It runs after the answer has been handed to playback, so nobody waits.
+    from_model: true
+
+    # How far one reading moves the mood towards it, in hundredths. Half way by default: readings that
+    # agree get there quickly while a single odd one does not swing the bot. 100 obeys every reading.
+    weight: 50
+
+    # Only used when from_model is off: how much each transcribed sentence raises the energy, in
+    # hundredths of the axis. 0 freezes the energy while leaving the rest of the mood in place.
     energy_per_turn: 8
 
 # Request limits.

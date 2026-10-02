@@ -231,6 +231,45 @@ Three properties this loop is held to, each pinned by a test:
 Results come back with the `tool` role and say in their first line that they are information and not
 instructions — a transcript of somebody saying "ignore your instructions" is exactly what this path carries.
 
+### The mood is read, not counted
+
+The mood is two axes in `[-1, 1]` — `energy` from calm to excited, `warmth` from cold to friendly — stored per
+voice channel and fading halfway back to neutral every 20 minutes. What moves it used to be the number of
+sentences spoken: one notch of energy each. That is an activity counter wearing an emotion's name, and it
+behaved like one — **the bot got livelier while being told bad news.**
+
+With `persona.mood.from_model: true` (the default) the model is asked, after each answer, what the room
+actually feels like, and the mood moves `persona.mood.weight` of the way towards what it says. Reading a room
+is the one judgement here that cannot be computed, and it is something a language model is good at.
+
+**It is a separate request, not a field of the answer.** Three shapes were considered: a tool call costs a
+whole extra round (3 to 8 s measured), and asking for the mood alongside the spoken reply — as JSON, or as a
+marker to strip afterwards — breaks the moment the model answers in audio, because then it *says the numbers
+out loud*. A small separate call is independent of the modality, and it runs after the answer has reached
+playback, so nobody waits for it.
+
+**Asked as JSON, and that was not a style choice.** Four scenarios (bad news, a row, joking, a flat exchange),
+measured on a local Ollama:
+
+| Output asked for | Gemma 4 E4B | Qwen 3.5 9B | Latency |
+| --- | --- | --- | --- |
+| `{"energy": …, "warmth": …}` | **16 / 16** sensible | 12 / 16 | 0.27–0.36 s typical |
+| `energy=<n> warmth=<n>` | 6 / 12 | 3 / 12 | up to 3.7 s |
+
+Asked for the flat form, both models stopped judging and repeated stereotyped pairs (`+0.00/+0.90`,
+`+0.50/+0.80`) whatever the conversation. Asked for JSON they answer differently per scenario — and the model
+that matters for voice, the fast one, gets it right every time. Qwen's four misses are all the same case, a
+flat exchange rated `warmth +0.6`, which is arguably right and only failed a strict check.
+
+Two things the parser is held to by tests. A reading moves the mood **part of the way** (`weight`, 50 % by
+default), so several readings that agree shift it while one outlier does not swing the bot. And a minus sign
+survives: an earlier separator pattern of "a few non-digits" ate it, turning a reading of `-0.25` into a
+cheerful `+0.25` — the exact failure this feature exists to fix, reintroduced by a regex. Anything unparseable
+leaves the mood exactly where it was.
+
+With `from_model: false` the old per-sentence energy nudge comes back, `energy_per_turn` and all. The two never
+run together.
+
 ### Searching the web
 
 A model only knows what it was trained on, so without this the bot answers today's question with last year's
@@ -356,7 +395,6 @@ local box.
   own transport, its own tool-call plumbing, and an answer to a problem the turn-based path does not have —
   a Realtime session is one stream, so "who is speaking" is lost unless it is injected separately, and hearing
   each person separately is the thing this plugin was built around.
-- **A mood the model reports**, rather than one inferred from the fact that somebody spoke.
 
 ## Tests
 
