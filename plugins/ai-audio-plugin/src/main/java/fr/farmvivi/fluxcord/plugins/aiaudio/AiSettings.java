@@ -44,7 +44,7 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                          AiEndpoint textToSpeech, String voice, int volume, int priority,
                          int maxTextLength, Duration silence, Duration maxSegment, Duration minSegment,
                          int channelTurns, int serverTurns, int userTurns, PersonaSettings persona,
-                         ChatSettings chat) {
+                         ChatSettings chat, WebSearchSettings webSearch) {
 
     private static final String DEFAULT_BASE_URL = "https://api.openai.com/v1";
     /** Shipped defaults, matching {@code config.yml}: named so the two cannot drift apart. */
@@ -122,7 +122,8 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                 Math.max(0, config.getInt("memory.server_turns", DEFAULT_SERVER_TURNS)),
                 Math.max(0, config.getInt("memory.user_turns", DEFAULT_USER_TURNS)),
                 PersonaSettings.from(config),
-                ChatSettings.from(config, timeout));
+                ChatSettings.from(config, timeout),
+                WebSearchSettings.from(config, timeout));
     }
 
     /** @return the settings the plugin runs with before {@code onEnable} has read the configuration */
@@ -136,7 +137,8 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                 Duration.ofMillis(DEFAULT_SILENCE_MS), Duration.ofSeconds(DEFAULT_MAX_SEGMENT_SECONDS),
                 Duration.ofMillis(DEFAULT_MIN_SEGMENT_MS),
                 DEFAULT_CHANNEL_TURNS, DEFAULT_SERVER_TURNS, DEFAULT_USER_TURNS,
-                PersonaSettings.defaults(), ChatSettings.defaults());
+                PersonaSettings.defaults(), ChatSettings.defaults(),
+                WebSearchSettings.disabled());
     }
 
     /** @return true when the transcription endpoint is OpenAI's and no key was configured */
@@ -197,16 +199,27 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
      *                       a guard against a loop that never ends
      * @param audio          whether the model hears the voice and answers with one, which needs a model that
      *                       declares an audio modality and replaces transcription and synthesis in the turn
+     * @param maxToolTokens  the budget for a round that offers tools, which has to be far larger than the
+     *                       one above: a reasoning model thinks before it calls anything, and that thinking
+     *                       comes out of the same budget
      */
     public record ChatSettings(AiEndpoint endpoint, boolean enabled, String wakeWord, int historyTurns,
                                int maxReplyTokens, double temperature, String reasoningEffort,
                                String toolReasoningEffort, boolean memoryTools, int maxToolRounds,
-                               ChatAudio audio) {
+                               ChatAudio audio, int maxToolTokens) {
 
         private static final String DEFAULT_CHAT_MODEL = "gpt-4o-mini";
         private static final int DEFAULT_HISTORY_TURNS = 8;
         private static final int DEFAULT_MAX_REPLY_TOKENS = 120;
         private static final int DEFAULT_MAX_TOOL_ROUNDS = 3;
+        /**
+         * Measured, and the reason this is a separate setting: with the 120 of
+         * {@code max_reply_tokens}, Gemma 4 E4B spent <em>exactly</em> 120 completion tokens thinking on a
+         * round that offered tools and came back with no call and empty content. At 200, exactly 200. Only at
+         * 600 did a call appear. A tool round therefore cannot share the budget that keeps a spoken answer
+         * short.
+         */
+        private static final int DEFAULT_MAX_TOOL_TOKENS = 600;
         /** In hundredths, since the configuration reads integers. */
         private static final int DEFAULT_TEMPERATURE = 70;
         /**
@@ -226,6 +239,7 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
             toolReasoningEffort = toolReasoningEffort == null ? "" : toolReasoningEffort.strip();
             maxToolRounds = Math.clamp(maxToolRounds, 0, 10);
             audio = audio == null ? ChatAudio.off() : audio;
+            maxToolTokens = Math.clamp(maxToolTokens, 16, 4000);
         }
 
         static ChatSettings from(Configuration config, int timeoutSeconds) {
@@ -250,7 +264,8 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                             config.getBoolean("conversation.audio.speak", false),
                             nonBlank(config.getString("conversation.audio.voice", DEFAULT_AUDIO_VOICE),
                                     DEFAULT_AUDIO_VOICE),
-                            config.getString("conversation.audio.format", ChatAudio.WAV)));
+                            config.getString("conversation.audio.format", ChatAudio.WAV)),
+                    config.getInt("conversation.max_tool_tokens", DEFAULT_MAX_TOOL_TOKENS));
         }
 
         /** @return the settings used before the configuration has been read */
@@ -259,7 +274,7 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                     new AiEndpoint(DEFAULT_BASE_URL, "", DEFAULT_CHAT_MODEL, Duration.ofSeconds(30)),
                     false, "", DEFAULT_HISTORY_TURNS, DEFAULT_MAX_REPLY_TOKENS, DEFAULT_TEMPERATURE / 100.0,
                     DEFAULT_REASONING_EFFORT, OpenAiChatModel.DEFAULT_TOOL_REASONING_EFFORT, false,
-                    DEFAULT_MAX_TOOL_ROUNDS, ChatAudio.off());
+                    DEFAULT_MAX_TOOL_ROUNDS, ChatAudio.off(), DEFAULT_MAX_TOOL_TOKENS);
         }
 
         /** @return true when a key is needed for this endpoint and none was given */
@@ -367,6 +382,78 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
             }
             logger.warn("Unknown speech_to_text.api '{}'; using {}", value, OPENAI);
             return OPENAI;
+        }
+    }
+
+    /** Which search API a {@code WebSearch} implementation speaks. */
+    public enum SearchApi {
+        /** A self-hosted SearxNG instance, queried over its JSON API. */
+        SEARXNG
+    }
+
+    /**
+     * Letting the model look something up on the web.
+     *
+     * <p><strong>There is deliberately no default instance.</strong> A default would mean that enabling the
+     * feature silently sends what people say in a voice channel to somebody else's server; the operator has to
+     * name the instance, which is also the moment they decide where the queries go.
+     *
+     * @param enabled    whether the model is offered the search tool at all
+     * @param api        which backend's API the instance speaks
+     * @param baseUrl    the instance's root; empty means nothing was configured, which disables the feature
+     * @param apiKey     a bearer token, for an instance behind an authenticating proxy
+     * @param timeout    how long to wait for one query
+     * @param maxResults how many results to return when the model does not ask for a number
+     * @param language   the language code to search in, or empty to let the instance decide
+     * @param safeSearch 0 off, 1 moderate, 2 strict
+     */
+    public record WebSearchSettings(boolean enabled, SearchApi api, String baseUrl, String apiKey,
+                                    Duration timeout, int maxResults, String language, int safeSearch) {
+
+        private static final int DEFAULT_MAX_RESULTS = 5;
+        private static final int DEFAULT_SAFE_SEARCH = 1;
+
+        public WebSearchSettings {
+            api = api == null ? SearchApi.SEARXNG : api;
+            baseUrl = baseUrl == null ? "" : baseUrl.strip();
+            apiKey = apiKey == null ? "" : apiKey.strip();
+            maxResults = Math.clamp(maxResults, 1, 10);
+            language = language == null ? "" : language.strip();
+            safeSearch = Math.clamp(safeSearch, 0, 2);
+        }
+
+        /** @return the settings used when nothing was configured */
+        public static WebSearchSettings disabled() {
+            return new WebSearchSettings(false, SearchApi.SEARXNG, "", "",
+                    Duration.ofSeconds(DEFAULT_TIMEOUT_SECONDS), DEFAULT_MAX_RESULTS, "",
+                    DEFAULT_SAFE_SEARCH);
+        }
+
+        static WebSearchSettings from(Configuration config, int timeoutSeconds) {
+            return new WebSearchSettings(
+                    config.getBoolean("web_search.enabled", false),
+                    searchApi(config.getString("web_search.api", SearchApi.SEARXNG.name())),
+                    config.getString("web_search.base_url", ""),
+                    config.getString("web_search.api_key", ""),
+                    Duration.ofSeconds(timeoutSeconds),
+                    config.getInt("web_search.max_results", DEFAULT_MAX_RESULTS),
+                    config.getString("web_search.language", ""),
+                    config.getInt("web_search.safe_search", DEFAULT_SAFE_SEARCH));
+        }
+
+        private static SearchApi searchApi(String configured) {
+            try {
+                return SearchApi.valueOf(configured.strip().toUpperCase(Locale.ROOT));
+            } catch (RuntimeException e) {
+                return SearchApi.SEARXNG;
+            }
+        }
+
+        /**
+         * @return true when the model should actually be offered the tool: switched on, and pointed somewhere
+         */
+        public boolean isUsable() {
+            return enabled && !baseUrl.isEmpty();
         }
     }
 }

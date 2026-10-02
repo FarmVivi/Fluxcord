@@ -96,7 +96,8 @@ class ConverseCommandTest {
                 Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 20, 20, 20,
                 AiSettings.PersonaSettings.defaults(),
                 new AiSettings.ChatSettings(chat, enabled, wakeWord, 8, 120, 0.7, "none", "low", false, 3,
-                        ChatAudio.off()));
+                        ChatAudio.off(), 600),
+                AiSettings.WebSearchSettings.disabled());
     }
 
     /** OpenAI with no key: the misconfiguration users hit first. */

@@ -7,6 +7,9 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.persona.Mood;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.Persona;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaSnapshot;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -33,6 +36,9 @@ public final class ConversationPrompt {
             You are taking part in a Discord voice conversation. Your answer will be spoken aloud, so:
             answer in one or two short sentences, with no markdown, no lists, no emoji and no stage
             directions. If you have nothing useful to add, answer with an empty line.""";
+
+    /** Spelled out rather than numeric, so no model has to guess whether the day or the month comes first. */
+    private static final DateTimeFormatter TODAY = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.ENGLISH);
 
     private ConversationPrompt() {
     }
@@ -68,7 +74,8 @@ public final class ConversationPrompt {
     public static List<ChatModel.Message> build(PersonaSnapshot snapshot, Turn question, int historyLimit,
                                                 String botUserId, PcmAudio questionAudio) {
         List<ChatModel.Message> messages = new ArrayList<>();
-        messages.add(ChatModel.Message.system(systemMessage(snapshot.persona(), snapshot.mood())));
+        messages.add(ChatModel.Message.system(
+                systemMessage(snapshot.persona(), snapshot.mood(), question.timestampMs())));
         messages.add(ChatModel.Message.user(context(snapshot)));
 
         List<Turn> history = snapshot.conversation().channelTurns();
@@ -91,8 +98,17 @@ public final class ConversationPrompt {
         return botUserId != null && botUserId.equals(turn.userId());
     }
 
-    /** Operator-configured only: the persona, the mood, and how to speak. */
-    private static String systemMessage(Persona persona, Mood mood) {
+    /**
+     * Operator-configured only: the persona, the mood, today's date, and how to speak.
+     *
+     * <p>The date is here because <strong>a model does not know what day it is</strong>, and that turned out
+     * to decide whether it looks anything up. Measured: asked who won an event that happened after its
+     * training, both Gemma 4 E4B and Qwen 3.5 9B refused to search at all — 1 call in 4 — because they were
+     * sure the event was still in the future ("ça n'a pas encore eu lieu, alors personne n'a gagné"). The
+     * date is not persuasion, it is the fact they were missing, and it belongs in the system message because
+     * the plugin produces it: nothing anybody said in the channel reaches here.
+     */
+    private static String systemMessage(Persona persona, Mood mood, long nowMs) {
         StringBuilder out = new StringBuilder();
         out.append("You are ").append(persona.name()).append('.');
         if (!persona.traits().isEmpty()) {
@@ -102,6 +118,9 @@ public final class ConversationPrompt {
             out.append(" Your tone: ").append(persona.tone()).append('.');
         }
         out.append(" Answer in ").append(languageName(persona.language())).append('.');
+        out.append(" Today is ").append(TODAY.format(Instant.ofEpochMilli(nowMs)
+                .atZone(ZoneId.systemDefault()))).append(", which is later than anything you were trained")
+                .append(" on: something you remember as being in the future may already have happened.");
         if (!mood.isNeutral()) {
             out.append(" Your current mood is ").append(mood.label()).append('.');
         }

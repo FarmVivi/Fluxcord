@@ -24,6 +24,8 @@ class ConversationPromptTest {
 
     private static final String BOT = "bot-id";
     private static final long NOW = 1_000L;
+    /** 15 October 2025, 12:00 UTC: far enough from midnight that no time zone changes the month. */
+    private static final long MID_OCTOBER_2025 = 1_760_529_600_000L;
 
     private static final Persona PERSONA = new Persona("Fluxcord", List.of("curieux", "taquin"),
             "familier", Locale.FRANCE, "Ne parle jamais de politique.");
@@ -48,6 +50,26 @@ class ConversationPromptTest {
     private static String systemOf(List<ChatModel.Message> messages) {
         assertEquals(ChatModel.Role.SYSTEM, messages.get(0).role(), "the first message is the system one");
         return messages.get(0).content();
+    }
+
+    @Test
+    void theSystemMessageTellsTheModelWhatDayItIs() {
+        // Measured, and it is what decides whether the model looks anything up: asked who won an event that
+        // happened after its training, both tested models refused to search - 2 to 3 calls in 5 - because
+        // they were sure it was still in the future. With the date stated, 5 in 5, both models. The date is
+        // the fact they were missing, and it is timestamped from the turn rather than from the wall clock so
+        // this stays testable.
+        String system = systemOf(ConversationPrompt.build(
+                snapshot(Mood.neutral(NOW), List.of(), "Victor"),
+                new Turn(MID_OCTOBER_2025, "u1", "Victor", "g1", "My Server", "c1", "General", "salut"),
+                5, BOT));
+
+        // The day number is left out of the assertion on purpose: the date is rendered in the machine's own
+        // zone, which is right for a spoken bot and wrong to pin in a test that has to pass anywhere. Midday
+        // mid-month keeps the month and the year the same in every zone on earth.
+        assertTrue(system.contains("Today is "), system);
+        assertTrue(system.contains("October 2025"), system);
+        assertTrue(system.contains("later than anything you were trained on"), system);
     }
 
     @Test

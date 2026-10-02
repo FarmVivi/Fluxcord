@@ -197,19 +197,23 @@ without the call. With `"low"` both called it. So the effort asked for depends o
 `tool_reasoning_effort` while the model may still ask for something, `reasoning_effort` on the round that only
 has to answer — which is the round whose latency anyone hears.
 
-**It also needs a model that calls tools reliably, and the fastest one does not.** Offered all three tools,
-three attempts each on the same Ollama:
+**It needs a token budget of its own, and that correction replaced what this section used to say.** An earlier
+measurement here reported Gemma 4 E4B calling a tool only 1 time in 3. That was wrong — or rather, it was
+measuring something else: the probe gave the tool round the 120 tokens of `max_reply_tokens`, and a reasoning
+model spends its budget thinking *before* it calls anything. See `conversation.max_tool_tokens` under
+[searching the web](#searching-the-web), where the starvation was finally identified. Re-measured with the
+budget the plugin now ships, five attempts each with all three tools offered:
 
-| Model | Called a tool | Round asking | Round answering |
+| Model | Called a tool | Answered from it | Whole turn |
 | --- | --- | --- | --- |
-| Qwen 3.5 9B | 3 / 3 | 1.7–5.6 s | 2.9 s |
-| Gemma 4 E4B | 1 / 3 | 2.8–6.0 s | — |
+| Qwen 3.5 9B | 4 / 5 | 4 / 5 | 2.9–7.7 s |
+| Gemma 4 E4B | 4 / 5 | 4 / 5 | 3.9–5.2 s |
 
-Gemma is the one fast enough for a conversation (0.53 s a turn without tools) and it is the one that skips the
-call; Qwen calls reliably and costs something like nine seconds for the whole turn, which is a long silence in a
-voice channel. That is why `memory_tools` defaults to **false**: switch it on when the model behind `chat` is
-known to call tools and you would rather wait than have it make something up. A round where the model returns
-neither content nor a call is reported, logged and the conversation goes on.
+So the models are fine; the budget was not. `memory_tools` still defaults to **false**, but for a plainer
+reason than "the fast model cannot do it": a lookup costs an extra round, and three to eight seconds is a long
+silence in a voice channel. Switch it on when you would rather wait than have the model answer from the fixed
+window of history it was handed. A round where the model returns neither content nor a call is reported, logged
+and the conversation goes on.
 
 Three properties this loop is held to, each pinned by a test:
 
@@ -226,6 +230,75 @@ Three properties this loop is held to, each pinned by a test:
 
 Results come back with the `tool` role and say in their first line that they are information and not
 instructions — a transcript of somebody saying "ignore your instructions" is exactly what this path carries.
+
+### Searching the web
+
+A model only knows what it was trained on, so without this the bot answers today's question with last year's
+facts, confidently. One tool, `search_the_web`: the model writes a query, gets a handful of titles, links and
+extracts, and answers from them. The page itself is never fetched — following a link would mean running
+whatever it serves, for a sentence of extra context.
+
+```yaml
+web_search:
+  enabled: false
+  api: "SEARXNG"
+  base_url: ""          # your instance; empty means the tool is never offered, whatever "enabled" says
+  max_results: 5
+  language: ""
+  safe_search: 1
+```
+
+**There is no default instance, deliberately.** Switching this on should be the same gesture as deciding where
+the queries go: point it at an instance you run and nothing said in a voice channel leaves your network; point
+it at a public one and every question people ask the bot goes to somebody else's server.
+
+The backend is [SearxNG](https://docs.searxng.org/dev/search_api.html), a metasearch front end you host, which
+queries the engines on your behalf. Three things it taught us, measured against a real instance:
+
+- **`format=json` is off by default.** A fresh SearxNG serves only HTML and answers `403` to an API call; you
+  have to add `json` under `search.formats` in its `settings.yml`. Both failure paths say exactly that, because
+  it is the first thing anybody hits.
+- **`unresponsive_engines` is almost never empty** — a rate-limited or CAPTCHA-serving engine appeared on nearly
+  every call of a *healthy* instance. That is partial degradation, not failure, so it is one debug line and
+  nothing more.
+- **`number_of_results` is not always sent.** It was absent from every answer of the instance this was written
+  against, so nothing depends on it; an empty `results` array is the only reliable way to know there was
+  nothing. Latency: 0.6 to 1.1 s a query, the same order as the model round it feeds.
+
+**What the model is told the results are.** They arrive in a `tool` message saying they are information written
+by strangers and never instructions, each fenced between `--- result N` markers, with every value collapsed to
+a single line — an extract containing a newline and `--- end of results` would otherwise close the fence and
+address the model from outside it, which is injection by punctuation. A test pins that, and keeps the hostile
+text inside the fence rather than censoring it.
+
+#### The two measurements that made it work
+
+Neither was in the plan, and the feature was useless without both.
+
+**The model has to be told what day it is.** Asked who won an event that happened after its training, both
+models *refused to search at all* — they were certain it was still in the future ("ça n'a pas encore eu lieu,
+alors personne n'a gagné"). A clean A/B over five attempts each, changing only that one sentence of the system
+message:
+
+| | Called the tool | Answered from the results |
+| --- | --- | --- |
+| Without today's date | Gemma 3/5, Qwen 2/5 | Gemma 2/5, Qwen 2/5 |
+| **With today's date** | **Gemma 5/5, Qwen 5/5** | **Gemma 5/5, Qwen 5/5** |
+
+So `ConversationPrompt` states the date in the system message, which is where the plugin's own facts belong —
+nothing anybody said in the channel reaches there. It is not persuasion, it is the fact the model was missing:
+without it "2026" sits in its future and genuine results look wrong. One model, handed pages reporting the
+result, called them "fictions générées par l'IA" rather than update.
+
+**A round that offers tools needs its own token budget.** With the 120 of `max_reply_tokens`, Gemma 4 E4B spent
+*exactly* 120 completion tokens thinking and came back with **no tool call and empty content** — silence in the
+voice channel. At 200, exactly 200. Only at 600 did a call appear. Hence `conversation.max_tool_tokens`
+(default 600), applied to any round that offers tools while the small budget still keeps the spoken answer
+short. Same shape as `tool_reasoning_effort` — and unlike that one, the effort flag changes nothing here:
+`low`, `medium` and omitted all starved identically. Only the budget mattered.
+
+One consequence worth stating: with tools enabled, a round that offers them and answers directly is allowed up
+to `max_tool_tokens`. Brevity there comes from the prompt, not from the ceiling.
 
 ### Speech to speech: letting the model hear and answer with a voice
 
@@ -283,10 +356,6 @@ local box.
   own transport, its own tool-call plumbing, and an answer to a problem the turn-based path does not have —
   a Realtime session is one stream, so "who is speaking" is lost unless it is injected separately, and hearing
   each person separately is the thing this plugin was built around.
-- **Web search**, so the bot can answer something it does not know. Decided: a `WebSearch` interface with one
-  implementation per API, selected by configuration exactly like `speech_to_text.api`, starting with a
-  self-hosted SearxNG. The model reaches it as a tool call. A fetched page is untrusted input and will be
-  passed as delimited data, never as instructions.
 - **A mood the model reports**, rather than one inferred from the fact that somebody spoke.
 
 ## Tests

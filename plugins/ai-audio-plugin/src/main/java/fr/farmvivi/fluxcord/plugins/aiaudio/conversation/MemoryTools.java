@@ -32,7 +32,7 @@ import java.util.Optional;
  * an instruction. The wording of each result says so, because a model reading a transcript of itself being told
  * to do something is precisely the case worth being careful about.
  */
-public class MemoryTools {
+public class MemoryTools implements ToolSource {
 
     /** Tool names, as the model sees them. */
     public static final String RECALL_CHANNEL = "recall_this_conversation";
@@ -56,6 +56,7 @@ public class MemoryTools {
      *
      * @return the three tools, in the order they are offered
      */
+    @Override
     public List<ChatModel.Tool> declarations() {
         Map<String, ChatModel.Tool.Parameter> limit = new LinkedHashMap<>();
         limit.put("limit", ChatModel.Tool.Parameter.optionalInteger(
@@ -88,6 +89,12 @@ public class MemoryTools {
      * @param nowMs    the current time, so ages can be given rather than timestamps
      * @return the result, as text
      */
+    @Override
+    public boolean handles(String name) {
+        return RECALL_CHANNEL.equals(name) || RECALL_SERVER.equals(name) || RECALL_PERSON.equals(name);
+    }
+
+    @Override
     public String execute(ChatModel.ToolCall call, PersonaSnapshot snapshot, long nowMs) {
         JsonObject arguments = parse(call.arguments());
         int limit = Math.clamp(readInt(arguments, "limit", DEFAULT_TURNS), 1, MAX_TURNS);

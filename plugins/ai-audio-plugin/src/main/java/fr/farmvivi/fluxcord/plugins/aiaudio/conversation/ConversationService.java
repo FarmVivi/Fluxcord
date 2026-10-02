@@ -43,24 +43,42 @@ public class ConversationService {
     private final AIAudioPlugin plugin;
     private final ChatModel model;
     private final ConversationMemory memory;
-    private final MemoryTools memoryTools;
+    private final List<ToolSource> toolSources;
     private final Logger logger;
     private final LongSupplier clock;
     private final ExecutorService worker;
     private final Set<String> activeGuilds = ConcurrentHashMap.newKeySet();
 
     public ConversationService(AIAudioPlugin plugin, ChatModel model, ConversationMemory memory) {
-        this(plugin, model, memory, System::currentTimeMillis);
+        this(plugin, model, memory, System::currentTimeMillis, List.of());
+    }
+
+    /**
+     * @param extraTools groups of tools beyond the memory, such as web search; empty when none is configured
+     */
+    public ConversationService(AIAudioPlugin plugin, ChatModel model, ConversationMemory memory,
+                               List<ToolSource> extraTools) {
+        this(plugin, model, memory, System::currentTimeMillis, extraTools);
     }
 
     /**
      * @param clock the current time in milliseconds, injected so tests need no real clock
      */
     ConversationService(AIAudioPlugin plugin, ChatModel model, ConversationMemory memory, LongSupplier clock) {
+        this(plugin, model, memory, clock, List.of());
+    }
+
+    ConversationService(AIAudioPlugin plugin, ChatModel model, ConversationMemory memory, LongSupplier clock,
+                        List<ToolSource> extraTools) {
         this.plugin = plugin;
         this.model = model;
         this.memory = memory;
-        this.memoryTools = new MemoryTools(memory);
+        List<ToolSource> sources = new ArrayList<>();
+        sources.add(new MemoryTools(memory));
+        if (extraTools != null) {
+            sources.addAll(extraTools);
+        }
+        this.toolSources = List.copyOf(sources);
         this.logger = plugin.getLogger();
         this.clock = clock;
         this.worker = Executors.newSingleThreadExecutor(runnable -> {
@@ -198,23 +216,60 @@ public class ConversationService {
      */
     private ChatModel.Answer converse(List<ChatModel.Message> messages, PersonaSnapshot snapshot,
                                       AiSettings.ChatSettings chat) {
-        List<ChatModel.Tool> tools = chat.memoryTools() ? memoryTools.declarations() : List.of();
+        List<ChatModel.Tool> tools = offeredTools(chat);
         for (int round = 0; round <= chat.maxToolRounds(); round++) {
             boolean lastRound = round == chat.maxToolRounds();
-            ChatModel.Answer answer = model.reply(messages, lastRound ? List.of() : tools,
-                    chat.maxReplyTokens());
+            List<ChatModel.Tool> offered = lastRound ? List.of() : tools;
+            // A round that may still call something needs room to think first; the round that only answers
+            // keeps the small budget, which is what keeps a spoken reply to a sentence or two.
+            int budget = offered.isEmpty() ? chat.maxReplyTokens() : chat.maxToolTokens();
+            ChatModel.Answer answer = model.reply(messages, offered, budget);
             if (!answer.hasToolCalls()) {
                 return answer;
             }
             messages.add(ChatModel.Message.assistantToolCalls(answer.toolCalls()));
             for (ChatModel.ToolCall call : answer.toolCalls()) {
-                String result = memoryTools.execute(call, snapshot, clock.getAsLong());
+                String result = run(call, snapshot);
                 logger.debug("Tool {} answered {} character(s)", call.name(), result.length());
                 messages.add(ChatModel.Message.toolResult(call.id(), result));
             }
         }
         // Reached only if the model asked for something on a round where it had been offered nothing.
         return ChatModel.Answer.spoken("");
+    }
+
+    /**
+     * What the model is allowed to call this turn.
+     *
+     * <p>The memory is gated on {@code conversation.memory_tools} because the model fast enough for a voice
+     * channel only calls a tool about one time in three; anything else configured is offered whenever it
+     * exists, since a plugin does not install a search backend by accident.
+     */
+    private List<ChatModel.Tool> offeredTools(AiSettings.ChatSettings chat) {
+        List<ChatModel.Tool> tools = new ArrayList<>();
+        for (ToolSource source : toolSources) {
+            if (source instanceof MemoryTools && !chat.memoryTools()) {
+                continue;
+            }
+            tools.addAll(source.declarations());
+        }
+        return tools;
+    }
+
+    /**
+     * Runs one call through whichever group owns it.
+     *
+     * <p>A name nobody owns is answered rather than thrown: the model invented it, or it is remembering a tool
+     * from a round where it was offered one, and either way telling it so is something it can act on.
+     */
+    private String run(ChatModel.ToolCall call, PersonaSnapshot snapshot) {
+        for (ToolSource source : toolSources) {
+            if (source.handles(call.name())) {
+                return source.execute(call, snapshot, clock.getAsLong());
+            }
+        }
+        logger.warn("The model asked for a tool that is not offered: {}", call.name());
+        return "There is no tool called " + call.name() + ".";
     }
 
     /**

@@ -11,7 +11,9 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OllamaSpeechToText;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiChatModel;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiSpeechToText;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.SpeechToText;
+import fr.farmvivi.fluxcord.plugins.aiaudio.ai.WebSearch;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiTextToSpeech;
+import fr.farmvivi.fluxcord.plugins.aiaudio.ai.SearxngWebSearch;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.ForgetCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.ConverseCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.PersonaCommand;
@@ -20,10 +22,13 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.commands.SpeakCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.TranscribeCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
 import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.ConversationService;
+import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.ToolSource;
+import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.WebSearchTools;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaStore;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -124,9 +129,34 @@ public class AIAudioPlugin extends AbstractPlugin {
         conversation = new ConversationService(this,
                 new OpenAiChatModel(settings.chat().endpoint(), http, settings.chat().temperature(),
                         settings.chat().reasoningEffort(), settings.chat().toolReasoningEffort(),
-                        settings.chat().audio()), memory);
+                        settings.chat().audio()), memory, webSearchTools());
         // The transcription service feeds the conversation, so it is built last.
         speechRecognition = new SpeechRecognitionService(this, speechToText(), memory);
+    }
+
+    /**
+     * The tool groups beyond the memory.
+     *
+     * <p>Empty unless an operator both switched search on and said which instance to use: there is no default
+     * instance, because a default would send what a voice channel says to somebody else's server.
+     *
+     * @return the configured groups, in the order they are offered to the model
+     */
+    private List<ToolSource> webSearchTools() {
+        AiSettings.WebSearchSettings search = settings.webSearch();
+        if (!search.isUsable()) {
+            if (search.enabled()) {
+                getLogger().warn("Web search is enabled but web_search.base_url is empty;"
+                        + " the model will not be offered it");
+            }
+            return List.of();
+        }
+        WebSearch backend = switch (search.api()) {
+            case SEARXNG -> new SearxngWebSearch(search.baseUrl(), search.apiKey(), search.timeout(), http,
+                    search.language(), search.safeSearch());
+        };
+        getLogger().info("Web search enabled through {}", search.api());
+        return List.of(new WebSearchTools(backend, search.maxResults()));
     }
 
     /**

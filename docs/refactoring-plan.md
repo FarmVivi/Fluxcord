@@ -236,7 +236,42 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
   transport (`java.net.http` has a WebSocket client, so no new dependency), its own tool-call plumbing, and a
   decision on a problem the turn-based path does not have - a Realtime session is a single stream, so per-user
   attribution, which this plugin is built around, has to be injected separately or given up.
-- [ ] **Web search for `ai-audio-plugin`** — decided 2026-09-26, not built yet. Backend: **SearxNG**, which Victor already self-hosts, so queries never leave his network. Shape: a `WebSearch` interface with one implementation per API, selected by config exactly like `speech_to_text.api` — SearxNG first, with room for Ollama's own `/api/web_search`, an OpenAI-style endpoint and any OpenAPI-described service, since the repository is public and other people's deployments will differ. The model reaches it as a **tool call** (`tools` in `/api/chat`; Gemma 4 and Qwen 3.5 both declare `tools`), so the plugin runs the search and hands back results. **Security requirement, decided up front**: a fetched page is untrusted input — results must be passed as delimited data and never as instructions, the same rule already applied to Discord nicknames. Worth stating in the README too: with any hosted backend, what people say in a voice channel would leave the network.
+- [x] **Web search for `ai-audio-plugin`** (2026-10-02, the backend decided on 2026-09-26). `web_search.*`
+  offers the model one `search_the_web` tool, answered by a self-hosted SearxNG over its JSON API. **No default
+  instance**, at Victor's request and for the obvious reason: a default would quietly send what a voice channel
+  says to somebody else's server, so naming the instance is the same gesture as switching the feature on.
+  - Shape as decided: a `WebSearch` interface with one implementation per API and a `SearchApi` enum selected
+    by config, exactly like `speech_to_text.api`. `ToolSource` was extracted when the second tool group
+    arrived — `ConversationService` dispatches by `handles(name)` instead of growing an `if` per group, and the
+    memory is the only group gated on a config switch.
+  - Hostile input, handled as such: results arrive in a `tool` message stating they are information written by
+    strangers and never instructions, fenced between `--- result N` markers, every value collapsed to one line
+    so an extract cannot forge the end marker and write outside the fence. The page is never fetched.
+  - Measured against a real instance: `format=json` is **off by default** (a fresh SearxNG answers `403`, so
+    both failure paths name `search.formats` in `settings.yml`); `unresponsive_engines` is non-empty on nearly
+    every call of a healthy instance, so it is debug and not failure; `number_of_results` was never sent, so
+    nothing depends on it. 0.6-1.1 s a query.
+  - **Two findings that the feature did not work without, neither of them in the plan.**
+    1. **The model has to be told what day it is.** Both models *refused to search*, certain the event was
+       still in the future. Clean A/B on that one sentence, five attempts each: without it Gemma called 3/5 and
+       answered right 2/5, Qwen 2/5 and 2/5; with it **5/5 and 5/5, both models**. The date now sits in the
+       system message (`ConversationPrompt`), which is where the plugin's own facts belong. Not persuasion — a
+       missing fact: one model called real pages "fictions générées par l'IA" rather than update.
+    2. **A round that offers tools needs its own token budget.** With the 120 of `max_reply_tokens`, Gemma spent
+       *exactly* 120 completion tokens thinking and returned no call and empty content; 200 likewise; only 600
+       produced a call. New `conversation.max_tool_tokens` (600). The effort flag is irrelevant here — `low`,
+       `medium` and omitted all starved identically — so this is a different bug from `reasoning_effort`, found
+       the same way.
+  - **That second finding corrects an earlier entry of this plan.** The "Gemma calls a memory tool only 1 time
+    in 3" figure was measured through a 200-token probe, i.e. the starvation above. Re-measured with the
+    shipped budget: Qwen **4/5**, Gemma **4/5**, both answering from the result. `memory_tools` still defaults
+    to false, but for the honest reason — an extra round costs 3 to 8 seconds — not because the fast model
+    cannot call tools.
+  - 31 tests (16 on the SearxNG client, 11 on the tool, 4 on the dispatch) plus the budget split and the date;
+    module 252 -> 285.
+- [ ] **A SearxNG instance is reachable only from the network it runs on.** The bot in the cluster and a local
+  run do not see the same one, so `web_search.base_url` is per-deployment configuration, not a shared default.
+  Worth a line in the deployment notes rather than in code.
 - [ ] **A mood the model reports** rather than one inferred from the fact somebody spoke: `Mood` currently drifts on activity alone, so the bot sounds cheerful about bad news. The chat turn already carries the persona; the model could return its own reading of the room alongside the answer.
 - [ ] `/converse` cannot speak until a text-to-speech server exists to point `text_to_speech.base_url` at (Piper or Kokoro, Victor's side). Transcription and the chat turn are measured against a real server; the spoken half is only covered by tests.
 - [ ] The audit checklist built from all these plugins lives in `.claude/skills/fluxcord-plugin-dev/SKILL.md` ("Audit checklist for a generated plugin"): language wrapper, config keys read vs declared, framework features reimplemented by hand, permission names, lifecycle ordering, dependency scopes, dead/lying code, untestable inner classes, missing test setup.

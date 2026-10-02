@@ -14,6 +14,7 @@ import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.Turn;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.Persona;
+import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaSnapshot;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaStore;
 import fr.farmvivi.fluxcord.plugins.aiaudio.testing.MemoryDataStorage;
 import net.dv8tion.jda.api.JDA;
@@ -54,6 +55,8 @@ class ConversationServiceTest {
     private static final String GUILD_ID = "g1";
     private static final String CHANNEL_ID = "c1";
     private static final String BOT_ID = "bot-1";
+    /** The budget a round offering tools gets, which must not be the one a spoken answer gets. */
+    private static final int TOOL_TOKENS = 600;
     private static final long NOW = 1_000_000L;
 
     private AIAudioPlugin plugin;
@@ -66,6 +69,8 @@ class ConversationServiceTest {
     private final AtomicReference<List<ChatModel.Message>> asked = new AtomicReference<>();
     /** What the model was offered on each call, so a withheld tool list can be asserted. */
     private final List<List<ChatModel.Tool>> offered = new CopyOnWriteArrayList<>();
+    /** The token budget each round was given, so the tool round and the answering round can be told apart. */
+    private final List<Integer> budgets = new CopyOnWriteArrayList<>();
     private final AtomicInteger calls = new AtomicInteger();
 
     @BeforeEach
@@ -131,7 +136,8 @@ class ConversationServiceTest {
                 Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 20, 20, 20,
                 AiSettings.PersonaSettings.defaults(),
                 new AiSettings.ChatSettings(local, enabled, wakeWord, 8, 120, 0.7, "none", "low",
-                        memoryTools, maxToolRounds, audio));
+                        memoryTools, maxToolRounds, audio, TOOL_TOKENS),
+                AiSettings.WebSearchSettings.disabled());
     }
 
     /** A service whose model answers {@code reply} and records what it was asked. */
@@ -145,12 +151,18 @@ class ConversationServiceTest {
      * <p>Several answers is how a tool round is expressed: the first asks for a lookup, the next one speaks.
      */
     private ConversationService serviceAnswering(List<ChatModel.Answer> answers) {
+        return serviceAnswering(answers, List.of());
+    }
+
+    private ConversationService serviceAnswering(List<ChatModel.Answer> answers,
+                                                 List<ToolSource> extraTools) {
         conversation = new ConversationService(plugin, (messages, tools, maxTokens) -> {
             asked.set(messages);
             offered.add(tools);
+            budgets.add(maxTokens);
             int call = calls.getAndIncrement();
             return answers.get(Math.min(call, answers.size() - 1));
-        }, memory, () -> NOW);
+        }, memory, () -> NOW, extraTools);
         return conversation;
     }
 
@@ -581,5 +593,118 @@ class ConversationServiceTest {
 
         verify(tts, never()).play(any(), any());
         verify(tts, never()).speak(any(), anyString(), any());
+    }
+
+    // More than one group of tools
+
+    /** A group owning one tool, recording what it was asked to run. */
+    private static final class FakeTools implements ToolSource {
+        private final String name;
+        private final List<String> ran = new CopyOnWriteArrayList<>();
+
+        private FakeTools(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public List<ChatModel.Tool> declarations() {
+            return List.of(new ChatModel.Tool(name, "does " + name, java.util.Map.of()));
+        }
+
+        @Override
+        public boolean handles(String called) {
+            return name.equals(called);
+        }
+
+        @Override
+        public String execute(ChatModel.ToolCall call, PersonaSnapshot snapshot, long nowMs) {
+            ran.add(call.arguments());
+            return "the answer from " + name;
+        }
+    }
+
+    @Test
+    void aSecondGroupOfToolsIsOfferedAlongsideTheMemory() throws Exception {
+        when(plugin.getSettings()).thenReturn(settings(true, "", true, 3));
+        FakeTools web = new FakeTools("search_the_web");
+        ConversationService service = serviceAnswering(List.of(ChatModel.Answer.spoken("ok")), List.of(web));
+        service.start(guild);
+
+        service.onTranscription(guild, heard("salut"));
+        waitForAnswer();
+
+        List<String> names = offered.get(0).stream().map(ChatModel.Tool::name).toList();
+        assertTrue(names.contains("search_the_web"), names.toString());
+        assertTrue(names.contains(MemoryTools.RECALL_PERSON), names.toString());
+    }
+
+    @Test
+    void aGroupThatIsNotTheMemoryIsOfferedEvenWhenMemoryToolsAreOff() throws Exception {
+        // memory_tools is off because the fast model rarely calls one; a configured search backend is not an
+        // accident, so it does not hide behind that switch.
+        FakeTools web = new FakeTools("search_the_web");
+        ConversationService service = serviceAnswering(List.of(ChatModel.Answer.spoken("ok")), List.of(web));
+        service.start(guild);
+
+        service.onTranscription(guild, heard("salut"));
+        waitForAnswer();
+
+        assertEquals(List.of("search_the_web"),
+                offered.get(0).stream().map(ChatModel.Tool::name).toList());
+    }
+
+    @Test
+    void aCallIsRunByTheGroupThatOwnsItAndNotByTheOther() throws Exception {
+        when(plugin.getSettings()).thenReturn(settings(true, "", true, 3));
+        memory.remember(new Turn(NOW - 1000, "u2", "Alice", GUILD_ID, "My Server", CHANNEL_ID,
+                "General", "on parlait de rhubarbe"));
+        FakeTools web = new FakeTools("search_the_web");
+        ConversationService service = serviceAnswering(List.of(
+                asksFor("search_the_web", "{\"query\":\"rhubarbe\"}"),
+                ChatModel.Answer.spoken("la rhubarbe, donc")), List.of(web));
+        service.start(guild);
+
+        service.onTranscription(guild, heard("cherche rhubarbe"));
+        waitForCalls(2);
+
+        assertEquals(List.of("{\"query\":\"rhubarbe\"}"), web.ran, "the search group ran it");
+        ChatModel.Message result = asked.get().get(asked.get().size() - 1);
+        assertEquals(ChatModel.Role.TOOL, result.role());
+        assertEquals("the answer from search_the_web", result.content());
+    }
+
+    @Test
+    void aToolNoGroupOwnsIsAnsweredRatherThanEndingTheTurn() throws Exception {
+        when(plugin.getSettings()).thenReturn(settings(true, "", true, 3));
+        ConversationService service = serviceAnswering(List.of(
+                asksFor("order_a_pizza", "{}"),
+                ChatModel.Answer.spoken("je ne peux pas faire ça")));
+        service.start(guild);
+
+        service.onTranscription(guild, heard("commande une pizza"));
+        waitForCalls(2);
+
+        assertTrue(asked.get().get(asked.get().size() - 1).content().contains("no tool called order_a_pizza"),
+                asked.get().get(asked.get().size() - 1).content());
+    }
+
+    @Test
+    void aRoundThatOffersToolsGetsARoomierBudgetThanTheOneThatAnswers() throws Exception {
+        // Measured: with the 120 of max_reply_tokens, Gemma 4 E4B spent exactly 120 completion tokens
+        // thinking on a tool round and returned no call and empty content - silence in the channel.
+        // One round of tools, so the second one is the answering round and offers none.
+        when(plugin.getSettings()).thenReturn(settings(true, "", true, 1));
+        ConversationService service = serviceAnswering(List.of(
+                asksFor(MemoryTools.RECALL_CHANNEL, "{}"),
+                ChatModel.Answer.spoken("voilà")));
+        service.start(guild);
+
+        service.onTranscription(guild, heard("salut"));
+        waitForCalls(2);
+
+        assertEquals(TOOL_TOKENS, budgets.get(0), "the round that may call something can think first");
+        assertTrue(offered.get(0).size() > 0, "and it really was offered them");
+        assertEquals(120, budgets.get(1), "the round that only answers keeps the short budget");
+        assertTrue(offered.get(1).isEmpty(), "because it is offered nothing");
     }
 }

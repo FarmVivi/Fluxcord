@@ -126,6 +126,13 @@ conversation:
   # is offered no tools, so it answers with what it found rather than being cut off.
   max_tool_rounds: 3
 
+  # The budget for a round that offers tools, which has to be much larger than max_reply_tokens above.
+  # Measured: with 120, Gemma 4 E4B spent exactly 120 completion tokens thinking and came back with no tool
+  # call and empty content - silence in the voice channel. With 200, exactly 200. Only at 600 did a call
+  # appear. The small budget above still applies to the round that only answers, which is what keeps a
+  # spoken reply to a sentence or two.
+  max_tool_tokens: 600
+
   # Speech to speech: the model hears the voice and answers with one, instead of reading a transcript and
   # having its text synthesised. What that buys is what a transcript throws away - the hesitation, the
   # laughter, who is shouting - and one less service in the chain.
@@ -148,6 +155,42 @@ conversation:
     # How the answer comes back: "wav" (self-describing) or "pcm16" (raw, smaller, 24 kHz mono). Those are
     # the two this plugin can decode.
     format: "wav"
+
+# Letting the model look something up on the web, as a tool call, so it can answer what it does not know
+# instead of answering last year's facts confidently.
+#
+# There is NO default instance, on purpose: switching this on has to be the same gesture as deciding where
+# the queries go. Point it at an instance you run and nothing a voice channel says leaves your network;
+# point it at a public one and every question people ask the bot goes to a stranger's server.
+#
+# Everything a search returns is treated as hostile input - a title and an extract are written by whoever
+# owns the page. Results reach the model fenced, in a tool message that says they are information written
+# by strangers and not instructions, and the page itself is never fetched.
+web_search:
+  enabled: false
+
+  # Which backend's API the instance speaks. SEARXNG for now; this is where another one plugs in.
+  api: "SEARXNG"
+
+  # Your instance's root, for example "https://searx.example.lan". Leave it empty and the model is simply
+  # never offered the tool, whatever "enabled" says.
+  #
+  # SearxNG serves HTML only by default and answers 403 to an API call: add "json" under search.formats in
+  # its settings.yml, or nothing here will work.
+  base_url: ""
+
+  # Only needed when the instance sits behind an authenticating proxy; sent as a bearer token.
+  api_key: ""
+
+  # How many results to hand back when the model does not ask for a number. A spoken answer is built from
+  # two or three; ten is the hard ceiling.
+  max_results: 5
+
+  # Language code to search in ("fr", "en"), or empty to let the instance decide.
+  language: ""
+
+  # 0 off, 1 moderate, 2 strict, as SearxNG numbers it.
+  safe_search: 1
 
 # Who the bot is. This is the part an operator chooses; the mood below is what the conversation moves.
 # A server or a single channel can override any of these at runtime with /persona - an override states only
