@@ -48,6 +48,13 @@ public class ConverseCommand extends AiAudioCommand {
             ctx.replyError(text(ctx, "errors.api_key_missing"));
             return;
         }
+        // Answering out loud needs a voice. Unless the chat model produces one itself, that voice comes from
+        // the synthesis endpoint - and promising to answer aloud with no way to speak is the one failure a
+        // user cannot diagnose, because the bot simply goes quiet.
+        if (!plugin.getSettings().chat().audio().speak() && plugin.getSettings().synthesisNeedsKey()) {
+            ctx.replyError(text(ctx, "errors.api_key_missing"));
+            return;
+        }
         if (!ensureConnected(ctx, guild)) {
             return;
         }
@@ -55,7 +62,7 @@ public class ConverseCommand extends AiAudioCommand {
         // twice is harmless.
         plugin.getSpeechRecognition().start(guild, ctx.getChannel());
 
-        if (!plugin.getConversation().start(guild)) {
+        if (!plugin.getConversation().start(guild, ctx.getChannel())) {
             ctx.replyError(text(ctx, "errors.already_conversing"));
             return;
         }

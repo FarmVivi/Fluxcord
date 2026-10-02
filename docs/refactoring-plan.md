@@ -292,7 +292,18 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
     minus sign — a reading of `-0.25` became a cheerful `+0.25`, which is precisely the failure the feature
     exists to fix. A sign belongs to the number; four spellings of the separator are now pinned.
   - 13 tests for `MoodReader`, 4 for the turn; module 285 -> 302.
-- [ ] `/converse` cannot speak until a text-to-speech server exists to point `text_to_speech.base_url` at (Piper or Kokoro, Victor's side). Transcription and the chat turn are measured against a real server; the spoken half is only covered by tests.
+- [x] **The bot no longer promises a voice it does not have** (2026-10-02). `/converse start` checked the chat
+  key and not the synthesis one, so with no speech server it answered "I am listening and will reply out loud"
+  and then went silent for good, with the reason in a log nobody in a voice channel reads. It now refuses when
+  there is no way to speak — unless `conversation.audio.speak` is on, since then the chat model produces the
+  voice itself — and a synthesis failure during a session is reported **once** in the text channel the command
+  came from, with the provider's message. Found while documenting how to set a TTS server up, which is the
+  usual way this kind of gap surfaces.
+- [ ] **A text-to-speech server still has to exist** for `/speak` and `/converse` to be heard (Victor's side).
+  Kokoro-FastAPI is documented in the plugin README with the container command, the `/v1/audio/voices`
+  discovery route and the French voice name; it needs no code, since it is the same `/audio/speech` request.
+  Until one runs, the spoken half is covered by tests only — transcription, the chat turn, the memory tools,
+  web search and the mood reading are all measured against real servers.
 - [ ] The audit checklist built from all these plugins lives in `.claude/skills/fluxcord-plugin-dev/SKILL.md` ("Audit checklist for a generated plugin"): language wrapper, config keys read vs declared, framework features reimplemented by hand, permission names, lifecycle ordering, dependency scopes, dead/lying code, untestable inner classes, missing test setup.
 - [ ] In `music-plugin` the untested mass is now `MusicPlayerMessage` alone, plus the network-facing parts of `AudioPlayerManager` (source clients) and the JDA voice glue in `MusicPlayer`.
 

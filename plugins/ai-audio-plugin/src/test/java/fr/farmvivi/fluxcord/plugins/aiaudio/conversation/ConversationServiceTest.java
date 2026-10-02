@@ -1,6 +1,7 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio.conversation;
 
 import fr.farmvivi.fluxcord.api.discord.DiscordAPI;
+import fr.farmvivi.fluxcord.api.language.PluginLanguageAdapter;
 import fr.farmvivi.fluxcord.api.plugin.PluginContext;
 import fr.farmvivi.fluxcord.api.storage.PluginDataStorageAdapter;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AIAudioPlugin;
@@ -23,6 +24,7 @@ import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.SelfUser;
 import net.dv8tion.jda.api.entities.User;
+import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.entities.channel.unions.AudioChannelUnion;
 import net.dv8tion.jda.api.managers.AudioManager;
 import org.junit.jupiter.api.AfterEach;
@@ -732,6 +734,13 @@ class ConversationServiceTest {
         assertTrue(offered.get(1).isEmpty(), "because it is offered nothing");
     }
 
+    /** The plugin's language adapter, which is only reached when something has to be reported to a human. */
+    private void stubLanguage(String answer) {
+        PluginLanguageAdapter language = mock(PluginLanguageAdapter.class);
+        when(language.getString(anyString(), any())).thenReturn(answer);
+        when(plugin.getLanguage()).thenReturn(language);
+    }
+
     // The mood the model reports
 
     @Test
@@ -790,5 +799,45 @@ class ConversationServiceTest {
         Thread.sleep(200);
 
         assertEquals(1, calls.get(), "one turn, one request");
+    }
+
+    @Test
+    void beingUnableToSpeakIsSaidInTheChannelOnceAndNotOncePerSentence() throws Exception {
+        // Otherwise the only symptom is silence, and the reason is in a log nobody is reading.
+        MessageChannel output = mock(MessageChannel.class, RETURNS_DEEP_STUBS);
+        stubLanguage("I have an answer but no voice");
+        when(tts.speak(any(), anyString(), any())).thenReturn(
+                CompletableFuture.failedFuture(new AiRequestException("no speech server")));
+        ConversationService service = serviceAnswering("bonjour");
+        service.start(guild, output);
+
+        service.onTranscription(guild, heard("salut"));
+        waitForAnswer();
+        service.onTranscription(guild, heard("tu es là ?"));
+        waitForCalls(2);
+        Thread.sleep(200);
+
+        verify(output, times(1)).sendMessage(anyString());
+    }
+
+    @Test
+    void aFreshStartIsWillingToComplainAgain() throws Exception {
+        MessageChannel output = mock(MessageChannel.class, RETURNS_DEEP_STUBS);
+        stubLanguage("no voice");
+        when(tts.speak(any(), anyString(), any())).thenReturn(
+                CompletableFuture.failedFuture(new AiRequestException("no speech server")));
+        ConversationService service = serviceAnswering("bonjour");
+
+        service.start(guild, output);
+        service.onTranscription(guild, heard("salut"));
+        waitForAnswer();
+        Thread.sleep(200);
+        service.stop(guild);
+        service.start(guild, output);
+        service.onTranscription(guild, heard("et maintenant ?"));
+        waitForCalls(2);
+        Thread.sleep(200);
+
+        verify(output, times(2)).sendMessage(anyString());
     }
 }

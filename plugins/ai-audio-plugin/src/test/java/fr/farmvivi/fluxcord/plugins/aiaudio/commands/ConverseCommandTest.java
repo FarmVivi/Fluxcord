@@ -25,6 +25,8 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.*;
 
 /**
@@ -90,6 +92,18 @@ class ConverseCommandTest {
                 new AiEndpoint("http://localhost:11434/v1", "", "m", Duration.ofSeconds(5)));
     }
 
+    /** Chat on a local server, synthesis on OpenAI with no key: a voice it cannot actually use. */
+    private AiSettings settingsWithNoVoice(ChatAudio audio) {
+        AiEndpoint local = new AiEndpoint("http://localhost:11434/v1", "", "m", Duration.ofSeconds(5));
+        AiEndpoint hosted = new AiEndpoint("https://api.openai.com/v1", "", "m", Duration.ofSeconds(5));
+        return new AiSettings(local, AiSettings.SpeechApi.OLLAMA, "fr-FR", hosted, "alloy", 100, 80, 1000,
+                Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 20, 20, 20,
+                AiSettings.PersonaSettings.defaults(),
+                new AiSettings.ChatSettings(local, true, "", 8, 120, 0.7, "none", "low", false, 3,
+                        audio, 600),
+                AiSettings.WebSearchSettings.disabled());
+    }
+
     private AiSettings settings(boolean enabled, String wakeWord, AiEndpoint chat) {
         AiEndpoint local = new AiEndpoint("http://localhost:11434/v1", "", "m", Duration.ofSeconds(5));
         return new AiSettings(local, AiSettings.SpeechApi.OLLAMA, "fr-FR", local, "alloy", 100, 80, 1000,
@@ -113,19 +127,19 @@ class ConverseCommandTest {
     @Test
     void startingAlsoStartsListening() {
         // Answering requires hearing; two commands for one behaviour is one too many.
-        when(conversation.start(guild)).thenReturn(true);
+        when(conversation.start(same(guild), any())).thenReturn(true);
 
         run(ConverseCommand.START);
 
         verify(speech).start(same(guild), any());
-        verify(conversation).start(guild);
+        verify(conversation).start(same(guild), any());
         verify(ctx).replySuccess("messages.converse_started");
     }
 
     @Test
     void startingJoinsTheCallersChannelWhenTheBotIsNotConnected() {
         when(audioManager.isConnected()).thenReturn(false);
-        when(conversation.start(guild)).thenReturn(true);
+        when(conversation.start(same(guild), any())).thenReturn(true);
 
         run(ConverseCommand.START);
 
@@ -147,7 +161,7 @@ class ConverseCommandTest {
     void theWakeWordIsReportedWhenThereIsOne() {
         // Otherwise nobody knows the bot is waiting to be addressed.
         when(plugin.getSettings()).thenReturn(settings(true, "hé flux"));
-        when(conversation.start(guild)).thenReturn(true);
+        when(conversation.start(same(guild), any())).thenReturn(true);
 
         run(ConverseCommand.START);
 
@@ -156,7 +170,7 @@ class ConverseCommandTest {
 
     @Test
     void startingTwiceSaysSo() {
-        when(conversation.start(guild)).thenReturn(false);
+        when(conversation.start(same(guild), any())).thenReturn(false);
 
         run(ConverseCommand.START);
 
@@ -188,7 +202,7 @@ class ConverseCommandTest {
     @Test
     void aLocalModelNeedsNoKey() {
         // The default in this test: nothing is asked of a self-hosted endpoint.
-        when(conversation.start(guild)).thenReturn(true);
+        when(conversation.start(same(guild), any())).thenReturn(true);
 
         run(ConverseCommand.START);
 
@@ -234,5 +248,28 @@ class ConverseCommandTest {
 
         verify(ctx).replyError("errors.guild_only");
         verifyNoInteractions(conversation);
+    }
+
+    @Test
+    void startingIsRefusedWhenThereIsNoWayToSpeak() {
+        // The one failure a user cannot diagnose: the bot says it will answer aloud, then goes quiet, with
+        // the reason in a log nobody in a voice channel is reading.
+        when(plugin.getSettings()).thenReturn(settingsWithNoVoice(ChatAudio.off()));
+
+        run("start");
+
+        verify(ctx).replyError("errors.api_key_missing");
+        verify(conversation, never()).start(any(), any());
+    }
+
+    @Test
+    void aModelThatSpeaksForItselfNeedsNoSynthesisEndpoint() {
+        when(plugin.getSettings()).thenReturn(
+                settingsWithNoVoice(new ChatAudio(true, true, "alloy", "wav")));
+        when(conversation.start(same(guild), any())).thenReturn(true);
+
+        run("start");
+
+        verify(ctx).replySuccess("messages.converse_started");
     }
 }

@@ -76,6 +76,7 @@ errors:
   text_too_long: "That is too long: {0} characters at most."
   api_key_missing: "No AI API key is configured. Set one, or point the plugin at your own server."
   synthesis_failed: "I could not speak: {0}"
+  cannot_speak: "I have an answer but no voice: speech synthesis is not working ({0}). Check text_to_speech in my configuration."
   no_permission: "You are not allowed to do that."
   already_transcribing: "I am already transcribing this server."
   not_transcribing: "I was not transcribing anything."

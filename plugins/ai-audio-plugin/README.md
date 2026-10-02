@@ -85,8 +85,28 @@ text_to_speech:
   base_url: "http://192.168.1.20:8880/v1"
   api_key: ""
   model: "kokoro"
-  voice: "af_heart"
+  voice: "ff_siwis"
 ```
+
+**Getting a voice running from nothing**, since this is the one capability with no fallback — without it
+`/speak` fails and `/converse` has nothing to answer with. [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI)
+is the shortest path: it implements `/v1/audio/speech`, answers WAV, has voices in nine languages, and runs on
+CPU (it also supports ROCm, so it can share the AMD card with the LLM if you would rather).
+
+```bash
+docker run -d --name kokoro -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
+curl http://localhost:8880/v1/audio/voices        # what this build actually has
+```
+
+Then `base_url: "http://<host>:8880/v1"`, `model: "kokoro"`, and a voice from that listing — `ff_siwis` is the
+French one. The plugin needs no code for any of this: it is the same `/audio/speech` request either way, which
+is the whole point of the OpenAI shape.
+
+**When speech is not configured, the bot says so instead of going quiet.** `/converse start` refuses outright
+if there is no way to speak — pointing at OpenAI with no key, unless the chat model answers in audio itself —
+because promising to answer aloud and then falling silent is the one failure nobody can diagnose from a voice
+channel. And if synthesis breaks later, the first failure is reported once in the text channel the command came
+from, with the provider's own message, rather than only in the log.
 
 The same applies when the bot runs in a container or an orchestrator: it reaches the models over HTTP, so
 an in-cluster service URL is no different from a LAN address. Set the URLs through the `AI_AUDIO_STT_URL` /

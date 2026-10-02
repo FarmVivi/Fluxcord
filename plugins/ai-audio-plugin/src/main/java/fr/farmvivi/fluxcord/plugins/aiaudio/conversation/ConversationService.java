@@ -12,6 +12,7 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaSnapshot;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaStore;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.channel.middleman.AudioChannel;
+import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
@@ -51,6 +52,10 @@ public class ConversationService {
     private final LongSupplier clock;
     private final ExecutorService worker;
     private final Set<String> activeGuilds = ConcurrentHashMap.newKeySet();
+    /** Where to say that something went wrong, per guild: the channel {@code /converse start} came from. */
+    private final java.util.Map<String, MessageChannel> outputs = new ConcurrentHashMap<>();
+    /** Guilds already told that the bot cannot speak, so the warning is said once and not once a sentence. */
+    private final Set<String> warned = ConcurrentHashMap.newKeySet();
 
     public ConversationService(AIAudioPlugin plugin, ChatModel model, ConversationMemory memory) {
         this(plugin, model, memory, System::currentTimeMillis, List.of());
@@ -99,6 +104,21 @@ public class ConversationService {
      * @return false when it was already answering there
      */
     public boolean start(Guild guild) {
+        return start(guild, null);
+    }
+
+    /**
+     * Starts answering in a guild, with somewhere to report a failure.
+     *
+     * @param guild  the guild
+     * @param output where to post if the bot turns out to be unable to speak, or null to only log it
+     * @return false when it was already answering there
+     */
+    public boolean start(Guild guild, MessageChannel output) {
+        if (output != null) {
+            outputs.put(guild.getId(), output);
+        }
+        warned.remove(guild.getId());
         return activeGuilds.add(guild.getId());
     }
 
@@ -108,6 +128,8 @@ public class ConversationService {
      * @return false when it was not answering there
      */
     public boolean stop(Guild guild) {
+        outputs.remove(guild.getId());
+        warned.remove(guild.getId());
         return activeGuilds.remove(guild.getId());
     }
 
@@ -207,8 +229,29 @@ public class ConversationService {
         plugin.getTextToSpeech().speak(guild, answer.content(), null).exceptionally(error -> {
             Throwable cause = error.getCause() == null ? error : error.getCause();
             logger.warn("Could not speak the answer: {}", cause.getMessage());
+            reportOnce(guild, cause);
             return null;
         });
+    }
+
+    /**
+     * Tells the channel, once, that the bot has an answer and no way to say it.
+     *
+     * <p>Without this the only symptom is silence: the bot hears, thinks, and nothing comes out, with the
+     * reason in a log nobody in the voice channel is reading. Once per {@code /converse start}, because
+     * repeating it on every sentence would be its own kind of noise.
+     */
+    private void reportOnce(Guild guild, Throwable cause) {
+        MessageChannel output = outputs.get(guild.getId());
+        if (output == null || !warned.add(guild.getId())) {
+            return;
+        }
+        try {
+            output.sendMessage(plugin.getLanguage().getString("errors.cannot_speak",
+                    String.valueOf(cause.getMessage()))).queue();
+        } catch (RuntimeException e) {
+            logger.warn("Could not report the speech failure: {}", e.getMessage());
+        }
     }
 
     /**
@@ -317,6 +360,8 @@ public class ConversationService {
 
     /** Stops answering everywhere and shuts the worker down. Safe to call twice. */
     public void shutdown() {
+        outputs.clear();
+        warned.clear();
         activeGuilds.clear();
         worker.shutdownNow();
     }
