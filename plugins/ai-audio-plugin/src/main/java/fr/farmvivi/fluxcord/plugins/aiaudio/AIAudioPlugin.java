@@ -56,6 +56,10 @@ public class AIAudioPlugin extends AbstractPlugin {
     private SpeechRecognitionService speechRecognition;
     private TextToSpeechService textToSpeech;
     private ConversationMemory memory;
+    /** Remembers which channels were being listened to, so a restart resumes rather than ends them. */
+    private SessionPersistence sessions;
+    private boolean persistenceEnabled = true;
+    private long persistenceTtlMillis = 3_600_000L;
     private PersonaStore personaStore;
     private ConversationService conversation;
     private RealtimeService realtime;
@@ -87,6 +91,13 @@ public class AIAudioPlugin extends AbstractPlugin {
         initializeServices();
         registerCommands();
 
+        // Read straight from the configuration rather than through AiSettings: this is about surviving a
+        // restart, not about how the bot listens, and AiSettings is already a large record.
+        persistenceEnabled = getConfiguration().getBoolean("conversation.persistence.enabled", true);
+        int ttlSeconds = getConfiguration().getInt("conversation.persistence.ttl_seconds", 3600);
+        persistenceTtlMillis = ttlSeconds <= 0 ? 0L : ttlSeconds * 1000L;
+        sessions = new SessionPersistence(this, getStorage(), logger, System::currentTimeMillis);
+
         if (settings.synthesisNeedsKey() || settings.transcriptionNeedsKey()) {
             logger.warn("No API key configured for api.openai.com; set one, or point "
                     + "speech_to_text.base_url / text_to_speech.base_url at your own server");
@@ -102,8 +113,27 @@ public class AIAudioPlugin extends AbstractPlugin {
                         + "/" + settings.memory().userTurns() + " turns per channel/server/person");
     }
 
+    /**
+     * Puts the bot back in the voice channels it was listening to before the restart.
+     *
+     * <p>Runs here rather than in {@code onEnable} because JDA is only connected by this point, and a guild
+     * cannot be rejoined before its guilds exist.
+     */
+    @Override
+    public void onPostEnable() {
+        if (sessions == null || !persistenceEnabled) {
+            return;
+        }
+        sessions.restore(getContext().getDiscordAPI().getJDA(), persistenceTtlMillis);
+    }
+
     @Override
     public void onDisable() {
+        // Before anything is torn down: the state is read from the live services, and shutdown() empties
+        // them. The music plugin saves at the same point and for the same reason.
+        if (sessions != null && persistenceEnabled) {
+            sessions.save(getContext().getDiscordAPI().getJDA());
+        }
         if (wakeGate != null) {
             wakeGate.shutdown();
         }
@@ -372,7 +402,11 @@ public class AIAudioPlugin extends AbstractPlugin {
         getCommands().registerCommand(builder -> {
             builder.name(name)
                     .description(text("commands." + name + ".description"))
-                    .category("AI Audio");
+                    .category("AI Audio")
+                    // Every command here answers the person who ran it and nobody else: what the bot is
+                    // listening to, who it is being, what it has forgotten. None of it belongs in the
+                    // channel's history.
+                    .ephemeral(true);
             configurer.accept(builder);
         });
     }
@@ -383,6 +417,7 @@ public class AIAudioPlugin extends AbstractPlugin {
     }
 
     /** A translated string in the bot's default locale, for the texts Discord stores once. */
+    /** @return one of this plugin's translated strings */
     private String text(String key) {
         return getLanguage().getString(key);
     }

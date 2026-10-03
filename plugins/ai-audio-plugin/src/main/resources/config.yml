@@ -162,6 +162,19 @@ conversation:
   # tool description, which is cheaper than spending a round trip on the model asking for it.
   command_tools: false
 
+  # Whether a restart resumes what the bot was listening to.
+  #
+  # A pod rescheduled in the middle of the night is not a decision anybody made, so "/converse" and
+  # "/transcribe" survive it the way music playback already does: the bot rejoins the voice channel, starts
+  # listening again and posts where it was posting. A channel everybody has left is not rejoined, and the
+  # hosted realtime session is not reopened - it opens by itself the next time the bot is addressed, and
+  # reopening it into an empty room would be paying for silence.
+  persistence:
+    enabled: true
+    # How old a saved state may be and still be acted on. Rejoining a voice channel somebody left hours ago
+    # is not resuming, it is haunting. Zero means no limit.
+    ttl_seconds: 3600
+
   # The budget for a round that offers tools, which has to be much larger than max_reply_tokens above.
   # Measured: with 120, Gemma 4 E4B spent exactly 120 completion tokens thinking and came back with no tool
   # call and empty content - silence in the voice channel. With 200, exactly 200. Only at 600 did a call
@@ -221,9 +234,16 @@ conversation:
     # setting, and a Gemini URL with an OpenAI voice name fails in a way nobody can read.
     api: "OPENAI"
 
-    # gpt-realtime-2.1-mini is about a third of the flagship's price and was measured doing the whole
-    # job: persona, tool call, spoken answer. "gpt-realtime-2.1" is the flagship if you want it.
-    url: "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1-mini"
+    # Left empty on purpose, so that the default follows "api" above. The paragraph above says leaving
+    # this out is the safest way to switch services, and this file used to contradict it: an OpenAI URL
+    # written here survived "api: GEMINI", so the session opened against OpenAI with a Google key in hand.
+    #
+    # Fill it in only to pick another model or to go through a proxy. For OPENAI the model is named in the
+    # URL -- gpt-realtime-2.1-mini is about a third of the flagship's price and was measured doing the
+    # whole job (persona, tool call, spoken answer), "gpt-realtime-2.1" being the flagship:
+    #   wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1-mini
+    # For GEMINI the model is NOT in the URL but in "model" below.
+    url: ""
     api_key: ""
 
     # GEMINI only: the model to open the session with. "models/" is added if you leave it out.
@@ -235,8 +255,10 @@ conversation:
     # $3.00 / $12.00 for gemini-3.8-live) and was measured answering, transcribing and calling a tool.
     model: "gemini-2.5-flash-native-audio-latest"
 
-    # The provider's voice name for the spoken answer.
-    voice: "marin"
+    # The provider's voice name for the spoken answer. Empty means the default for the service chosen
+    # above -- "marin" for OpenAI, "Puck" for Gemini -- and the two vocabularies share no name at all,
+    # so writing one here is also writing which service you are on.
+    voice: ""
 
     # Who decides when somebody has finished talking.
     #
