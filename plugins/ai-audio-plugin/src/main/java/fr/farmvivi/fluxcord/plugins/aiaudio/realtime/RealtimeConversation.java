@@ -267,6 +267,7 @@ public class RealtimeConversation {
                 botSpeaking = false;
                 finishTurn();
             }
+            case RealtimeProtocol.Event.ClosingSoon closing -> letGo(closing.reason());
             case RealtimeProtocol.Event.Failure failure -> fail(failure.message());
             case RealtimeProtocol.Event.Ignored ignored ->
                     logger.debug("Realtime event not acted on: {}", ignored.type());
@@ -394,6 +395,25 @@ public class RealtimeConversation {
             return null;
         }
         return turn(speaking, nameOf(speaking), "");
+    }
+
+    /**
+     * The service is hanging up on schedule, so the conversation ends without telling anybody.
+     *
+     * <p>Marked as failed on the way out, which is what stops the close that follows from being reported to
+     * the channel as an error: a session reaching its documented age limit is not something the people in
+     * the voice channel did, and showing it to them would be noise. Whoever owns this conversation sees it
+     * is no longer open and can open another — with the economical arrangement that happens by itself, the
+     * next time somebody says the bot's name.
+     */
+    private void letGo(String reason) {
+        if (failed) {
+            return;
+        }
+        failed = true;
+        logger.info("The realtime session is ending: {}", reason);
+        finishTurn();
+        close();
     }
 
     /** Said once: a broken connection would otherwise report itself on every frame that follows. */

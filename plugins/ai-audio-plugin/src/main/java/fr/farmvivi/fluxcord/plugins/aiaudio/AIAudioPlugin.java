@@ -203,7 +203,8 @@ public class AIAudioPlugin extends AbstractPlugin {
                         (guild, diversion) -> speechRecognition.divert(guild, diversion),
                         realtime::hear,
                         realtime::ask,
-                        realtime::lastActivityMs),
+                        realtime::lastActivityMs,
+                        realtime::isAlive),
                 settings.realtime().engageWindow().toMillis());
         gateTicker.scheduleWithFixedDelay(() -> {
             try {

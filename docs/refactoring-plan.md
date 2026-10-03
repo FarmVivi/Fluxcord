@@ -421,9 +421,13 @@ a model limit with a partial lever, and one turned into the two features below.
   - Defaults are now the cheapest model that was measured doing the whole job: `gpt-realtime-2.1-mini`
     ($10/$20 per 1M) and `gemini-2.5-flash-native-audio-latest` ($0.50/$2.00, six times cheaper than
     `gemini-3.8-live` and about twenty times cheaper than OpenAI on output).
-- [ ] **`RealtimeSession` has no test, and the binary-frame bug lived in it.** It was deliberately the thin
-  untestable layer; that choice is what let a whole provider fail in silence. A loopback WebSocket server is
-  ~100 lines of handshake and framing, with no server in the JDK — worth it, or worth a different seam.
+- [x] **`RealtimeSession` has tests now** (2026-10-03), against a real WebSocket server on a loopback port
+  (`LoopbackWebSocket`, ~200 lines: the RFC 6455 handshake, text and binary frames, fragmentation, and
+  reading back the client's masked frames — the JDK ships a client and no server). Fourteen tests, and every
+  one of them would have caught the binary-frame bug. The fragmentation cases are the other half: an audio
+  frame never arrives in one piece, and the binary path has to reassemble from **bytes** because a UTF-8
+  character straddles the boundary. The "too thin to test" judgement was wrong, and the bill for it was a
+  whole provider failing in silence.
 - [ ] **Input transcription and interruption are still unverified** on both services: one needs real speech
   rather than a text turn, the other needs two people talking at once.
 - [x] **A busy channel, and waking on a name** (2026-10-03). The bot answers when it is addressed by its
@@ -461,14 +465,22 @@ a model limit with a partial lever, and one turned into the two features below.
   - Found while testing it: a turn is stored under `timestamp-userId`, so two turns from the same speaker in
     the same millisecond overwrite each other. Real speech cannot do it (the segmenter enforces a minimum
     utterance) but a test with a frozen clock can.
-- [ ] **A realtime session dies of old age and does not come back.** OpenAI ends it at 60 minutes and
-  publishes `expires_at` in the session it confirms; Gemini ends an audio-only session at about 15 and warns
-  with `goAway`, while handing out `sessionResumption` handles unasked (both observed from real sessions,
-  both currently parsed as `Ignored`). Reconnecting differs: Gemini resumes from the handle and keeps the
-  context, OpenAI has no resume at all and wants the history replayed as `conversation.item.create` events —
-  which this plugin is well placed to do, since `ConversationMemory` already holds it and the turn-based path
-  already builds a message list from it. Cap the replay at the last twenty turns (28,672-token input limit).
-  Enabling `contextWindowCompression` is the documented way to outlive Gemini's limit at all.
+- [x] **A session ending of old age is now a pause rather than a dead end** (2026-10-03), and the
+  economical arrangement is what made it cheap: reopening with context is what `WakeGate` already does, so
+  noticing the death is the whole fix. `goAway` is parsed into an `Event.ClosingSoon` and the conversation
+  lets go quietly — a session reaching its documented age limit is housekeeping, and reporting it to the
+  voice channel as a failure would be noise. The gate's tick asks whether the session is still alive and
+  gives the audio back to the local transcriber if not; the next time somebody says the bot's name, a fresh
+  session opens with the question and the recent turns. No reconnection machinery, no resumption handles,
+  no replay logic beyond what was already there. OpenAI's sixty-minute limit is handled by the same path
+  without watching `expires_at`, since the socket closing is the signal.
+- [x] **Mockito runs as a real `-javaagent`** (2026-10-03). Every mocking test started erroring with
+  "Could not initialize plugin: MockMaker" on a machine short of memory: self-attachment spawns an external
+  process, and that fork fails. The message reads like a dependency problem and is not. Mockito prints a
+  warning about this on every run and says it will stop working in a future JDK; the jar declares
+  `Premain-Class`, so the agent is the documented arrangement. `@{argLine}` keeps JaCoCo's agent — dropping
+  it would have turned coverage off silently. The full reactor builds reproducibly again and the warning is
+  gone from every log, CI included.
 - [ ] **One `AudioReceiveHandler` per plugin per guild** is what blocks the cheaper design above: the local
   path and the realtime path each want it. A composite handler feeding both is the whole change.
 - [x] **The realtime path takes `speech_to_text.vocabulary` too** (2026-10-03): OpenAI's

@@ -318,6 +318,10 @@
                     <version>3.6.0</version>
                 </plugin>
                 <plugin>
+                    <artifactId>maven-dependency-plugin</artifactId>
+                    <version>3.9.0</version>
+                </plugin>
+                <plugin>
                     <artifactId>maven-jar-plugin</artifactId>
                     <version>3.5.1</version>
                 </plugin>
@@ -371,6 +375,33 @@
 
         <!-- Pas de configuration exec ici pour ne pas interférer avec les modules -->
         <plugins>
+            <!-- Mockito as a real -javaagent rather than letting it attach to its own VM.
+                 Not a preference: self-attachment spawns an external process, which fails outright on a
+                 machine that is short of memory (the symptom is every mocking test erroring with
+                 "Could not initialize plugin: MockMaker", which reads like a dependency problem and is
+                 not). Mockito prints a warning about it on every run and says it "will no longer work in
+                 future releases of the JDK"; we are on 25. The jar declares Premain-Class, so this is the
+                 documented arrangement. The property comes from dependency:properties below, and @{argLine}
+                 keeps whatever JaCoCo put there - dropping it would silently turn coverage off. -->
+            <plugin>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>resolve-agent-paths</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>@{argLine} -javaagent:${org.mockito:mockito-core:jar}</argLine>
+                </configuration>
+            </plugin>
+
             <!-- Test coverage: agent attached to surefire, per-module XML/HTML report at verify.
                  Report only, no threshold (see docs/refactoring-plan.md T0). Sonar reads the aggregate
                  built in fluxcord-core (see sonar.coverage.jacoco.xmlReportPaths in the api and core poms). -->

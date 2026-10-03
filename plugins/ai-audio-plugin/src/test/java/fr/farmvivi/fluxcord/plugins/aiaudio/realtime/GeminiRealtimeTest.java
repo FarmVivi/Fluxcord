@@ -330,6 +330,17 @@ class GeminiRealtimeTest {
     }
 
     @Test
+    void theServiceWarningThatItIsAboutToHangUpIsNotAnError() {
+        // MEASURED limit: an audio-only session lasts about fifteen minutes and this arrives first. Shown
+        // to the channel as a failure it would be noise - nobody there did anything wrong.
+        var event = assertInstanceOf(RealtimeProtocol.Event.ClosingSoon.class,
+                gemini.parse("{\"goAway\":{\"timeLeft\":\"10s\"}}"));
+
+        assertTrue(event.reason().contains("10s"), event.reason());
+        assertInstanceOf(RealtimeProtocol.Event.ClosingSoon.class, gemini.parse("{\"goAway\":{}}"));
+    }
+
+    @Test
     void anErrorIsReportedInWordsAUserCouldBeShown() {
         var event = assertInstanceOf(RealtimeProtocol.Event.Failure.class,
                 gemini.parse("{\"error\":{\"code\":429,\"message\":\"quota exceeded\"}}"));

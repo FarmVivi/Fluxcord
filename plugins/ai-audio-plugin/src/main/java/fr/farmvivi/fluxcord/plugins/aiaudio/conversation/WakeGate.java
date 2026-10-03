@@ -41,6 +41,10 @@ import java.util.function.LongSupplier;
  *
  * <p>Engagement ends after a quiet window rather than at the end of the answer, so a follow-up needs no
  * name — which is the whole difference between a bot you talk to and a bot you summon.
+ *
+ * <p><strong>It also ends when the service hangs up</strong>, which both of them do on their own schedule.
+ * That used to leave a conversation dead until somebody ran the command again; here it is a pause, because
+ * reopening is the thing this class already does and the context it hands over is the same.
  */
 public class WakeGate {
 
@@ -69,13 +73,16 @@ public class WakeGate {
      * @param hear          hands one packet to the hosted session
      * @param ask           hands it a question it could not have heard, with the turns before it
      * @param lastActivity  when anything last happened on that session, in milliseconds
+     * @param alive         whether the session still has a connection, which it stops having when the
+     *                      service hangs up on its own schedule
      */
     public record Engagement(java.util.function.BiPredicate<Guild, MessageChannel> open,
                              java.util.function.Consumer<Guild> close,
                              java.util.function.BiFunction<Guild, BiConsumer<String, PcmAudio>, Boolean> divert,
                              TriConsumer hear,
                              AskSession ask,
-                             java.util.function.ToLongFunction<Guild> lastActivity) {
+                             java.util.function.ToLongFunction<Guild> lastActivity,
+                             java.util.function.Predicate<Guild> alive) {
 
         /** One audio packet, attributed. */
         public interface TriConsumer {
@@ -150,6 +157,15 @@ public class WakeGate {
     public void tick() {
         long now = clock.getAsLong();
         for (Guild guild : List.copyOf(engaged.values())) {
+            // A session that ended of old age is the reason this check is here and not only the window.
+            // Both services close one on their own schedule - sixty minutes for OpenAI, about fifteen for
+            // an audio-only Google session - and noticing it is what turns that from a dead conversation
+            // into a pause: the local transcriber takes the audio back, and the next time somebody says the
+            // bot's name a fresh session opens, with the question and the recent turns handed to it.
+            if (!engagement.alive().test(guild)) {
+                disengage(guild, "the service closed the session");
+                continue;
+            }
             long idleFor = now - engagement.lastActivity().applyAsLong(guild);
             if (idleFor >= windowMs) {
                 disengage(guild, "idle for " + idleFor + " ms");

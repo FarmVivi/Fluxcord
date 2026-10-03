@@ -276,6 +276,19 @@ public interface RealtimeProtocol {
         }
 
         /**
+         * The service is about to hang up, on its own schedule rather than because anything went wrong.
+         *
+         * <p>Both of them do this: OpenAI ends a session at sixty minutes, Google ends an audio-only one at
+         * about fifteen and says so first. Distinguished from {@link Failure} because the difference matters
+         * to whoever is in the channel — one is a bug worth showing them, the other is housekeeping they
+         * should never hear about.
+         *
+         * @param reason what the service said, for the log
+         */
+        record ClosingSoon(String reason) implements Event {
+        }
+
+        /**
          * Something went wrong, in words a user could be shown.
          *
          * @param message what happened

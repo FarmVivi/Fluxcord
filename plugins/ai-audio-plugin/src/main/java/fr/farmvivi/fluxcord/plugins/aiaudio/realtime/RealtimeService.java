@@ -197,6 +197,21 @@ public class RealtimeService {
     }
 
     /**
+     * Whether a guild's conversation still has a connection.
+     *
+     * <p>Different from {@link #isActive}: that one says a conversation object exists, this one says the
+     * socket behind it is still there. A session that reached its age limit, or whose connection dropped, is
+     * active and not alive — and that is precisely the state somebody has to notice.
+     *
+     * @param guild the guild
+     * @return true while the session can still carry audio
+     */
+    public boolean isAlive(Guild guild) {
+        RealtimeConversation conversation = conversations.get(guild.getId());
+        return conversation != null && conversation.isOpen();
+    }
+
+    /**
      * @param guild the guild
      * @return when anything last happened on that conversation, or 0 when there is none
      */

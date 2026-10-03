@@ -321,6 +321,15 @@ public final class GeminiRealtime implements RealtimeProtocol {
         if (json.has("setupComplete")) {
             return List.of(new Event.Ignored("setupComplete"));
         }
+        if (json.has("goAway")) {
+            // MEASURED limit: an audio-only session lasts about fifteen minutes, and this arrives first.
+            String left = json.get("goAway").isJsonObject()
+                    ? string(json.getAsJsonObject("goAway"), "timeLeft")
+                    : "";
+            return List.of(new Event.ClosingSoon(left.isEmpty()
+                    ? "the service is about to close the session"
+                    : "the service closes the session in " + left));
+        }
         if (json.has("toolCall")) {
             return toolCalls(json.getAsJsonObject("toolCall"));
         }

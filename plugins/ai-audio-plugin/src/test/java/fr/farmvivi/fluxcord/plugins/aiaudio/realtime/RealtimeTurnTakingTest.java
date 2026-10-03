@@ -54,7 +54,11 @@ class RealtimeTurnTakingTest {
                 false, SILENCE_MS, spoken -> Address.addressed(spoken, List.of("Fluxcord")));
         conversation.start(snapshot(), "You are Fluxcord.", "marin", "bot-1", sink -> {
             events = sink;
+            // Honest about being closed: a double that always answers "open" hides every bug about
+            // letting go of a session.
             return new RealtimeLink() {
+                private boolean open = true;
+
                 @Override
                 public void send(String frame) {
                     sent.add(frame);
@@ -62,11 +66,12 @@ class RealtimeTurnTakingTest {
 
                 @Override
                 public void close() {
+                    open = false;
                 }
 
                 @Override
                 public boolean isOpen() {
-                    return true;
+                    return open;
                 }
             };
         }, List.of("Fluxcord"));
@@ -258,4 +263,24 @@ class RealtimeTurnTakingTest {
 
         assertTrue(sentAny("activityStart"));
     }
+    @Test
+    void aServiceHangingUpOnScheduleEndsTheSessionWithoutTellingTheChannel() {
+        // The distinction that matters to whoever is in the voice channel: a session reaching its
+        // documented age limit is housekeeping, a broken connection is not.
+        events.accept(new RealtimeProtocol.Event.TranscriptDelta("j'allais dire"));
+
+        events.accept(new RealtimeProtocol.Event.ClosingSoon("the service closes the session in 10s"));
+
+        assertFalse(conversation.isOpen(), "and the owner can see it has to open another");
+        assertEquals(1, remembered.size(), "what the bot had said is kept");
+        assertEquals("j'allais dire", remembered.get(0).text());
+    }
+
+    @Test
+    void aSecondWarningChangesNothing() {
+        events.accept(new RealtimeProtocol.Event.ClosingSoon("first"));
+
+        assertDoesNotThrow(() -> events.accept(new RealtimeProtocol.Event.ClosingSoon("second")));
+    }
+
 }

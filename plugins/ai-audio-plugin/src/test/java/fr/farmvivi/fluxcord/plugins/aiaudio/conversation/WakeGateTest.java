@@ -48,6 +48,8 @@ class WakeGateTest {
     private BiConsumer<String, PcmAudio> diversion;
     private boolean canOpen = true;
     private long lastActivity = START;
+    /** Whether the hosted session still has a connection; the services close one on their own schedule. */
+    private boolean alive = true;
 
     private ConversationMemory memory;
     private WakeGate gate;
@@ -78,7 +80,8 @@ class WakeGateTest {
                     asked.add(question);
                     historyGiven.add(history);
                 },
-                g -> lastActivity);
+                g -> lastActivity,
+                g -> alive);
 
         gate = new WakeGate(LoggerFactory.getLogger(WakeGateTest.class), now::get, memory, engagement,
                 WINDOW_MS);
@@ -238,4 +241,35 @@ class WakeGateTest {
         assertEquals(List.of(GUILD_ID), closed);
         assertDoesNotThrow(gate::shutdown);
     }
+    @Test
+    void aSessionTheServiceClosedIsNoticedAndGivenBackToTheLocalTranscriber() {
+        // Both services end a session on their own schedule - sixty minutes for OpenAI, about fifteen for
+        // an audio-only Google one. Noticing turns that from a dead conversation into a pause.
+        gate.engage(guild, mock(MessageChannel.class), said("u1", "Victor", "Fluxcord, salut"));
+        lastActivity = now.get();
+
+        alive = false;
+        gate.tick();
+
+        assertFalse(gate.isEngaged(guild));
+        assertEquals(List.of(GUILD_ID), closed);
+        assertNull(diversion, "the local transcriber is listening again");
+    }
+
+    @Test
+    void andTheNextTimeTheNameIsSaidAFreshSessionOpensWithTheContext() {
+        gate.engage(guild, mock(MessageChannel.class), said("u1", "Victor", "Fluxcord, salut"));
+        said("u1", "Victor", "et aussi quelque chose d'autre");
+        alive = false;
+        gate.tick();
+
+        alive = true;
+        assertTrue(gate.engage(guild, mock(MessageChannel.class),
+                said("u1", "Victor", "Fluxcord, tu es toujours la ?")));
+
+        assertEquals(2, opened.size());
+        assertEquals("Fluxcord, tu es toujours la ?", asked.get(1));
+        assertFalse(historyGiven.get(1).isEmpty(), "the new session is told what it missed");
+    }
+
 }
