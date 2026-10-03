@@ -228,13 +228,13 @@ class QueueCommandsTest extends MusicCommandTestBase {
     @Nested
     class Play {
         private void callerInVoice(boolean inVoice) {
-            SlashCommandInteractionEvent event = mock(SlashCommandInteractionEvent.class);
             Member member = mock(Member.class);
             GuildVoiceState voiceState = mock(GuildVoiceState.class);
-            when(event.getMember()).thenReturn(member);
             when(member.getVoiceState()).thenReturn(voiceState);
             when(voiceState.getChannel()).thenReturn(inVoice ? mock(AudioChannelUnion.class) : null);
-            when(ctx.getOriginalEvent()).thenReturn(event);
+            // Asked of the context, not of the event: the command no longer cares how it was invoked,
+            // which is what lets it be invoked on somebody's behalf.
+            when(ctx.getMember()).thenReturn(java.util.Optional.of(member));
         }
 
         @Test

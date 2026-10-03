@@ -110,6 +110,10 @@ public interface ChatModel {
             public static Parameter optionalInteger(String description) {
                 return new Parameter("integer", description, false);
             }
+
+            public static Parameter optionalString(String description) {
+                return new Parameter("string", description, false);
+            }
         }
     }
 

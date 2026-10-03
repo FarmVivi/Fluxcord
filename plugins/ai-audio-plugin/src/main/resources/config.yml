@@ -138,6 +138,19 @@ conversation:
   # is offered no tools, so it answers with what it found rather than being cut off.
   max_tool_rounds: 3
 
+  # Let the model run the bot's own commands when somebody asks it to do something -- put a track on,
+  # skip it, change the volume -- instead of explaining that it could.
+  #
+  # Every invocation goes through the ordinary command pipeline with the ASKER's identity, so their
+  # permissions, the guild-only flag and their cooldowns all apply; the bot's own rights are never used.
+  # It is off by default anyway, because it lets a spoken sentence reach the command pipeline at all, and
+  # that is an operator's decision. Note that nothing is excluded: if "shutdown" is registered and the
+  # person asking is an operator, the model can be talked into running it.
+  #
+  # Costs a few hundred tokens of context on every request: the list of commands is written into the
+  # tool description, which is cheaper than spending a round trip on the model asking for it.
+  command_tools: false
+
   # The budget for a round that offers tools, which has to be much larger than max_reply_tokens above.
   # Measured: with 120, Gemma 4 E4B spent exactly 120 completion tokens thinking and came back with no tool
   # call and empty content - silence in the voice channel. With 200, exactly 200. Only at 600 did a call

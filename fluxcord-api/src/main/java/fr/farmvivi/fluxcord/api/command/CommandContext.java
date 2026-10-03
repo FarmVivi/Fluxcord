@@ -5,9 +5,12 @@ import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.components.MessageTopLevelComponent;
 import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.events.Event;
+import net.dv8tion.jda.api.events.interaction.GenericInteractionCreateEvent;
+import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 
 import java.util.Collection;
 import java.util.Locale;
@@ -46,6 +49,37 @@ public interface CommandContext {
      * @return the guild, or empty if the command was executed in a DM
      */
     Optional<Guild> getGuild();
+
+    /**
+     * The member who invoked the command, where that happened in a server.
+     *
+     * <p>Exists so that a command never has to ask what kind of event it came from. Without it, the only
+     * way to reach the caller's member — and so the voice channel they are standing in — was to
+     * pattern-match {@link #getOriginalEvent()} against the two event types the author had in mind, which
+     * meant every other kind of invocation silently resolved to nobody: a modal, a console line, a call
+     * made on somebody's behalf. {@code /play} answered "you are not in a voice channel" to a person who
+     * was.
+     *
+     * <p>The default reads the event first and falls back to the guild's own cache, so every context that
+     * existed before this method answers exactly what it answered before. Never a REST call: a command may
+     * be executed from a thread that cannot afford one.
+     *
+     * @return the member, or empty outside a server and for a console invocation
+     */
+    default Optional<Member> getMember() {
+        Event event = getOriginalEvent();
+        if (event instanceof GenericInteractionCreateEvent interaction && interaction.getMember() != null) {
+            return Optional.of(interaction.getMember());
+        }
+        if (event instanceof MessageReceivedEvent message && message.getMember() != null) {
+            return Optional.of(message.getMember());
+        }
+        User user = getUser();
+        if (user == null) {
+            return Optional.empty();
+        }
+        return getGuild().map(guild -> guild.getMemberById(user.getId()));
+    }
 
     /**
      * Gets the channel where the command was executed.

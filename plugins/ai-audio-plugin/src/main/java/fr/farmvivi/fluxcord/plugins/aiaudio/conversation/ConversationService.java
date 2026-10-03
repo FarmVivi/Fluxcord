@@ -157,6 +157,17 @@ public class ConversationService {
         return activeGuilds.remove(guild.getId());
     }
 
+    /**
+     * Where a failure in a guild is reported, which is also where a command run by the model should keep
+     * whatever text channel it keeps.
+     *
+     * @param guildId the guild
+     * @return the channel {@code /converse start} came from, or empty when it was started without one
+     */
+    public java.util.Optional<MessageChannel> outputFor(String guildId) {
+        return java.util.Optional.ofNullable(outputs.get(guildId));
+    }
+
     /** @return true when the bot answers out loud in this guild */
     public boolean isActive(Guild guild) {
         return activeGuilds.contains(guild.getId());
@@ -208,7 +219,7 @@ public class ConversationService {
             String botId = botUserId(guild);
             List<ChatModel.Message> messages = new ArrayList<>(ConversationPrompt.build(snapshot, question,
                     chat.historyTurns(), botId, chat.audio().hear() ? questionAudio : null));
-            ChatModel.Answer answer = converse(messages, snapshot, chat);
+            ChatModel.Answer answer = converse(messages, snapshot, chat, question);
             if (answer.isSilent()) {
                 logger.debug("The model chose to stay silent");
                 return;
@@ -286,10 +297,11 @@ public class ConversationService {
      * would otherwise hold the voice channel silent forever. On the last round the tools are withheld, which is
      * how it is told to answer with what it has rather than being cut off mid-thought.
      *
+     * @param asker the turn being answered, so a group that acts does so with that person's rights
      * @return what to say, in text or in audio, possibly nothing when the model chose to stay silent
      */
     private ChatModel.Answer converse(List<ChatModel.Message> messages, PersonaSnapshot snapshot,
-                                      AiSettings.ChatSettings chat) {
+                                      AiSettings.ChatSettings chat, Turn asker) {
         List<ChatModel.Tool> tools = offeredTools(chat);
         for (int round = 0; round <= chat.maxToolRounds(); round++) {
             boolean lastRound = round == chat.maxToolRounds();
@@ -303,7 +315,7 @@ public class ConversationService {
             }
             messages.add(ChatModel.Message.assistantToolCalls(answer.toolCalls()));
             for (ChatModel.ToolCall call : answer.toolCalls()) {
-                String result = run(call, snapshot);
+                String result = run(call, snapshot, asker);
                 logger.debug("Tool {} answered {} character(s)", call.name(), result.length());
                 messages.add(ChatModel.Message.toolResult(call.id(), result));
             }
@@ -336,10 +348,10 @@ public class ConversationService {
      * <p>A name nobody owns is answered rather than thrown: the model invented it, or it is remembering a tool
      * from a round where it was offered one, and either way telling it so is something it can act on.
      */
-    private String run(ChatModel.ToolCall call, PersonaSnapshot snapshot) {
+    private String run(ChatModel.ToolCall call, PersonaSnapshot snapshot, Turn asker) {
         for (ToolSource source : toolSources) {
             if (source.handles(call.name())) {
-                return source.execute(call, snapshot, clock.getAsLong());
+                return source.execute(call, snapshot, clock.getAsLong(), asker);
             }
         }
         logger.warn("The model asked for a tool that is not offered: {}", call.name());

@@ -21,6 +21,23 @@ public interface CommandService {
     CommandRegistry getRegistry();
 
     /**
+     * Runs a command through the whole execution pipeline, exactly as an invocation from Discord would:
+     * service and command enabled, guild-only, permission, cooldown, the cancellable
+     * {@code CommandExecuteEvent}, metrics and the {@code CommandExecutedEvent}.
+     *
+     * <p>On the contract because a command can be invoked by something other than a person typing it — a
+     * component, a modal, a voice assistant acting on a request. Whoever does that builds a
+     * {@link CommandContext} saying who is asking, and every check then applies with <em>that person's</em>
+     * rights. A context whose {@link CommandContext#getUser()} is null is a console invocation and is
+     * trusted, so it is never the right shape for acting on somebody's behalf.
+     *
+     * @param command the command to run, resolved through {@link #getRegistry()}
+     * @param context who is asking, where, and with which options
+     * @return the result; a refusal carries an already-localised message
+     */
+    CommandResult executeCommand(Command command, CommandContext context);
+
+    /**
      * Gets the command builder for creating new commands.
      *
      * @return a new command builder

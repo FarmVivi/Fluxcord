@@ -311,11 +311,21 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
      * @param maxToolTokens  the budget for a round that offers tools, which has to be far larger than the
      *                       one above: a reasoning model thinks before it calls anything, and that thinking
      *                       comes out of the same budget
+     * @param commandTools   whether the model may run the bot's own commands on behalf of whoever asked
      */
     public record ChatSettings(AiEndpoint endpoint, boolean enabled, String wakeWord, int historyTurns,
                                int maxReplyTokens, double temperature, String reasoningEffort,
                                String toolReasoningEffort, boolean memoryTools, int maxToolRounds,
-                               ChatAudio audio, int maxToolTokens) {
+                               ChatAudio audio, int maxToolTokens, boolean commandTools) {
+
+        /** Chat settings from before commands could be run, which is off. */
+        public ChatSettings(AiEndpoint endpoint, boolean enabled, String wakeWord, int historyTurns,
+                            int maxReplyTokens, double temperature, String reasoningEffort,
+                            String toolReasoningEffort, boolean memoryTools, int maxToolRounds,
+                            ChatAudio audio, int maxToolTokens) {
+            this(endpoint, enabled, wakeWord, historyTurns, maxReplyTokens, temperature, reasoningEffort,
+                    toolReasoningEffort, memoryTools, maxToolRounds, audio, maxToolTokens, false);
+        }
 
         private static final String DEFAULT_CHAT_MODEL = "gpt-4o-mini";
         private static final int DEFAULT_HISTORY_TURNS = 8;
@@ -374,7 +384,8 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
                             nonBlank(config.getString("conversation.audio.voice", DEFAULT_AUDIO_VOICE),
                                     DEFAULT_AUDIO_VOICE),
                             config.getString("conversation.audio.format", ChatAudio.WAV)),
-                    config.getInt("conversation.max_tool_tokens", DEFAULT_MAX_TOOL_TOKENS));
+                    config.getInt("conversation.max_tool_tokens", DEFAULT_MAX_TOOL_TOKENS),
+                    config.getBoolean("conversation.command_tools", false));
         }
 
         /** @return the settings used before the configuration has been read */

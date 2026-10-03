@@ -22,6 +22,7 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.commands.SpeakCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.commands.TranscribeCommand;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
 import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.ConversationService;
+import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.CommandTools;
 import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.ToolSource;
 import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.WebSearchTools;
 import fr.farmvivi.fluxcord.plugins.aiaudio.realtime.RealtimeService;
@@ -133,7 +134,9 @@ public class AIAudioPlugin extends AbstractPlugin {
         personaStore = new PersonaStore(getStorage(), settings.persona().persona());
         textToSpeech = new TextToSpeechService(this,
                 new OpenAiTextToSpeech(settings.speech().endpoint(), http));
-        List<ToolSource> tools = webSearchTools();
+        List<ToolSource> tools = new java.util.ArrayList<>(webSearchTools());
+        tools.addAll(commandTools());
+        tools = List.copyOf(tools);
         conversation = new ConversationService(this,
                 new OpenAiChatModel(settings.chat().endpoint(), http, settings.chat().temperature(),
                         settings.chat().reasoningEffort(), settings.chat().toolReasoningEffort(),
@@ -171,6 +174,29 @@ public class AIAudioPlugin extends AbstractPlugin {
         };
         getLogger().info("Web search enabled through {}", search.api());
         return List.of(new WebSearchTools(backend, search.maxResults()));
+    }
+
+    /**
+     * The bot's own commands, offered to the model when the configuration allows it.
+     *
+     * <p>Off by default, and that is the right default: it lets a sentence nobody typed reach the command
+     * pipeline. It is safe in the sense that matters — every invocation runs with the asker's permissions,
+     * not the bot's — but an operator should decide to switch it on.
+     *
+     * @return the group, or nothing when {@code conversation.command_tools} is off
+     */
+    private List<ToolSource> commandTools() {
+        if (!settings.chat().commandTools()) {
+            return List.of();
+        }
+        getLogger().info("The model may run commands, with the permissions of whoever asks");
+        return List.of(new CommandTools(
+                getCommands().getCommandService(),
+                guildId -> java.util.Optional.ofNullable(
+                        getContext().getDiscordAPI().getJDA().getGuildById(guildId)),
+                turn -> java.util.Optional.ofNullable(conversation)
+                        .flatMap(service -> service.outputFor(turn.guildId())),
+                settings.persona().persona().language()));
     }
 
     /**

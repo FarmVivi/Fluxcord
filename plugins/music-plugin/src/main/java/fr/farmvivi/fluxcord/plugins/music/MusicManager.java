@@ -15,8 +15,6 @@ import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.channel.middleman.AudioChannel;
 import net.dv8tion.jda.api.events.guild.voice.GuildVoiceUpdateEvent;
-import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
-import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.managers.AudioManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -149,12 +147,10 @@ public class MusicManager {
 
         AudioManager audioManager = guild.getAudioManager();
         if (!audioManager.isConnected()) {
-            Member member = null;
-            if (ctx.getOriginalEvent() instanceof SlashCommandInteractionEvent e) {
-                member = e.getMember();
-            } else if (ctx.getOriginalEvent() instanceof MessageReceivedEvent e) {
-                member = e.getMember();
-            }
+            // From the context rather than the event: see PlayCommand. An invocation the author did not
+            // foresee used to resolve to nobody, and the bot then refused to join a channel the caller
+            // was already in.
+            Member member = ctx.getMember().orElse(null);
 
             AudioChannel voiceChannel = member != null && member.getVoiceState() != null
                     ? member.getVoiceState().getChannel()

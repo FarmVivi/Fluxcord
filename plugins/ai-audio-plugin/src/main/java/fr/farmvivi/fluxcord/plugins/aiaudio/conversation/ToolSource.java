@@ -1,6 +1,7 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio.conversation;
 
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.ChatModel;
+import fr.farmvivi.fluxcord.plugins.aiaudio.memory.Turn;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaSnapshot;
 
 import java.util.List;
@@ -37,4 +38,22 @@ public interface ToolSource {
      * @return the result as text, never null
      */
     String execute(ChatModel.ToolCall call, PersonaSnapshot snapshot, long nowMs);
+
+    /**
+     * Runs one call on behalf of the person whose sentence triggered the turn.
+     *
+     * <p>Only a group that <em>acts</em> needs this: looking something up is the same whoever asked, but
+     * running a command is not — it has to run with the asker's rights and not the bot's. The default
+     * ignores the asker, so a group that only reads stays as it was.
+     *
+     * @param call     what the model asked for, with the arguments as it wrote them
+     * @param snapshot the conversation, for a group that needs to know where it is or who is present
+     * @param nowMs    the current time, for a group that reports ages rather than timestamps
+     * @param asker    the turn being answered, which names who said it and where; null when the turn
+     *                 could not be attributed to anybody
+     * @return the result as text, never null
+     */
+    default String execute(ChatModel.ToolCall call, PersonaSnapshot snapshot, long nowMs, Turn asker) {
+        return execute(call, snapshot, nowMs);
+    }
 }
