@@ -280,7 +280,9 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
     `gemma4:12b-it-qat` at the server's 131072 context is **93 % GPU / 7 % CPU** and 8.3 s to first answer,
     against **100 % GPU** and 3.6 s over the native route with `num_ctx: 8192`; and the model unloads after
     five minutes, so the first sentence after a pause pays 2.8 s (small) or 8.3 s (big). `gemma4:e4b-it-qat` is
-    100 % GPU either way.
+    100 % GPU either way. **Preloading does not work around it**: loaded natively with `num_ctx: 8192` and
+    `keep_alive: -1` the model sits at 8192 and 100 % GPU, and the next `/v1` request evicts and reloads it at
+    131072 - a 9.2 s stall. The OpenAI route imposes its own context whatever is resident.
   - Everything else held up against the real servers: the mood read 6/6 sensible in 0.28-0.35 s, web search
     called and answered correctly, the memory tools likewise, and the French round trip came back word for
     word through the production voice.

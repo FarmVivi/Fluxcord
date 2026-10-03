@@ -550,6 +550,11 @@ production server:
 - **The model unloads between conversations.** Without `keep_alive`, Ollama drops it after five minutes, so the
   first sentence after a quiet spell pays the reload: 2.8 s for the small model, 8.3 s for the big one.
 
+**Preloading the model with the right context does not help**, which is the first thing worth trying and the
+first thing to cross off: loading `gemma4:12b-it-qat` natively with `num_ctx: 8192` and `keep_alive: -1` gives
+`ctx=8192` at 100 % GPU, and the very next `/v1` request **evicts and reloads it at 131072** — a 9.2 s stall,
+back to 93 % GPU. The OpenAI route imposes its own context whatever is already resident.
+
 Both are only reachable from Ollama's native route, which this plugin already speaks for transcription
 (`speech_to_text.api: OLLAMA`). A chat client on the same route would fix them; it is not built yet.
 
