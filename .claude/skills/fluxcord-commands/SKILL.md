@@ -54,6 +54,20 @@ Prefix: default from `commands.default-prefix`; per-guild override stored via `D
 Verify what you used against the code, fix or delete wrong lines, add dated **Learnings**, prune resolved **Known issues**. Keep < 300 lines.
 
 ## Learnings
+- 2026-10-03: **A command must never ask how it was invoked.** `/play` and `MusicManager` resolved the caller
+  by `instanceof` on `getOriginalEvent()` (slash, message, else null), so a modal, a console line or a call
+  made on somebody's behalf resolved to nobody and the command refused with "not in a voice channel". Fixed by
+  `CommandContext.getMember()` — a default method reading the event first, then `guild.getMemberById` from the
+  cache (never REST: a command may run on a thread that cannot wait). Grep for `getOriginalEvent()` before
+  trusting any command with a new front-end; `HelpCommand` is the legitimate case, since it keys the *reply
+  style* off the front-end rather than the caller.
+- 2026-10-03: `executeCommand(Command, CommandContext)` is on the `CommandService` contract now, so anything
+  can invoke a command through the whole pipeline (gating, permission, cooldown, `CommandExecuteEvent`,
+  metrics). The invariant that makes it safe: **`getUser() == null` means console and skips every check**, so a
+  context acting on somebody's behalf must return that person's real user. `ai-audio-plugin`'s
+  `AiCommandContext` is the worked example, and it also shows the other half — replies captured instead of
+  sent, so the caller decides what happens to them.
+
 - 2026-09-19: Initial audit; option-builder method list above is partial — read `CommandBuilder.java` for the full set before documenting an option type.
 - 2026-09-20: `SimpleCommandRegistryTest` (11): alias removal was not owner-checked (fixed). C3 done: `AutocompleteProvider<T>` / `AutocompleteContext` in api (`CommandOption.getAutocompleteProvider()` now returns the provider type; the `Function<String,…>` builder overload is a default method adapting it), `SimpleCommandService.suggest(...)` is package-private for tests, `handleAutocomplete` caps at 25 and answers empty on provider exceptions. Console parser resolves `USER` options from a numeric ID via `jda.getUserById` then `retrieveUserById().complete()`. System commands `perm` (operators only) and `shutdown` check `PermissionManager.isOperator` in their executor instead of `.permission(...)` (system commands have no plugin to register a permission with).
 

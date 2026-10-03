@@ -35,6 +35,13 @@ paths:
 Verify what you used against the code, fix or delete wrong lines, add dated **Learnings**, prune resolved **Known issues**. Keep < 300 lines.
 
 ## Learnings
+- 2026-10-03: The realtime path has two dialects (`OpenAiRealtime`, `GeminiRealtime`) behind the
+  `RealtimeProtocol` interface, chosen by `conversation.realtime.api` and never guessed from the URL. Things
+  to know before touching it: Google's input is **16 kHz** where OpenAI's is 24, its output rate is read from
+  the `mimeType` rather than assumed, its key goes in the URL, one of its frames can say three things at once
+  (hence `parseAll`), and it has no "answer now" or "cancel" frame — a dialect returns an empty string for a
+  frame it does not have and `RealtimeConversation.send` drops it. Neither has run against its service.
+
 - 2026-09-19: Initial audit. Volume range is read from `AudioService` constants — verify actual numbers before documenting them.
 - 2026-09-20: Internal PCM convention is **little-endian** (docs/audio-api.md); `ensureBigEndianFrame` swaps at the JDA boundary, the mixer outputs LE. Fade fix: `updateFade` now runs before the multiplier is read, so ducking is audible on the first frame (was one frame late). Decision 2026-09-20: **bypass applies volume × fade during the LE→BE pass** (`ensureBigEndianFrame(le, gain)`, gain 1 = plain swap) and fades are stepped in bypass too, so `setVolume` works for a lone PCM source and the fade-in after an announcement is audible. Opus relay is untouched. Characterized: one PCM + one Opus active → PCM bypassed, Opus dropped for the frame.
 - 2026-09-20 (A2): `SendStrategy.decide(states, threshold)` is the pure per-frame decision (silent / bypass source / mix list / ducking source = highest active priority ≥ threshold); `AudioPipeline` keeps fades, buffers and JDA glue. `AudioMixer.mix()` now outputs **big-endian** in one pass (its tests read BE). `AudioSettings` (`audio.fade-duration-ms`, `audio.ducking-level`, defaults 200 / 20) → `PriorityManager(fadeSteps, floor)`. `AudioFrameMixedEvent` is only built when `eventManager.hasListeners(...)`.

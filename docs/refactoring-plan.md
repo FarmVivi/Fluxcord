@@ -363,3 +363,46 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 - [ ] In `music-plugin` the untested mass is now `MusicPlayerMessage` alone, plus the network-facing parts of `AudioPlayerManager` (source clients) and the JDA voice glue in `MusicPlayer`.
 
 - [ ] Left uncovered on purpose: `JDADiscordAPI` (would need a fake `JDABuilder`; exercised by every smoke run), `Fluxcord.main`. Aggregate after this pass: core 87.1 %, api 82.5 % (lines). Decision (2026-09-20): nothing is excluded from the quality gate — the plugins (`music-plugin` ~2 000 lines, examples, template, `ai-audio-plugin`) are the remaining 0 % and need their own test chantier.
+
+## 2026-10-03 — what a real session found, and two capabilities
+
+Victor ran the voice bot against his own server and reported six things. Four were fixed on the spot, one is
+a model limit with a partial lever, and one turned into the two features below.
+
+- [x] **`/converse stop` left transcription running.** Documented as deliberate — a written record without a
+  participant is a reasonable thing to want — but a bot told to stop that keeps writing down every sentence
+  has, from the outside, ignored the command. The conversation now claims the listening it started and gives
+  back only that; a `/transcribe` started separately survives. The test that pinned the old behaviour was
+  replaced by the two cases.
+- [x] **The bot did not know its own name on the server.** A guild may rename it and people then address that
+  name. Resolved from JDA's cache (never REST — this is on the way to a model call) into
+  `ConversationContext.botName`, and placed in the *context user message*: a server owner picks that nickname,
+  so it must not reach the operator's instructions.
+- [x] **It answered too curtly.** The rules asked for one or two short sentences and `max_reply_tokens` was
+  120; at 120 the model ran out of budget mid-explanation, which sounds like curtness rather than truncation.
+  Two to four sentences, 220 tokens.
+- [~] **It mishears names** ("Fluxcord", "TARDIS"). This is the model and there is exactly one lever:
+  `speech_to_text.vocabulary`, sent as Whisper's documented `prompt` field or told to the chat model doing the
+  transcription. Not measured yet — worth a round of A/B once Victor has a list.
+- [x] **It could not act.** `conversation.command_tools` lets the model run the bot's own commands through
+  `CommandService.executeCommand` with the *asker's* member, so permissions, `guildOnly`, cooldowns and
+  command-veto listeners all apply with their rights and not the bot's. Off by default: nothing is excluded,
+  so an operator can be talked into `shutdown`.
+  - **Two api additions, both backwards compatible.** `CommandContext.getMember()` as a default method, and
+    `executeCommand` moved onto the `CommandService` contract (`SimpleCommandService` already had it). The
+    registry was already public through `getRegistry()`, so no addition was needed for listing commands.
+  - **The defect this uncovered is the interesting part.** `/play` resolved its caller by pattern-matching
+    `getOriginalEvent()` against the two event types its author had in mind, so every other invocation — a
+    modal, a console line, a call on somebody's behalf — resolved to nobody and the command answered "you are
+    not in a voice channel" to a person standing in one. Fixed in `PlayCommand` and `MusicManager`. Worth
+    grepping for the same shape elsewhere: a command that asks *how* it was invoked is usually asking the
+    wrong question.
+- [x] **A second realtime dialect.** `RealtimeProtocol` is now an interface with `OpenAiRealtime` and
+  `GeminiRealtime`; `RealtimeConversation` gained a field and lost nothing. Google's Live API costs roughly a
+  tenth as much per minute, which decides it for a bot that sits in a channel. Research answer for the record:
+  **self-hosted voice-to-voice is not reachable on this hardware** — Sesame CSM-1b is a contextual TTS and not
+  speech-to-speech at all, Moshi is genuinely full duplex but English-only (the FR checkpoint slipped past its
+  Q1-2026 target) and is a closed dialogue model with no tool calling, and Qwen3-Omni's Talker needs more than
+  a 12 GB card. Mistral (audio in only) and DeepSeek (no audio out) have nothing to offer here.
+- [ ] **Neither realtime dialect has met its service.** 31 tests read the Gemini JSON field by field, which is
+  the ceiling from this repository. Needs a key.

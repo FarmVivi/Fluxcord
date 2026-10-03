@@ -19,6 +19,12 @@ service next to the bot in the cluster. No native library, no SDK, nothing bundl
 | `/persona <show\|set\|reset> [field] [value] [scope]` | Shows or adjusts who the bot is here | none for `show`, `ai-audio-plugin.admin` to change it |
 | `/converse <start\|stop>` | Lets the bot answer out loud what is said | `ai-audio-plugin.transcribe` |
 
+`/converse start` starts transcription too — the bot cannot answer what it does not hear — and
+`/converse stop` stops it again. Only the listening it started: if you ran `/transcribe start` separately,
+that survives. The asymmetry was there on purpose at first, on the grounds that a written record without a
+participant is a reasonable thing to want; a real session settled it, because a bot told to stop that keeps
+writing down every sentence has, from the outside, ignored the command.
+
 Transcription is **per speaker**: the plugin asks JDA for per-user audio (`canReceiveUser`), so two people
 talking at once produce two separate transcriptions, each attributed to the name that person uses on that
 server. The bot's voice is registered as a PCM source with a priority above the core's ducking threshold,
@@ -519,16 +525,93 @@ even though a pass touches 3B, around 17 GB at Q4, and ROCm is validated on data
 consumer RDNA 2. Until then `hear: true` with `speak: false` is the configuration that runs entirely on a
 local box.
 
+### Words no speech model can guess
+
+```yaml
+speech_to_text:
+  vocabulary: ["Fluxcord", "TARDIS"]
+```
+
+A speech model writes down the nearest word it believes exists, so a bot's name, a server's jargon or a
+fandom term comes back mangled — "Fluxcord" as "flux cord" — however clearly it was said, and saying it
+again does not help. Naming the words beforehand is the only lever there is. With `api: OPENAI` the list is
+sent as Whisper's `prompt` field, which is documented for exactly this; with `api: OLLAMA` the model is told
+the words, phrased as names that *may* occur rather than words to prefer — told to prefer them, a chat model
+starts putting them into sentences that never contained them.
+
+Both cost context on every request, so the list should be the names that actually come up.
+
+### Running the bot's own commands
+
+```yaml
+conversation:
+  command_tools: false
+```
+
+Asked out loud to put a track on, the bot used to explain that it is able to play music. With this on it
+runs the command instead, and **runs it as the person who asked**: a `CommandTools` tool source resolves
+what the model named and calls `CommandService.executeCommand` with a context carrying the asking member, so
+their permissions, the `guildOnly` flag, their cooldowns and any listener that vetoes commands all apply
+exactly as if they had typed it. A refusal comes back already translated into their language. Nothing here
+grants anything — somebody who cannot skip a track cannot have the bot skip it for them.
+
+Nothing is excluded either, which is the reason it is off by default: if `shutdown` is registered and the
+person asking is an operator, the model can be talked into running it. Switching this on is the decision to
+let a spoken sentence reach the command pipeline at all.
+
+The catalogue of commands is written into the tool description rather than fetched by a second tool call —
+a round trip costs a second in a voice channel, and a few hundred tokens of context is the cheaper half of
+that trade. Arguments are read leniently: a JSON object, `key=value` pairs, or the bare value of the one
+option the command requires, which is what a small model actually produces when asked to play a song.
+
+Replies are captured rather than sent. The command believes it answered, the text comes back as the tool
+result, and the bot says out loud what happened instead of leaving a wall of text in a channel nobody is
+reading; an embed is reduced to its title and description, because a voice cannot carry a table.
+
+**One thing had to change for this to work at all.** `/play` resolved the caller by pattern-matching
+`CommandContext.getOriginalEvent()` against the two event types its author had in mind, so any other kind of
+invocation — a modal, a console line, a call made on somebody's behalf — silently resolved to nobody, and
+the command answered "you are not in a voice channel" to a person who was standing in one.
+`CommandContext.getMember()` now exists as a default method (the event first, then the guild's own cache),
+and `PlayCommand` and `MusicManager` no longer care how they were invoked.
+
 ### Full duplex: a session instead of a turn
 
 ```yaml
 conversation:
   realtime:
     enabled: false
+    api: "OPENAI"          # or GEMINI
     url: "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1"
     api_key: ""
-    voice: "marin"
+    model: "gemini-live-2.5-flash-preview"   # GEMINI only: this API names the model in the first frame
+    voice: "marin"         # GEMINI voices are different: Puck, Charon, Kore...
 ```
+
+**Two services, two protocols.** OpenAI's Realtime API and Google's Live API
+(`BidiGenerateContent`) share no field names at all: one puts an event's name in a `"type"` field and the
+model in the URL, the other tells you what happened by which top-level key a frame has and names the model
+in the first frame. `RealtimeProtocol` is the interface, `OpenAiRealtime` and `GeminiRealtime` the two
+dialects, and `RealtimeConversation` does not know which it is talking to. Google is there because it costs
+roughly a tenth as much per minute of conversation, which for a bot that sits in a voice channel is the
+difference between a demo and something left switched on.
+
+Four differences between them cost real work, each one a way this could have silently half-worked:
+
+- **the rates differ per direction** on Google (16 kHz in, 24 kHz out) where OpenAI is 24 both ways, so the
+  output rate is read from the `mimeType` that arrives with the audio rather than assumed — a bot speaking
+  at the wrong pitch is not a bug anybody would look for in a JSON parser;
+- **the key goes in the URL**, as `?key=`, with no Authorization header;
+- **one frame says several things**: a `serverContent` can carry the audio, its transcription and the end of
+  the turn at once, which is why `parseAll` exists — returning only the first would mean a turn that is
+  never written to the memory;
+- **two frames have no equivalent.** Answering and cancelling are Google's server's decision alone, so that
+  dialect returns an empty string and the conversation sends nothing. Inventing a frame the API does not
+  define would be worse.
+
+Google also needs `inputAudioTranscription` and `outputAudioTranscription` asked for explicitly, and this
+plugin always asks: the memory keeps words, so a session that only exchanged audio would leave nothing
+behind.
 
 With this on, `/converse start` opens one WebSocket session for the channel instead of running the four-step
 relay. The service hears continuously and decides itself when somebody has stopped talking, which buys the two
@@ -601,9 +684,9 @@ Both are only reachable from Ollama's native route, which this plugin already sp
 - **Watch the realtime path work against the real service.** Everything else in this plugin was shaped by
   measuring it — the token budget, the reasoning effort, the date in the prompt, the JSON for the mood — and this
   is the one capability that has not had that treatment. Expect the first run to find something.
-- **`AiSettings` has outgrown a flat record.** It gained a component in three consecutive pieces of work and
-  every construction site in the tests broke each time. The nested records are right; the top level should be a
-  handful of them rather than seventeen positional components.
+- **Which realtime service to keep.** Both dialects are written and neither has met its service. The
+  interesting comparison is not quality, it is cost per minute against how often the cheaper one needs a
+  second attempt.
 
 ## Tests
 
