@@ -428,6 +428,12 @@ a model limit with a partial lever, and one turned into the two features below.
   frame never arrives in one piece, and the binary path has to reassemble from **bytes** because a UTF-8
   character straddles the boundary. The "too thin to test" judgement was wrong, and the bill for it was a
   whole provider failing in silence.
+- [x] **The engagement sequence works against both real services** (2026-10-03). A session opened the way
+  the gate opens one, handed the recent turns as context and the question as the thing to answer: OpenAI
+  replied "d'après ce qu'on m'a dit, Alice pense plutôt à huit heures, mais ce n'est pas une confirmation
+  officielle", Google "je confirme, départ vers huit heures". Both used the history and answered the
+  question — answering the history instead was the real risk in injecting it. Driven through the plugin's own
+  dialects and `RealtimeSession`, so a wrong frame would have failed there as it would in a voice channel.
 - [ ] **Input transcription and interruption are still unverified** on both services: one needs real speech
   rather than a text turn, the other needs two people talking at once.
 - [x] **A busy channel, and waking on a name** (2026-10-03). The bot answers when it is addressed by its

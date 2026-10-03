@@ -667,10 +667,17 @@ What the documentation had right, and is now confirmed from a real session: `res
 Both dialects answered in French, called a declared tool with sensible arguments, and came back with playable
 audio.
 
+**The engagement sequence was verified too** (2026-10-03): a session opened the way `WakeGate` opens one —
+turn-taking off, the bot's names in the transcriber's vocabulary — then handed the recent turns as context and
+the question as the thing to answer. Both services answered *the question*, using the history: OpenAI with
+"d'après ce qu'on m'a dit, Alice pense plutôt à huit heures, mais ce n'est pas une confirmation officielle",
+Google with "je confirme, départ vers huit heures". Answering the history instead of the question was the real
+risk in injecting it, and neither did.
+
 **Still unverified:** the input-transcription path on both services, which needs real speech rather than a text
-turn, and interruption, which needs two people talking at once. Also `RealtimeSession` itself has no test — it
-is the deliberate thin untestable layer, and the binary-frame bug lived exactly there, which is the honest
-argument against that choice.
+turn, and interruption, which needs two people talking at once. `RealtimeSession` does have tests now, against
+a WebSocket server on a loopback port — the binary-frame bug lived in the one class that had none, which was
+the argument against leaving it that way.
 
 #### Which model, and what it costs
 

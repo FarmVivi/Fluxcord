@@ -98,3 +98,11 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
   frames. **A wrong Gemini model name** closes the socket with 1008 after a successful handshake; valid names
   list `bidiGenerateContent` in `GET /v1beta/models`. Confirmed correct from the docs: the delta event names,
   `response.function_call_arguments.done`, `toolCall.functionCalls`, `turnComplete`, 24 kHz output both sides.
+- 2026-10-03: the realtime path only pays once the bot is addressed (`WakeGate`). The local transcriber owns
+  the one receive handler the core allows and the audio is **diverted** inside `TranscriptionSession` when a
+  hosted session opens - never duplicated, or a sentence is billed and remembered twice. A session opened
+  mid-conversation is handed the question and the last eight turns (`RealtimeConversation.ask`), verified
+  against both real services: they answer the question and use the history. A session ending of old age is a
+  pause, not a dead end - `goAway` becomes `Event.ClosingSoon`, the conversation lets go without telling the
+  channel, and the gate's aliveness check hands the audio back so the next name reopens one. Measured cost:
+  ~10 audio input tokens per second of speech.
