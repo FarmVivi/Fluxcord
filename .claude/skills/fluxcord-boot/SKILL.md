@@ -53,6 +53,14 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 - 2026-09-20: `ConsoleCommandService(commandService, InputStream)` is the test seam for the stdin loop (`ConsoleCommandServiceTest`); `stop()` only flips the flag and shuts the executor down, the blocked `readLine` ends at EOF.
 
+- 2026-10-03: `HealthServer` binds with `SO_REUSEADDR` (`new ServerSocket()` + `setReuseAddress` + `bind`,
+  because `new ServerSocket(port)` binds in the constructor and is therefore too late to set it). Found as a
+  Linux-only CI failure in `HealthServerTest` — "Bind: Address already in use" when rebinding a port the
+  test's own requests had left TIME_WAIT sockets on. The production consequence is the one that matters: the
+  kubelet probes `/healthz` every few seconds, so a container restarting quickly always has TIME_WAIT
+  sockets on 8081, and without the option the health server cannot bind, never answers, and gets restarted
+  again. Any future listening socket in this codebase wants the same three lines.
+
 ## Known issues / open questions
 - Hygiene: `YamlConfiguration.save()` (snakeyaml dump) drops every comment of `config.yml`; since B3 the core only calls it on config migration (`setPrefix` global is in-memory now). Characterized by `YamlConfigurationTest.saveDropsComments`.
 - Presence config keys and intent list are hardcoded in `JDADiscordAPI`; plugins needing extra intents must add them in `onPreEnable`.

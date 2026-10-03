@@ -683,6 +683,82 @@ Both are the shipped defaults. Google's flagship live model (`gemini-3.8-live`) 
 native-audio 2.5 is six times cheaper for the same job and was measured doing it. Across providers the gap is
 roughly twentyfold on output, which is why the second dialect exists.
 
+#### What a realtime session costs, and the decision not to gate it
+
+Measured, 2026-10-03, from the `usage` block of `response.done`: **5.05 s of speech cost 50 audio input
+tokens**, so about **10 tokens per second** of somebody talking.
+
+| | Per hour of *actual speech* |
+| --- | --- |
+| OpenAI `gpt-realtime-2.1-mini` | ~$0.36 |
+| Gemini `2.5-flash-native-audio-latest` | ~$0.02–0.06 |
+
+The figure that settles it is one nobody has to pay for: **silence is already free**. JDA only delivers audio
+packets while somebody is actually transmitting, so an idle channel sends nothing and a channel where people
+talk half the time costs half. There is no 24-hour stream to switch off.
+
+**Decision (Victor, 2026-10-03): leave it.** While a realtime session is open, everything said in the channel
+goes to the service. On Gemini that is a few cents an hour of conversation and not worth engineering around;
+on OpenAI it is 0.36 $/h of speech, which is worth knowing before leaving it on in a busy channel. The
+fully local path — transcription, Gemma, Kokoro, nothing leaving the network — remains the default, and
+realtime is opt-in.
+
+The cheaper arrangement, if it is ever wanted, is written up under *Where a wake word should live* below.
+
+#### Session lifetime, and what happens when it runs out
+
+Both services end a session on their own schedule, and **this plugin does not yet survive that** — the socket
+closes, the failure is reported once in the channel, and the conversation is over until somebody runs
+`/converse start` again. The pieces needed are known and are listed here so the next attempt starts from
+facts rather than from the documentation's silence on the subject.
+
+| | Limit | Warning | Resume |
+| --- | --- | --- | --- |
+| OpenAI | 60 min hard | `expires_at` on `session.created`/`session.updated` (observed) | none; replay the history into a new session |
+| Gemini | ~15 min audio-only | `goAway` before termination | `sessionResumption` handles (observed) + `contextWindowCompression` |
+
+What was observed from a real session rather than read: OpenAI echoes an `expires_at` timestamp in the
+session it confirms, and Gemini sends a `sessionResumptionUpdate` carrying `{"newHandle": "...",
+"resumable": true}` within a second of the handshake — unasked for, on every session. Both dialects currently
+parse those frames as `Ignored`.
+
+Putting a session back together differs between them, and the difference is the usual one:
+
+- **Gemini** does it for you. Ask for it in the setup (`sessionResumption`), keep the latest handle, and
+  reconnect with it after a `goAway` or a dropped connection; the context comes back with it. For a session
+  meant to outlive the 15-minute limit, `contextWindowCompression` is what keeps it alive, and skipping it is
+  the documented cause of a connection that drops mid-conversation.
+- **OpenAI** has no resume at all. A new socket, a fresh `session.update`, and then the conversation is
+  replayed as individual `conversation.item.create` events — which this plugin is in an unusually good
+  position to do, because `ConversationMemory` already holds exactly that history and the turn-based path
+  already builds a message list from it. The cap worth respecting is the input limit (28,672 tokens on the GA
+  model, in a 32,768-token window), so a replay is the last twenty turns, not the lot.
+
+#### Where a wake word should live
+
+The bot currently wakes on its name by reading **the paid service's own transcription** of what was said. It
+works, and it is the arrangement with the fewest moving parts, but the audio has been paid for by the time
+the decision is made. There are two other places the trigger could live, and the obvious one turns out to be
+the wrong one.
+
+1. **A local acoustic wake word** — openWakeWord or Porcupine, a few milliseconds of CPU spotting the phrase
+   in the raw audio with no transcription at all. This is how Home Assistant and every smart speaker do it,
+   and it is the answer the literature gives. **It does not fit this bot**, for a reason specific to Discord:
+   the wake word is *whatever each server renamed the bot to*. An acoustic detector needs a model trained per
+   phrase — openWakeWord by fine-tuning, Porcupine through their console — so supporting an arbitrary
+   per-guild name would mean training a model per server. The standard answer is the wrong answer here.
+2. **A local transcript gate** — the plugin's own speech-to-text, which is already running, free, and on the
+   operator's own hardware, decides whether the name was said; the paid service hears nothing until it was.
+   This handles any name on any server with no training, and it is the shape to build if the cost ever
+   matters. What blocks it today is not the AI at all: **the core allows one `AudioReceiveHandler` per plugin
+   per guild**, and the two paths each want it — `TranscriptionSession` for the local one, `RealtimeReceiver`
+   for the other. A composite handler feeding both is the whole change.
+3. **The service's transcription**, which is what ships.
+
+Something worth keeping from (1) even so: an acoustic detector never mishears, while a transcript gate can.
+That is exactly why the bot's names are injected into `speech_to_text.vocabulary` automatically — a gate that
+reads text is only as good as the text, and "flux cord" does not match "Fluxcord".
+
 #### What is not known
 
 **Nothing here has been run against the real service.** The frames are built from the published event names and

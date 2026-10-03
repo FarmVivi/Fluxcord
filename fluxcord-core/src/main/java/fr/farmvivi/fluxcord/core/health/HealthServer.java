@@ -7,6 +7,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -50,7 +51,14 @@ public class HealthServer {
 
     public void start() throws IOException {
         if (running.get()) return;
-        serverSocket = new ServerSocket(port);
+        // SO_REUSEADDR before binding, which `new ServerSocket(port)` cannot do because it binds in the
+        // constructor. Without it a rebind fails with "Address already in use" whenever sockets from earlier
+        // clients are still in TIME_WAIT on this port - and this port is probed every few seconds by the
+        // kubelet, so after a quick restart there are always some. The health server would then fail to
+        // start, /healthz would never answer, and the kubelet would restart the container again.
+        serverSocket = new ServerSocket();
+        serverSocket.setReuseAddress(true);
+        serverSocket.bind(new InetSocketAddress(port));
         executor = Executors.newCachedThreadPool();
         running.set(true);
         executor.submit(() -> {

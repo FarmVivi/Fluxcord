@@ -92,7 +92,14 @@ class HealthServerTest {
 
         // The port is free again (rebinding is the proof; how fast a client notices - refused or timed out -
         // depends on the host's TCP stack, which is why the request is only asserted to fail).
-        try (ServerSocket rebound = new ServerSocket(port)) {
+        //
+        // Rebound exactly as the server rebinds, SO_REUSEADDR included. Without it this failed on Linux CI
+        // and passed on Windows: the requests this test just made leave sockets in TIME_WAIT on the port,
+        // and binding over those is precisely what the option is for. The server has to set it too, or a
+        // container restarting under a kubelet that has been probing /healthz cannot bind its own port.
+        try (ServerSocket rebound = new ServerSocket()) {
+            rebound.setReuseAddress(true);
+            rebound.bind(new java.net.InetSocketAddress(port));
             assertEquals(port, rebound.getLocalPort());
         }
         assertThrows(IOException.class, () -> get("/healthz"));

@@ -426,6 +426,45 @@ a model limit with a partial lever, and one turned into the two features below.
   ~100 lines of handshake and framing, with no server in the JDK — worth it, or worth a different seam.
 - [ ] **Input transcription and interruption are still unverified** on both services: one needs real speech
   rather than a text turn, the other needs two people talking at once.
-- [ ] **The realtime path ignores `speech_to_text.vocabulary`.** OpenAI's
-  `session.audio.input.transcription` accepts a `prompt`, which is the same lever the turn-based path uses for
-  names like "Fluxcord" — so a realtime session mishears exactly what the turn-based one was just taught.
+- [x] **A busy channel, and waking on a name** (2026-10-03). The bot answers when it is addressed by its
+  persona name or its server nickname rather than on every sentence, on both paths; it is cut off when
+  somebody asks it something else rather than whenever anybody makes a noise; and in the realtime path this
+  plugin closes turns itself. That last one is measured, not a preference: OpenAI's server VAD has to *hear*
+  silence to end a turn and JDA stops delivering packets the moment somebody stops talking, so a turn would
+  never have ended. Victor's own observation closed a loop worth recording: **the wake word and the
+  transcription vocabulary are one feature**, since a bot woken by a name the transcriber cannot spell is
+  never woken at all — so the names are injected into the vocabulary automatically.
+  - Behaviour change on the path Victor actually runs: an empty `wake_word` used to mean "answer
+    everything". `conversation.wake_on_name: false` restores that.
+  - Also found: Gemini streams the *input* transcription in fragments, so treating each as an utterance
+    wrote one memory entry per syllable.
+- [x] **Decision (Victor, 2026-10-03): do not gate what reaches the paid service.** While a realtime session
+  is open, everything said in the channel goes to it. Grounded in a measurement — 5.05 s of speech = 50 audio
+  input tokens, ~10 tokens/second, so ~$0.36 per hour of *speech* on OpenAI mini and ~$0.02–0.06 on Gemini —
+  and in the fact that **silence is already free**, because JDA only delivers packets while somebody is
+  transmitting. There is no 24-hour stream to switch off. The cheaper arrangement is written up in the
+  plugin README under *Where a wake word should live*; the conclusion there is that the standard answer (a
+  local acoustic wake word) is the wrong one for this bot, because the wake word is whatever each server
+  renamed it to and an acoustic model has to be trained per phrase.
+- [ ] **A realtime session dies of old age and does not come back.** OpenAI ends it at 60 minutes and
+  publishes `expires_at` in the session it confirms; Gemini ends an audio-only session at about 15 and warns
+  with `goAway`, while handing out `sessionResumption` handles unasked (both observed from real sessions,
+  both currently parsed as `Ignored`). Reconnecting differs: Gemini resumes from the handle and keeps the
+  context, OpenAI has no resume at all and wants the history replayed as `conversation.item.create` events —
+  which this plugin is well placed to do, since `ConversationMemory` already holds it and the turn-based path
+  already builds a message list from it. Cap the replay at the last twenty turns (28,672-token input limit).
+  Enabling `contextWindowCompression` is the documented way to outlive Gemini's limit at all.
+- [ ] **One `AudioReceiveHandler` per plugin per guild** is what blocks the cheaper design above: the local
+  path and the realtime path each want it. A composite handler feeding both is the whole change.
+- [x] **The realtime path takes `speech_to_text.vocabulary` too** (2026-10-03): OpenAI's
+  `session.audio.input.transcription` accepts a `prompt`, so the same names reach it. Google has no such
+  field, so a realtime session there can still mishear a name the turn-based path was taught.
+- [x] **CI was red on a flake that was really a defect** (2026-10-03). `HealthServerTest` failed on Linux
+  with "Bind: Address already in use" and passed on Windows. The cause was not the test:
+  `HealthServer.start()` used `new ServerSocket(port)`, which binds in the constructor and so cannot set
+  `SO_REUSEADDR` first. The requests the test had just made left sockets in TIME_WAIT on that port, and
+  binding over those is exactly what the option exists for. **In production it is worse than a flake**: the
+  kubelet probes `/healthz` every few seconds, so after a quick container restart that port always has
+  TIME_WAIT sockets on it — the health server would fail to start, `/healthz` would never answer, and the
+  kubelet would restart the container again. Fixed in the server; the test now rebinds the same way the
+  server does.
