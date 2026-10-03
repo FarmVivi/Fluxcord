@@ -42,6 +42,8 @@ class WakeGateTest {
     private final List<String> opened = new ArrayList<>();
     private final List<String> closed = new ArrayList<>();
     private final List<String> asked = new ArrayList<>();
+    /** Who each handed-over question is attributed to, which is what a command would run as. */
+    private final List<String> askers = new ArrayList<>();
     private final List<List<Turn>> historyGiven = new ArrayList<>();
     private final List<PcmAudio> heard = new ArrayList<>();
     /** The diversion currently installed on the local handler, or null when transcribing locally. */
@@ -77,7 +79,8 @@ class WakeGateTest {
                 },
                 (g, userId, audio) -> heard.add(audio),
                 (g, question, history) -> {
-                    asked.add(question);
+                    asked.add(question.text());
+                    askers.add(question.userId());
                     historyGiven.add(history);
                 },
                 g -> lastActivity,
@@ -130,6 +133,21 @@ class WakeGateTest {
         gate.engage(guild, mock(MessageChannel.class), said("u1", "Victor", "Fluxcord, il est quelle heure ?"));
 
         assertEquals(List.of("Fluxcord, il est quelle heure ?"), asked);
+    }
+
+    /**
+     * MEASURED, 2026-10-03: the handed-over question used to travel as bare text, and the session had no
+     * speaker until its first audio packet arrived. A tool that runs a Discord command refuses when it
+     * cannot name whose permissions to check, so "Fluxcord, lance de la musique" — the sentence that woke
+     * the bot — was answered in words and did nothing, while the same sentence said a second time worked.
+     * The live log said it plainly: "A command was asked for with no attributed speaker; refusing".
+     */
+    @Test
+    void theQuestionCarriesWhoAskedIt() {
+        gate.engage(guild, mock(MessageChannel.class), said("u1", "Victor", "Fluxcord, lance de la musique"));
+
+        assertEquals(List.of("u1"), askers,
+                "a command asked for in the waking sentence runs with that speaker's rights, or not at all");
     }
 
     @Test

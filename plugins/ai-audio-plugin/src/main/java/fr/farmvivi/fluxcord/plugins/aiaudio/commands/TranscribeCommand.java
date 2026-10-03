@@ -31,6 +31,14 @@ public class TranscribeCommand extends AiAudioCommand {
         }
         Guild guild = optGuild.get();
         if (STOP.equalsIgnoreCase(action)) {
+            // A conversation is listening for its own reasons, and it is not this command's to end: stopping
+            // the writing here would otherwise leave the bot unable to hear the next question.
+            if (plugin.getConversation() != null && plugin.getConversation().isActive(guild)) {
+                boolean wasWriting = plugin.getSpeechRecognition().setOutput(guild, null);
+                ctx.replySuccess(text(ctx,
+                        wasWriting ? "messages.transcription_stopped" : "errors.not_transcribing"));
+                return;
+            }
             boolean stopped = plugin.getSpeechRecognition().stop(guild);
             ctx.replySuccess(text(ctx, stopped ? "messages.transcription_stopped" : "errors.not_transcribing"));
             return;
@@ -40,6 +48,18 @@ public class TranscribeCommand extends AiAudioCommand {
             return;
         }
         if (!ensureConnected(ctx, guild)) {
+            return;
+        }
+        // A conversation may already be listening silently; this command is the request for the writing, so
+        // it attaches a channel to what is running rather than refusing because somebody else got there
+        // first. Only a guild that is already *writing* is already transcribing.
+        if (plugin.getSpeechRecognition().isActive(guild)) {
+            if (plugin.getSpeechRecognition().outputFor(guild).isPresent()) {
+                ctx.replyError(text(ctx, "errors.already_transcribing"));
+                return;
+            }
+            plugin.getSpeechRecognition().setOutput(guild, ctx.getChannel());
+            ctx.replySuccess(text(ctx, "messages.transcription_started"));
             return;
         }
         if (!plugin.getSpeechRecognition().start(guild, ctx.getChannel())) {

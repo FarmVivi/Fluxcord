@@ -31,9 +31,16 @@ import java.util.function.LongSupplier;
  * <p><strong>Who closes a turn is configurable, and in a busy channel it has to be this side.</strong>
  * Left to the service, every single utterance is answered and anybody making a noise cuts the bot off
  * mid-sentence — fine with one person in the channel, unusable with eight. With
- * {@code serviceDecidesTurns} false this class closes the turn when nobody has spoken for a moment (the
- * same silence rule the turn-based path uses) and answers only what was addressed to the bot by name. The
- * bot still <em>hears</em> everything; it just stops replying to conversations it was not part of.
+ * {@code serviceDecidesTurns} false this class closes the turn when nobody has spoken for a moment, the
+ * same silence rule the turn-based path uses.
+ *
+ * <p><strong>Whether a closed turn is then answered is not decided here</strong>, but by the predicate it is
+ * built with, and that depends on who opened the session. Opened by {@code WakeGate} on hearing the bot's
+ * name, every sentence is answered until the gate closes it again — asking for the name a second time made
+ * every follow-up go unanswered while the session stayed open and billed, which read as a bot that replies
+ * once and then goes deaf. Opened for good, with nobody having vouched for anything, the name is the only
+ * thing separating a question from a conversation between other people. The bot <em>hears</em> and
+ * remembers everything either way; the predicate only decides whether it says anything back.
  *
  * <p>Which service is on the other end is not this class's business: it is handed a {@link RealtimeProtocol}
  * and every frame it sends comes from there. That is what let a second provider arrive without a line of this
@@ -427,8 +434,17 @@ public class RealtimeConversation {
         close();
     }
 
-    /** Closes the conversation. Safe to call twice, and safe to call when it never opened. */
+    /**
+     * Closes the conversation. Safe to call twice, and safe to call when it never opened.
+     *
+     * <p>Marked as failed first, and that is not a lie: the flag means "stop reporting what happens to this
+     * connection to the channel", and a close we asked for is exactly that. Without it, hanging up sent the
+     * websocket's own close frame back through {@code fail}, so {@code /converse stop} answered "I'll stop
+     * answering" and then, a beat later, "the live conversation failed: the realtime connection closed:
+     * 1000" - 1000 being the code for a normal closure, the one we had just requested.
+     */
     public void close() {
+        failed = true;
         if (link != null) {
             link.close();
         }
@@ -459,11 +475,19 @@ public class RealtimeConversation {
      * would otherwise answer a question nobody asked it. The history goes in as one block of context — it
      * is the same transcript the turn-based path shows a model, and it is user content, never instructions.
      *
-     * @param question what was asked, as the local transcription wrote it
+     * <p>The asker is remembered as the current speaker, which is the whole reason this takes a {@link Turn}
+     * and not a string. {@code speaking} is otherwise only set when an audio packet arrives, so between the
+     * session opening and the first packet the conversation knew the question but not who had asked it — and
+     * a tool that runs a Discord command refuses, correctly, when it cannot name somebody whose permissions
+     * to check. The effect was that the one question guaranteed to reach a freshly woken bot, the one that
+     * woke it, was also the one question that could never make it do anything.
+     *
+     * @param question what was asked, as the local transcription wrote it, with who asked it
      * @param history  what was said before, oldest first, possibly empty
      */
-    public void ask(String question, List<Turn> history) {
-        if (link == null || !link.isOpen() || question == null || question.isBlank()) {
+    public void ask(Turn question, List<Turn> history) {
+        if (link == null || !link.isOpen() || question == null || question.text() == null
+                || question.text().isBlank()) {
             return;
         }
         if (history != null && !history.isEmpty()) {
@@ -475,8 +499,11 @@ public class RealtimeConversation {
             }
             send(protocol.userText(earlier.toString()));
         }
+        if (question.userId() != null && !question.userId().isBlank()) {
+            speaking = question.userId();
+        }
         lastActivityMs = clock.getAsLong();
-        send(protocol.userAsked(question));
+        send(protocol.userAsked(question.text()));
         send(protocol.createResponse());
     }
 

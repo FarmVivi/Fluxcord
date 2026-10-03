@@ -81,10 +81,12 @@ public class ConverseCommand extends AiAudioCommand {
             startRealtime(ctx, guild);
             return;
         }
-        // Answering requires hearing: starting transcription here saves running two commands, and starting it
-        // twice is harmless. Whether this command is the one that started it decides whether /converse stop
-        // may stop it again.
-        boolean startedListening = plugin.getSpeechRecognition().start(guild, ctx.getChannel());
+        // Answering requires hearing, so this starts the transcriber - but with nowhere to write. Hearing and
+        // publishing are two different requests: asking the bot to talk with you is not asking it to narrate
+        // the room into a text channel, and when it did, a conversation of a few minutes buried the channel
+        // under every half-sentence anybody said. "/transcribe" is how you ask for the writing, and it can be
+        // run while this is already listening.
+        boolean startedListening = plugin.getSpeechRecognition().start(guild, null);
 
         if (!plugin.getConversation().start(guild, ctx.getChannel())) {
             ctx.replyError(text(ctx, "errors.already_conversing"));

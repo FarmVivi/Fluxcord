@@ -135,6 +135,47 @@ public class SpeechRecognitionService {
     }
 
     /**
+     * Writes one line of transcript, if anybody asked for it to be written.
+     *
+     * @param output where to write, or null to write nowhere
+     */
+    public void post(MessageChannel output, String speaker, String text) {
+        if (output == null) {
+            return;
+        }
+        try {
+            output.sendMessage("**" + speaker + "** " + text).queue();
+        } catch (RuntimeException e) {
+            logger.warn("Could not post a transcription: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Starts or stops writing down what a guild says, without touching whether it is listened to.
+     *
+     * @param guild  the guild
+     * @param output where to write, or null to keep listening silently
+     * @return false when this guild is not being transcribed at all
+     */
+    public boolean setOutput(Guild guild, MessageChannel output) {
+        Session session = sessions.get(guild.getId());
+        if (session == null) {
+            return false;
+        }
+        session.output = output;
+        return true;
+    }
+
+    /**
+     * @param guild the guild
+     * @return where this guild's transcriptions are being posted, or empty when it is not being transcribed
+     */
+    public Optional<MessageChannel> outputFor(Guild guild) {
+        Session session = sessions.get(guild.getId());
+        return Optional.ofNullable(session == null ? null : session.output);
+    }
+
+    /**
      * Stops transcribing a guild, transcribing whatever was still buffered.
      *
      * @param guild the guild to stop listening to
@@ -195,6 +236,14 @@ public class SpeechRecognitionService {
                 String text = provider.transcribe(segment.audio(), transcription.language(),
                         vocabulary(guild, transcription));
                 if (text == null || text.isBlank()) {
+                    // A model that makes nothing of the audio answers an empty line, which is the right
+                    // answer to a cough - but it left no trace at all in the log, and that is how a whole
+                    // broken listening path looks exactly like a quiet channel. Four utterances were
+                    // transcribed into nothing on 2026-10-03 and the only evidence was the absence of a
+                    // reply. The audio's own shape is logged with it because when this happens to real
+                    // speech, the audio is the suspect and not the model.
+                    logger.debug("Nothing transcribed from {} spoken by {} in guild {}",
+                            segment.audio(), segment.userId(), guild.getId());
                     return;
                 }
                 publish(guild, session, segment.userId(), text.trim(), segment.audio());
@@ -224,11 +273,7 @@ public class SpeechRecognitionService {
             plugin.getConversation().onTranscription(guild, turn, audio);
         }
         logger.debug("[{}] {}: {}", guild.getId(), speaker, text);
-        try {
-            session.output.sendMessage("**" + speaker + "** " + text).queue();
-        } catch (RuntimeException e) {
-            logger.warn("Could not post a transcription: {}", e.getMessage());
-        }
+        post(session.output, speaker, text);
     }
 
     /**
@@ -282,7 +327,15 @@ public class SpeechRecognitionService {
 
     /** One guild being transcribed. */
     private static final class Session {
-        private final MessageChannel output;
+        /**
+         * Where the words are written, or null to listen without writing anywhere.
+         *
+         * <p>Not final, and that is the point: listening and publishing are two decisions, not one.
+         * {@code /converse} needs the bot to hear in order to answer, which is not a reason to narrate the
+         * room into a text channel nobody asked to have narrated; {@code /transcribe} is the request for
+         * the writing, and it may arrive while the listening is already running.
+         */
+        private volatile MessageChannel output;
         private final SpeechSegmenter segmenter;
         private final ScheduledFuture<?> poller;
         private final TranscriptionSession handler;

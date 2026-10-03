@@ -89,9 +89,17 @@ public class WakeGate {
             void accept(Guild guild, String userId, PcmAudio audio);
         }
 
-        /** A question the session could not have heard, with what was said before it. */
+        /**
+         * A question the session could not have heard, with what was said before it.
+         *
+         * <p>The question travels as a {@link Turn} and not as its text, because it carries who asked it.
+         * A session is opened by somebody saying the bot's name, and that somebody is then the only person
+         * whose permissions a command could run under; handing over the words alone left the session with
+         * no attributed speaker until the next audio packet arrived, so the very question that woke the bot
+         * was the one question that could never run a command.
+         */
         public interface AskSession {
-            void ask(Guild guild, String question, List<Turn> history);
+            void ask(Guild guild, Turn question, List<Turn> history);
         }
     }
 
@@ -130,7 +138,7 @@ public class WakeGate {
         engaged.put(guild.getId(), guild);
         engagement.divert().apply(guild, (userId, audio) -> engagement.hear().accept(guild, userId, audio));
         logger.info("Engaged in guild {}: the hosted session is now hearing the channel", guild.getId());
-        engagement.ask().ask(guild, question == null ? "" : question.text(), historyBefore(question));
+        engagement.ask().ask(guild, question, historyBefore(question));
         return true;
     }
 

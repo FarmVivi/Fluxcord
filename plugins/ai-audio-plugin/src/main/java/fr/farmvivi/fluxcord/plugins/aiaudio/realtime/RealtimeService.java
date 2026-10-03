@@ -2,6 +2,7 @@ package fr.farmvivi.fluxcord.plugins.aiaudio.realtime;
 
 import fr.farmvivi.fluxcord.plugins.aiaudio.AIAudioPlugin;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AiSettings;
+import fr.farmvivi.fluxcord.plugins.aiaudio.SpeechRecognitionService;
 import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.ConversationPrompt;
 import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.ToolSource;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationContext;
@@ -131,10 +132,18 @@ public class RealtimeService {
                 toolSources,
                 audio -> plugin.getTextToSpeech().play(guild, audio),
                 () -> plugin.getTextToSpeech().interrupt(guild),
-                memory::remember,
+                turn -> rememberAndWriteDown(guild, turn),
                 message -> report(output, message),
                 realtime.serviceDecidesTurns(), realtime.silence().toMillis(),
-                spoken -> settings.chat().isAddressedToUs(spoken, names));
+                // Who decides a sentence is for the bot depends on who opened this session, and asking
+                // twice is what made it deaf. With wake_locally the gate opened it precisely because the
+                // bot had just been named, and it closes again after a quiet window - so inside that window
+                // every sentence is an answer owed, which is the difference between a bot you talk to and a
+                // bot you summon anew for each question. Without it the session is simply open, nobody
+                // having vouched for anything, and the name is the only thing separating a question from a
+                // conversation between other people.
+                realtime.wakeLocally() ? spoken -> true
+                        : spoken -> settings.chat().isAddressedToUs(spoken, names));
 
         String instructions = ConversationPrompt.systemMessageFor(snapshot, now);
         // The bot's own names go in the vocabulary, because they are what wakes it: a name the transcriber
@@ -188,7 +197,7 @@ public class RealtimeService {
      * @param question what was asked, as the local transcription wrote it
      * @param history  what was said before, oldest first
      */
-    public void ask(Guild guild, String question,
+    public void ask(Guild guild, fr.farmvivi.fluxcord.plugins.aiaudio.memory.Turn question,
                     java.util.List<fr.farmvivi.fluxcord.plugins.aiaudio.memory.Turn> history) {
         RealtimeConversation conversation = conversations.get(guild.getId());
         if (conversation != null) {
@@ -283,6 +292,27 @@ public class RealtimeService {
     private String displayName(Guild guild, String userId) {
         Member member = guild.getMemberById(userId);
         return member == null ? userId : member.getEffectiveName();
+    }
+
+    /**
+     * Remembers a turn, and writes it into the transcript channel when somebody asked for one.
+     *
+     * <p>Engaging diverts the audio away from the local transcriber, so for the whole length of a session it
+     * was the only thing writing anything down and it was no longer hearing. A {@code /transcribe} running at
+     * the time simply went quiet, which reads as the transcription having broken. The hosted service sends
+     * its own transcription of what it hears — the setup asks for it, because this plugin reads it to decide
+     * who was being addressed — so the words exist; they just had nowhere to go.
+     *
+     * <p>Only what people said is written. The bot's own answers are remembered, because the memory is the
+     * conversation and the conversation has two sides, but {@code /transcribe} is a record of the room.
+     */
+    private void rememberAndWriteDown(Guild guild, fr.farmvivi.fluxcord.plugins.aiaudio.memory.Turn turn) {
+        memory.remember(turn);
+        SpeechRecognitionService speech = plugin.getSpeechRecognition();
+        if (speech == null || turn.userId() == null || turn.userId().equals(botUserId())) {
+            return;
+        }
+        speech.outputFor(guild).ifPresent(channel -> speech.post(channel, turn.speaker(), turn.text()));
     }
 
     private String botUserId() {
