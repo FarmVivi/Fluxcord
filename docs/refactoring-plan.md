@@ -505,3 +505,81 @@ a model limit with a partial lever, and one turned into the two features below.
     right for the *fixed* production port (8081 is probed every few seconds by the kubelet, and binding over
     TIME_WAIT sockets after a quick restart is exactly what the option is for), but it fixed nothing in CI
     and the earlier commit message overstates it.
+
+## 2026-10-03 (evening) — a live session with the maintainer, and what it cost to find
+
+Five defects were reported after a real test in Discord. Four were diagnosed from the code and the logs;
+the two that mattered most were only found by watching the bot answer a human being.
+
+- [x] **The sentence that wakes the bot could never make it do anything.** `WakeGate.engage` knew who had
+  spoken — it holds the whole `Turn` — but handed the realtime session the bare text. `speaking` is set only
+  when an audio packet arrives, so between the session opening and the first packet the conversation knew
+  the question and not its asker, and `CommandTools` refuses, correctly, to run a Discord command without
+  somebody whose permissions it can check. "Poubelle, lance de la musique" was answered in words and did
+  nothing; said a second time it worked, which is what made it look intermittent. The live log named it
+  outright: `A command was asked for with no attributed speaker; refusing`, three times in six minutes. The
+  question now travels as a `Turn`, and `WakeGateTest.theQuestionCarriesWhoAskedIt` pins it.
+- [x] **Every follow-up needed the name again**, so the bot answered once and went deaf — while the session
+  stayed open and billed. `WakeGate` documents the opposite ("a follow-up needs no name — which is the whole
+  difference between a bot you talk to and a bot you summon") and `RealtimeConversation` documented and
+  implemented the reverse. Victor's decision: inside an engaged session every sentence is answered. The name
+  test now applies only when `wake_locally` is false, where the session is simply open and nobody has
+  vouched for anything. Both class docs corrected.
+- [x] **`/converse` and `/transcribe` did not survive a restart**, while music playback had since the
+  beginning. New `SessionPersistence`, mirroring the music plugin: rejoin the voice channel, listen again,
+  post where it was posting; `conversation.persistence.{enabled,ttl_seconds}`. Deliberately not restored is
+  the hosted session — it reopens the next time the bot is addressed, and reopening it into an empty room
+  would be paying for silence. An empty channel is not rejoined and a stopped session is not resurrected.
+- [x] **A blank transcription vanished without a trace** — `submit` returned silently — so a listening path
+  that was wholly broken looked exactly like a quiet channel. It is logged now, with the audio's shape.
+- [x] **The whole plugin's debug logging was unreachable.** A plugin's logger is named after its plugin id
+  (`PluginContextImpl`), so it falls outside the `fr.farmvivi.fluxcord` rule in `logback-dev.xml` and lands
+  on root INFO. An evening was spent looking for transcriptions that vanished; they were being logged and
+  dropped. One entry per plugin id added to the dev configuration. **Worth generalising**: any new plugin
+  has the same hole, and nothing warns about it.
+
+### Open, found in the field and not fixed
+
+- [ ] **Gemini closes the session mid-conversation**, twice with different codes: `1007 The audio content
+  type (CONTENT_TYPE_AUDIO) is not supported for this model configuration` and `1011 Internal error
+  occurred.` — both after a dozen successful exchanges on the same settings. No explanation yet, and a
+  plausible mechanism is not a diagnosis. Needs the next occurrence with the now-visible debug logging.
+- [ ] **The wake word is dropped by the transcriber, silently.** Measured: the vocabulary *is* sent
+  (`expecting [Fluxcord, Poubelle]`) and replaying the same audio with the same hint recovers the name 3/3
+  at temperature 0 — yet live it was lost. A general chat model doing ASR is the suspect; a dedicated model
+  is the structural answer. Renaming the bot to a common French word visibly improved it, which is the same
+  finding from the other end: an English name a French transcriber cannot spell is a bot that never wakes,
+  and the failure is completely silent.
+- [ ] **YouTube playback breaks intermittently**: `Must find sig function from script: …/base.js`. The
+  bundled `youtube-source` is behind a YouTube change. Sometimes the iOS client fallback saves the track,
+  sometimes it does not. A dependency bump, not our code.
+- [ ] **The model cannot choose to remember anything.** It can *read* its memory (three recall tools) and
+  everything said is stored automatically, but there is no tool to note a durable fact — so a preference
+  stated once is only ever re-read from the raw transcript. A `remember_fact` / `forget_fact` pair over the
+  plugin's storage is the natural addition. Raised with Victor, not built.
+
+### Audio: a source that talks over music now stops it (2026-10-03)
+
+- [x] **`AudioDuckingChangedEvent` (new, `fluxcord-api`)**, fired by `AudioPipeline` where the fades already
+  start — on the change, never per frame, since 50 frames a second would be a firehose on the audio thread.
+  The pipeline could already turn the other sources down; what it could not do is tell a *player* that it
+  should stop advancing. A ducked song keeps playing, so a twelve-second answer costs the listener twelve
+  seconds of the track. The music plugin now pauses on the event and resumes after, and it learns nothing
+  about the AI plugin — it would behave the same for any future source that outranks it.
+  - **A pause the listener did not cause is never undone**: somebody who ran `/pause` before the bot spoke
+    would otherwise be overruled by a side effect. Only guilds paused by the ducking are resumed.
+- [ ] **Music is dropped, not faded, when a PCM source speaks over it.** `AudioPlayerSendHandler.isOpus()`
+  is true, so with one PCM source active `SendStrategy` bypasses that source and discards the Opus frames
+  for the frame; the fade multiplier only ever reaches PCM sources being mixed. Opus cannot be attenuated
+  without decoding it. In practice the cut lands on a 20 ms boundary and Victor finds it clean, so this is
+  not urgent — but the fade settings (`audio.fade-duration-ms`, `audio.ducking-level`) are inert for music
+  today, which is worth knowing before anybody tunes them.
+  - Victor's question, open: could lavaplayer stay on Opus while it is alone and switch to PCM only when
+    attenuation is needed? The output format belongs to the `AudioPlayerManager` and a track's buffers are
+    allocated in it when the track starts, so this is not a flag flip. The two candidates are restarting the
+    track at its position (audible) or decoding Opus to PCM inside the handler when ducking is on
+    (lavaplayer ships an Opus decoder). Needs its own chantier, not a tail-end change.
+- [ ] **Persistence only survives a graceful stop.** `onDisable` is where both plugins save, so a SIGTERM
+  (a normal Kubernetes redeploy) is covered and an OOM kill is not — and the pod's memory limit is 768Mi.
+  The music plugin has always had this property; the AI plugin now shares it. A periodic save would close
+  the gap for both.
