@@ -23,6 +23,74 @@ class PcmAudioTest {
         return new PcmAudio(pcm.array(), sampleRate, channels).toWav();
     }
 
+    /**
+     * The same file with a chunk size overwritten, for the streaming placeholders servers really send.
+     *
+     * @param wav         a well-formed file
+     * @param chunk       the four-character chunk id to rewrite the size of, or "RIFF" for the total
+     * @param declaredSize the size to claim, as an unsigned 32-bit value
+     */
+    private static byte[] declaring(byte[] wav, String chunk, long declaredSize) {
+        ByteBuffer buffer = ByteBuffer.wrap(wav.clone()).order(ByteOrder.LITTLE_ENDIAN);
+        if ("RIFF".equals(chunk)) {
+            buffer.putInt(4, (int) declaredSize);
+            return buffer.array();
+        }
+        int pos = 12;
+        while (pos + 8 <= wav.length) {
+            String id = new String(wav, pos, 4, java.nio.charset.StandardCharsets.US_ASCII);
+            int size = buffer.getInt(pos + 4);
+            if (id.equals(chunk)) {
+                buffer.putInt(pos + 4, (int) declaredSize);
+                return buffer.array();
+            }
+            pos += 8 + size + (size % 2);
+        }
+        throw new IllegalStateException("no " + chunk + " chunk to rewrite");
+    }
+
+    @Test
+    void aStreamedWavDeclaringAnUnknownSizeIsStillRead() {
+        // Measured against a real Kokoro-FastAPI: it answers chunked and puts 0xFFFFFFFF in both the RIFF
+        // total and the data chunk size, because it does not know them when it starts writing. Read as a
+        // signed int that is -1, which this parser used to refuse outright - so every spoken answer from
+        // that server failed.
+        byte[] streamed = declaring(declaring(wav(24_000, 1, (short) 1, (short) -2, (short) 3),
+                "data", 0xFFFFFFFFL), "RIFF", 0xFFFFFFFFL);
+
+        PcmAudio audio = PcmAudio.fromWav(streamed);
+
+        assertArrayEquals(new short[]{1, -2, 3}, samplesOf(audio), "the samples that are actually there");
+        assertEquals(24_000, audio.sampleRate());
+        assertEquals(1, audio.channels());
+    }
+
+    @Test
+    void aDataChunkClaimingMoreThanItDeliversYieldsWhatItDelivered() {
+        byte[] overclaiming = declaring(wav(24_000, 1, (short) 7, (short) 8), "data", 999_999L);
+
+        assertArrayEquals(new short[]{7, 8}, samplesOf(PcmAudio.fromWav(overclaiming)));
+    }
+
+    @Test
+    void aDataChunkClaimingNothingIsReadAsWhatFollowsIt() {
+        // The other streaming placeholder: zero, because the size was unknown when the header was written.
+        // Believing it would throw away a perfectly good answer.
+        byte[] streamed = declaring(wav(24_000, 1, (short) 7, (short) 8), "data", 0L);
+
+        assertArrayEquals(new short[]{7, 8}, samplesOf(PcmAudio.fromWav(streamed)));
+    }
+
+    @Test
+    void aDataChunkWithNoSamplesAtAllIsRefusedRatherThanReadAsSilence() {
+        // An empty PcmAudio is a valid value for silence, which is the problem: the caller could not tell a
+        // failed synthesis from a model that chose to say nothing.
+        byte[] headerOnly = java.util.Arrays.copyOf(wav(24_000, 1, (short) 7, (short) 8),
+                wav(24_000, 1).length);
+
+        assertThrows(IllegalArgumentException.class, () -> PcmAudio.fromWav(headerOnly));
+    }
+
     private static short[] samplesOf(PcmAudio audio) {
         ByteBuffer buffer = ByteBuffer.wrap(audio.samples()).order(ByteOrder.LITTLE_ENDIAN);
         short[] samples = new short[audio.samples().length / 2];

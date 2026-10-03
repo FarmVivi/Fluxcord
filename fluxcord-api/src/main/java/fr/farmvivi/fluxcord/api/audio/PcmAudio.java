@@ -66,10 +66,10 @@ public record PcmAudio(byte[] samples, int sampleRate, int channels) {
         Format format = null;
         while (buffer.remaining() >= 8) {
             int chunkId = buffer.getInt();
-            int chunkSize = buffer.getInt();
-            if (chunkSize < 0) {
-                throw new IllegalArgumentException("WAV chunk size overflows an int: " + chunkSize);
-            }
+            // Unsigned, because a server that streams its answer does not know the size when it writes the
+            // header and puts 0xFFFFFFFF there. Read as a signed int that is -1, which this parser used to
+            // refuse outright - and a real Kokoro-FastAPI sends exactly that, so every spoken answer failed.
+            long chunkSize = Integer.toUnsignedLong(buffer.getInt());
             if (chunkId == FMT) {
                 format = readFormat(buffer, chunkSize);
             } else if (chunkId == DATA) {
@@ -102,7 +102,7 @@ public record PcmAudio(byte[] samples, int sampleRate, int channels) {
     }
 
     /** Reads a {@code fmt } chunk, refusing anything this class cannot decode. */
-    private static Format readFormat(ByteBuffer buffer, int chunkSize) {
+    private static Format readFormat(ByteBuffer buffer, long chunkSize) {
         int encoding = Short.toUnsignedInt(buffer.getShort());
         int channels = Short.toUnsignedInt(buffer.getShort());
         int sampleRate = buffer.getInt();
@@ -120,14 +120,32 @@ public record PcmAudio(byte[] samples, int sampleRate, int channels) {
         return new Format(sampleRate, channels);
     }
 
-    /** Reads a {@code data} chunk against the format the {@code fmt } chunk announced. */
-    private static PcmAudio readData(ByteBuffer buffer, int chunkSize, Format format) {
+    /**
+     * Reads a {@code data} chunk against the format the {@code fmt } chunk announced.
+     *
+     * <p>The declared size is a hint, not a fact. A server that streams its answer writes the header before
+     * it knows how much audio there will be, and puts a placeholder there — {@code 0xFFFFFFFF} in the one
+     * this was measured against, {@code 0} in others. Both mean "look at what actually arrived", so the
+     * declared size is only ever used to read <em>less</em> than what is present, never to decide there is
+     * nothing.
+     *
+     * <p>What is refused is a chunk carrying no samples at all. An empty {@link PcmAudio} would be a
+     * perfectly valid value for silence, which is exactly the problem: the caller could not tell a failed
+     * synthesis from a model that chose to say nothing.
+     */
+    private static PcmAudio readData(ByteBuffer buffer, long chunkSize, Format format) {
         if (format == null) {
             throw new IllegalArgumentException("WAV data chunk comes before its fmt chunk");
         }
-        // A streamed WAV can declare a size it never delivers; trust what is actually there.
-        int available = Math.min(chunkSize, buffer.remaining());
-        byte[] samples = new byte[available - (available % (BYTES_PER_SAMPLE * format.channels()))];
+        boolean sizeIsUsable = chunkSize > 0 && chunkSize <= buffer.remaining();
+        int available = sizeIsUsable ? (int) chunkSize : buffer.remaining();
+        int usable = available - (available % (BYTES_PER_SAMPLE * format.channels()));
+        if (usable <= 0) {
+            throw new IllegalArgumentException("WAV data chunk carries no samples"
+                    + " (declared " + Long.toUnsignedString(chunkSize) + ", " + buffer.remaining()
+                    + " byte(s) present)");
+        }
+        byte[] samples = new byte[usable];
         buffer.get(samples);
         return new PcmAudio(samples, format.sampleRate(), format.channels());
     }
@@ -156,8 +174,9 @@ public record PcmAudio(byte[] samples, int sampleRate, int channels) {
     }
 
     /** Chunks are word-aligned: an odd size is followed by one padding byte. */
-    private static void skip(ByteBuffer buffer, int bytes) {
-        int total = Math.max(0, Math.min(bytes + Math.abs(bytes % 2), buffer.remaining()));
+    private static void skip(ByteBuffer buffer, long bytes) {
+        long padded = bytes <= 0 ? 0 : bytes + (bytes % 2);
+        int total = (int) Math.min(padded, buffer.remaining());
         buffer.position(buffer.position() + total);
     }
 
