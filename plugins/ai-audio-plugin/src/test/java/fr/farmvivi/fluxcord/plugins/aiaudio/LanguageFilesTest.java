@@ -35,7 +35,8 @@ class LanguageFilesTest {
             "messages.forgot_me", "messages.forgot_channel", "messages.forgot_server",
             "errors.guild_only", "errors.no_voice_channel", "errors.not_connected",
             "errors.nothing_to_say", "errors.text_too_long", "errors.api_key_missing",
-            "errors.synthesis_failed", "errors.cannot_speak", "errors.no_permission",
+            "errors.synthesis_failed", "errors.cannot_speak", "errors.realtime_failed",
+            "errors.no_permission", "messages.converse_started_realtime",
             "errors.already_transcribing", "errors.not_transcribing",
             "commands.persona.description", "commands.persona.show", "commands.persona.set",
             "commands.persona.reset", "commands.persona.option.action", "commands.persona.option.field",
@@ -59,6 +60,7 @@ class LanguageFilesTest {
     private static final Set<String> FORMATTED_KEYS = Set.of(
             "messages.speaking", "messages.forgot_channel", "messages.forgot_server",
             "errors.text_too_long", "errors.synthesis_failed", "errors.cannot_speak",
+            "errors.realtime_failed",
             "messages.persona_shown", "messages.persona_set", "messages.persona_reset",
             "messages.persona_nothing_to_reset", "errors.persona_unknown_field",
             "messages.converse_started_wake_word");

@@ -99,6 +99,21 @@ public final class ConversationPrompt {
     }
 
     /**
+     * The system message on its own, for a path that does not build a message list.
+     *
+     * <p>A realtime session is configured once with its instructions rather than being handed a conversation
+     * each turn, so it needs exactly this and nothing else. Sharing it is what keeps the two paths the same
+     * bot: the persona, the mood, the date and the spoken-reply rules are written in one place.
+     *
+     * @param snapshot who the bot is and how it feels
+     * @param nowMs    the current time, for the date
+     * @return the system message
+     */
+    public static String systemMessageFor(PersonaSnapshot snapshot, long nowMs) {
+        return systemMessage(snapshot.persona(), snapshot.mood(), nowMs);
+    }
+
+    /**
      * Operator-configured only: the persona, the mood, today's date, and how to speak.
      *
      * <p>The date is here because <strong>a model does not know what day it is</strong>, and that turned out

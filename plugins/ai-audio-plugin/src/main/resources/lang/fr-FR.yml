@@ -66,6 +66,7 @@ messages:
   scope_channel: "ce salon vocal"
   converse_started: "J'écoute et je répondrai à voix haute."
   converse_started_wake_word: "J''écoute. Dis “{0}” et je réponds."
+  converse_started_realtime: "J'écoute, et tu peux me couper la parole."
   converse_stopped: "J'arrête de répondre."
 
 errors:
@@ -76,6 +77,7 @@ errors:
   text_too_long: "C''est trop long : {0} caractères au maximum."
   api_key_missing: "Aucune clé d'API IA n'est configurée. Renseignes-en une, ou pointe le plugin vers ton propre serveur."
   synthesis_failed: "Je n''ai pas pu parler : {0}"
+  realtime_failed: "La conversation en direct a échoué : {0}"
   cannot_speak: "J''ai une réponse mais pas de voix : la synthèse vocale ne répond pas ({0}). Vérifie text_to_speech dans ma configuration."
   no_permission: "Tu n'as pas le droit de faire ça."
   already_transcribing: "Je transcris déjà ce serveur."

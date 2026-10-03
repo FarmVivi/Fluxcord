@@ -24,6 +24,7 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
 import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.ConversationService;
 import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.ToolSource;
 import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.WebSearchTools;
+import fr.farmvivi.fluxcord.plugins.aiaudio.realtime.RealtimeService;
 import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaStore;
 
 import java.net.http.HttpClient;
@@ -56,6 +57,7 @@ public class AIAudioPlugin extends AbstractPlugin {
     private ConversationMemory memory;
     private PersonaStore personaStore;
     private ConversationService conversation;
+    private RealtimeService realtime;
     private HttpClient http;
 
     private AiSettings settings = AiSettings.defaults();
@@ -98,6 +100,11 @@ public class AIAudioPlugin extends AbstractPlugin {
             speechRecognition.shutdown();
             speechRecognition = null;
         }
+        if (realtime != null) {
+            // Before the speech service: a conversation that is still open would keep queueing audio.
+            realtime.shutdown();
+            realtime = null;
+        }
         if (conversation != null) {
             conversation.shutdown();
             conversation = null;
@@ -126,12 +133,19 @@ public class AIAudioPlugin extends AbstractPlugin {
         personaStore = new PersonaStore(getStorage(), settings.persona().persona());
         textToSpeech = new TextToSpeechService(this,
                 new OpenAiTextToSpeech(settings.textToSpeech(), http));
+        List<ToolSource> tools = webSearchTools();
         conversation = new ConversationService(this,
                 new OpenAiChatModel(settings.chat().endpoint(), http, settings.chat().temperature(),
                         settings.chat().reasoningEffort(), settings.chat().toolReasoningEffort(),
-                        settings.chat().audio()), memory, webSearchTools());
+                        settings.chat().audio()), memory, tools);
+        realtime = new RealtimeService(this, memory, tools);
         // The transcription service feeds the conversation, so it is built last.
         speechRecognition = new SpeechRecognitionService(this, speechToText(), memory);
+    }
+
+    /** @return the shared HTTP client, which the realtime session builds its WebSocket from */
+    public HttpClient getHttp() {
+        return http;
     }
 
     /**
@@ -296,6 +310,11 @@ public class AIAudioPlugin extends AbstractPlugin {
     }
 
     /** @return the service that answers out loud, or null before {@code onEnable} */
+    /** @return the full-duplex conversations, one per guild; never null once the plugin has loaded */
+    public RealtimeService getRealtime() {
+        return realtime;
+    }
+
     public ConversationService getConversation() {
         return conversation;
     }

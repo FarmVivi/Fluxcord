@@ -140,7 +140,8 @@ class ConversationServiceTest {
                 persona(false),
                 new AiSettings.ChatSettings(local, enabled, wakeWord, 8, 120, 0.7, "none", "low",
                         memoryTools, maxToolRounds, audio, TOOL_TOKENS),
-                AiSettings.WebSearchSettings.disabled());
+                AiSettings.WebSearchSettings.disabled(),
+                AiSettings.RealtimeSettings.disabled());
     }
 
     /**
@@ -163,7 +164,8 @@ class ConversationServiceTest {
                 persona(true),
                 new AiSettings.ChatSettings(local, true, "", 8, 120, 0.7, "none", "low", false, 3,
                         ChatAudio.off(), TOOL_TOKENS),
-                AiSettings.WebSearchSettings.disabled());
+                AiSettings.WebSearchSettings.disabled(),
+                AiSettings.RealtimeSettings.disabled());
     }
 
     /** A service whose model answers {@code reply} and records what it was asked. */

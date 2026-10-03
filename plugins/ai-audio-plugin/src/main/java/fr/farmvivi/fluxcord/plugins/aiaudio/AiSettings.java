@@ -44,7 +44,8 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                          AiEndpoint textToSpeech, String voice, int volume, int priority,
                          int maxTextLength, Duration silence, Duration maxSegment, Duration minSegment,
                          int channelTurns, int serverTurns, int userTurns, PersonaSettings persona,
-                         ChatSettings chat, WebSearchSettings webSearch) {
+                         ChatSettings chat, WebSearchSettings webSearch,
+                         RealtimeSettings realtime) {
 
     private static final String DEFAULT_BASE_URL = "https://api.openai.com/v1";
     /** Shipped defaults, matching {@code config.yml}: named so the two cannot drift apart. */
@@ -123,7 +124,8 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                 Math.max(0, config.getInt("memory.user_turns", DEFAULT_USER_TURNS)),
                 PersonaSettings.from(config),
                 ChatSettings.from(config, timeout),
-                WebSearchSettings.from(config, timeout));
+                WebSearchSettings.from(config, timeout),
+                RealtimeSettings.from(config));
     }
 
     /** @return the settings the plugin runs with before {@code onEnable} has read the configuration */
@@ -138,7 +140,7 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                 Duration.ofMillis(DEFAULT_MIN_SEGMENT_MS),
                 DEFAULT_CHANNEL_TURNS, DEFAULT_SERVER_TURNS, DEFAULT_USER_TURNS,
                 PersonaSettings.defaults(), ChatSettings.defaults(),
-                WebSearchSettings.disabled());
+                WebSearchSettings.disabled(), RealtimeSettings.disabled());
     }
 
     /** @return true when the transcription endpoint is OpenAI's and no key was configured */
@@ -468,6 +470,51 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
          */
         public boolean isUsable() {
             return enabled && !baseUrl.isEmpty();
+        }
+    }
+
+    /**
+     * The full-duplex path: a WebSocket session instead of a turn at a time.
+     *
+     * <p>Off by default, and it is the one capability in this plugin that <strong>nothing has verified against
+     * the real service</strong> — the frames are built from the published event names, covered by tests on this
+     * side only. It is also hosted-only today: no self-hosted server speaks this protocol.
+     *
+     * @param enabled whether {@code /converse} opens a realtime session instead of answering turn by turn
+     * @param url     the service's WebSocket URL, model included
+     * @param apiKey  the bearer token
+     * @param voice   the provider's voice name for the spoken answer
+     */
+    public record RealtimeSettings(boolean enabled, String url, String apiKey, String voice) {
+
+        private static final String DEFAULT_URL = "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1";
+        private static final String DEFAULT_VOICE = "marin";
+
+        public RealtimeSettings {
+            url = url == null ? "" : url.strip();
+            apiKey = apiKey == null ? "" : apiKey.strip();
+            voice = voice == null ? "" : voice.strip();
+        }
+
+        /** @return the settings used when nothing was configured */
+        public static RealtimeSettings disabled() {
+            return new RealtimeSettings(false, DEFAULT_URL, "", DEFAULT_VOICE);
+        }
+
+        static RealtimeSettings from(Configuration config) {
+            return new RealtimeSettings(
+                    config.getBoolean("conversation.realtime.enabled", false),
+                    nonBlank(config.getString("conversation.realtime.url", DEFAULT_URL), DEFAULT_URL),
+                    config.getString("conversation.realtime.api_key", ""),
+                    nonBlank(config.getString("conversation.realtime.voice", DEFAULT_VOICE), DEFAULT_VOICE));
+        }
+
+        /**
+         * @return true when the realtime path should actually be used: switched on, pointed somewhere, and
+         *         holding the key such a service invariably needs
+         */
+        public boolean isUsable() {
+            return enabled && !url.isEmpty() && !apiKey.isEmpty();
         }
     }
 }

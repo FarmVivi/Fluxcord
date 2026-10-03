@@ -106,7 +106,8 @@ class AiAudioCommandsTest {
         return new AiSettings(local, AiSettings.SpeechApi.OPENAI, "fr-FR", local, "alloy", 100, 80, 20,
                 Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 10, 10, 10,
                 AiSettings.PersonaSettings.defaults(), AiSettings.ChatSettings.defaults(),
-                AiSettings.WebSearchSettings.disabled());
+                AiSettings.WebSearchSettings.disabled(),
+                AiSettings.RealtimeSettings.disabled());
     }
 
     /** Same, but pointing at OpenAI without a key — the misconfiguration users hit first. */
@@ -115,7 +116,8 @@ class AiAudioCommandsTest {
         return new AiSettings(hosted, AiSettings.SpeechApi.OPENAI, "fr-FR", hosted, "alloy", 100, 80, 1000,
                 Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 10, 10, 10,
                 AiSettings.PersonaSettings.defaults(), AiSettings.ChatSettings.defaults(),
-                AiSettings.WebSearchSettings.disabled());
+                AiSettings.WebSearchSettings.disabled(),
+                AiSettings.RealtimeSettings.disabled());
     }
 
     private void inVoiceChannel(String name) {

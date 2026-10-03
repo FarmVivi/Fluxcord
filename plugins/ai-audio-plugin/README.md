@@ -435,13 +435,69 @@ even though a pass touches 3B, around 17 GB at Q4, and ROCm is validated on data
 consumer RDNA 2. Until then `hear: true` with `speak: false` is the configuration that runs entirely on a
 local box.
 
+### Full duplex: a session instead of a turn
+
+```yaml
+conversation:
+  realtime:
+    enabled: false
+    url: "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1"
+    api_key: ""
+    voice: "marin"
+```
+
+With this on, `/converse start` opens one WebSocket session for the channel instead of running the four-step
+relay. The service hears continuously and decides itself when somebody has stopped talking, which buys the two
+things a turn cannot: the bot starts answering before the sentence has ended, and **it can be cut off
+mid-word**.
+
+**The problem this had to solve first.** A Realtime session has a single input buffer, while this plugin hears
+each person separately and that attribution is the point of it — the memory is per person, the persona knows who
+it is talking to. Mixing everyone into one stream throws that away. So the audio is shared, and a text item
+*names the speaker whenever the speaker changes*, which keeps attribution at the granularity of an utterance —
+the same granularity the turn-based path works in. The name goes in a user item, never the instructions, for the
+same reason a Discord nickname never does.
+
+Interruption is two things, and the second is the easy one to forget: the service is told to stop generating
+**and** the audio already queued on this side is dropped. Cancelling without clearing leaves the bot finishing a
+sentence the service has already abandoned. `TextToSpeechService.interrupt` exists for exactly this — it clears
+the queue without deregistering the handler, which `stop` does and which would make the core close the voice
+connection.
+
+The memory, the persona, the mood and the tools are the same objects the turn-based path uses. That is what
+`ToolSource` was extracted for: the web and the memory behave identically whichever way the conversation is
+held, and nothing about who the bot is depends on the transport.
+
+**There is no wake word here.** Turn detection belongs to the service, so the bot hears everything said in the
+channel. That is a different social contract from the turn-based path and worth knowing before switching it on.
+
+#### What is not known
+
+**Nothing here has been run against the real service.** The frames are built from the published event names and
+the coverage is on this side only: `RealtimeProtocolTest` pins the exact JSON sent and what each incoming frame
+is taken to mean, `RealtimeConversationTest` pins every decision through a recording link. What no test can show
+from this repository is that OpenAI sends those events under those names.
+
+Two names are known to have moved since the beta, and they are the first place to look if it does not work:
+
+| | Beta | What this code sends and expects |
+| --- | --- | --- |
+| audio from the model | `response.audio.delta` | `response.output_audio.delta` |
+| audio format | flat `input_audio_format: "pcm16"` | nested `session.audio.input.format = {"type": "audio/pcm", "rate": 24000}` |
+
+An unrecognised event is ignored rather than treated as an error — the service has 28 server events and this
+plugin acts on six, so anything else must be harmless or the conversation breaks the day the service gains a
+feature. That is also why the turn-based path stays the default, and why this one needs both a URL and a key
+before it counts as configured.
+
 ## What is next
 
-- **Full-duplex Realtime**, the other half of speech to speech: a WebSocket session instead of a turn, so the
-  bot can be interrupted mid-sentence and answers without waiting for a whole utterance to end. It needs its
-  own transport, its own tool-call plumbing, and an answer to a problem the turn-based path does not have —
-  a Realtime session is one stream, so "who is speaking" is lost unless it is injected separately, and hearing
-  each person separately is the thing this plugin was built around.
+- **Watch the realtime path work against the real service.** Everything else in this plugin was shaped by
+  measuring it — the token budget, the reasoning effort, the date in the prompt, the JSON for the mood — and this
+  is the one capability that has not had that treatment. Expect the first run to find something.
+- **`AiSettings` has outgrown a flat record.** It gained a component in three consecutive pieces of work and
+  every construction site in the tests broke each time. The nested records are right; the top level should be a
+  handful of them rather than seventeen positional components.
 
 ## Tests
 

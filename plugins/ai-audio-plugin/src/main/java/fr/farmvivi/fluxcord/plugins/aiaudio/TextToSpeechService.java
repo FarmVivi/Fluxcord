@@ -102,6 +102,27 @@ public class TextToSpeechService {
     }
 
     /**
+     * Drops whatever is queued without giving up the voice.
+     *
+     * <p>Different from {@link #stop}, and the difference matters: {@code stop} also deregisters the handler,
+     * which makes the core close the voice connection once the guild's pipeline is empty. For an interruption —
+     * somebody talking over the bot — the bot has to fall silent and then keep speaking a moment later, so the
+     * handler has to survive.
+     *
+     * @param guild the guild to cut off
+     * @return true when something was actually queued
+     */
+    public boolean interrupt(Guild guild) {
+        PcmSendHandler handler = handlers.get(guild.getId());
+        if (handler == null) {
+            return false;
+        }
+        boolean wasSpeaking = !handler.isIdle();
+        handler.clear();
+        return wasSpeaking;
+    }
+
+    /**
      * Stops the bot talking in a guild and releases its send handler.
      *
      * @param guild the guild to fall silent in

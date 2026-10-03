@@ -109,7 +109,8 @@ class ServicesTest {
         return new AiSettings(local, AiSettings.SpeechApi.OPENAI, "fr-FR", local, "alloy", 60, 85, 1000,
                 Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 10, 10, 10,
                 AiSettings.PersonaSettings.defaults(), AiSettings.ChatSettings.defaults(),
-                AiSettings.WebSearchSettings.disabled());
+                AiSettings.WebSearchSettings.disabled(),
+                AiSettings.RealtimeSettings.disabled());
     }
 
     /** One second of 24 kHz mono, as a TTS provider would answer. */

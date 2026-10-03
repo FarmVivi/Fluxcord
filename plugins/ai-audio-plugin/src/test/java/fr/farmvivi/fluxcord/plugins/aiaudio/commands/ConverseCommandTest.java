@@ -4,6 +4,8 @@ import fr.farmvivi.fluxcord.api.command.CommandContext;
 import fr.farmvivi.fluxcord.api.language.PluginLanguageAdapter;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AIAudioPlugin;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AiSettings;
+import fr.farmvivi.fluxcord.plugins.aiaudio.TextToSpeechService;
+import fr.farmvivi.fluxcord.plugins.aiaudio.realtime.RealtimeService;
 import fr.farmvivi.fluxcord.plugins.aiaudio.SpeechRecognitionService;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiEndpoint;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.ChatAudio;
@@ -41,6 +43,7 @@ class ConverseCommandTest {
 
     private AIAudioPlugin plugin;
     private ConversationService conversation;
+    private RealtimeService realtime;
     private SpeechRecognitionService speech;
     private CommandContext ctx;
     private Guild guild;
@@ -61,6 +64,9 @@ class ConverseCommandTest {
         when(plugin.getLanguage()).thenReturn(language);
         when(plugin.getLogger()).thenReturn(LoggerFactory.getLogger("converse-test"));
         when(plugin.getConversation()).thenReturn(conversation);
+        realtime = mock(RealtimeService.class);
+        when(plugin.getRealtime()).thenReturn(realtime);
+        when(plugin.getTextToSpeech()).thenReturn(mock(TextToSpeechService.class));
         when(plugin.getSpeechRecognition()).thenReturn(speech);
         when(plugin.getSettings()).thenReturn(settings(true, ""));
 
@@ -101,7 +107,8 @@ class ConverseCommandTest {
                 AiSettings.PersonaSettings.defaults(),
                 new AiSettings.ChatSettings(local, true, "", 8, 120, 0.7, "none", "low", false, 3,
                         audio, 600),
-                AiSettings.WebSearchSettings.disabled());
+                AiSettings.WebSearchSettings.disabled(),
+                AiSettings.RealtimeSettings.disabled());
     }
 
     private AiSettings settings(boolean enabled, String wakeWord, AiEndpoint chat) {
@@ -111,7 +118,8 @@ class ConverseCommandTest {
                 AiSettings.PersonaSettings.defaults(),
                 new AiSettings.ChatSettings(chat, enabled, wakeWord, 8, 120, 0.7, "none", "low", false, 3,
                         ChatAudio.off(), 600),
-                AiSettings.WebSearchSettings.disabled());
+                AiSettings.WebSearchSettings.disabled(),
+                AiSettings.RealtimeSettings.disabled());
     }
 
     /** OpenAI with no key: the misconfiguration users hit first. */
@@ -271,5 +279,31 @@ class ConverseCommandTest {
         run("start");
 
         verify(ctx).replySuccess("messages.converse_started");
+    }
+
+    @Test
+    void aConfiguredRealtimeSessionIsOpenedInsteadOfTheTurnBasedPath() {
+        AiEndpoint local = new AiEndpoint("http://localhost:11434/v1", "", "m", Duration.ofSeconds(5));
+        AiSettings base = settings(true, "", local);
+        when(plugin.getSettings()).thenReturn(new AiSettings(base.speechToText(), base.speechToTextApi(),
+                base.transcriptionLanguage(), base.textToSpeech(), base.voice(), base.volume(),
+                base.priority(), base.maxTextLength(), base.silence(), base.maxSegment(), base.minSegment(),
+                base.channelTurns(), base.serverTurns(), base.userTurns(), base.persona(), base.chat(),
+                base.webSearch(),
+                new AiSettings.RealtimeSettings(true, "wss://example.test/v1/realtime?model=m", "sk-x",
+                        "marin")));
+        when(realtime.start(same(guild), any())).thenReturn(true);
+
+        run("start");
+
+        verify(realtime).start(same(guild), any());
+        verify(conversation, never()).start(any(), any());
+        verify(plugin, never()).getSpeechRecognition();
+        ctxVerifier().replySuccess("messages.converse_started_realtime");
+    }
+
+    /** Reads better than repeating the cast at each call site. */
+    private CommandContext ctxVerifier() {
+        return verify(ctx);
     }
 }

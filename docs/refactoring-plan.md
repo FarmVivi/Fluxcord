@@ -231,44 +231,40 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
     `speak: false` is the fully local configuration.
   - 17 tests (9 on the wire in `OpenAiClientsTest`, 8 on the turn in `ConversationServiceTest`); module 235 ->
     252.
-- [ ] **Full-duplex Realtime**, the other half of what Victor asked for on 2026-09-27 ("les deux : par tour puis
-  realtime"): a WebSocket session rather than a turn, so the bot can be interrupted mid-sentence. Needs its own
-  transport (`java.net.http` has a WebSocket client, so no new dependency), its own tool-call plumbing, and a
-  decision on a problem the turn-based path does not have - a Realtime session is a single stream, so per-user
-  attribution, which this plugin is built around, has to be injected separately or given up.
-- [x] **Web search for `ai-audio-plugin`** (2026-10-02, the backend decided on 2026-09-26). `web_search.*`
-  offers the model one `search_the_web` tool, answered by a self-hosted SearxNG over its JSON API. **No default
-  instance**, at Victor's request and for the obvious reason: a default would quietly send what a voice channel
-  says to somebody else's server, so naming the instance is the same gesture as switching the feature on.
-  - Shape as decided: a `WebSearch` interface with one implementation per API and a `SearchApi` enum selected
-    by config, exactly like `speech_to_text.api`. `ToolSource` was extracted when the second tool group
-    arrived — `ConversationService` dispatches by `handles(name)` instead of growing an `if` per group, and the
-    memory is the only group gated on a config switch.
-  - Hostile input, handled as such: results arrive in a `tool` message stating they are information written by
-    strangers and never instructions, fenced between `--- result N` markers, every value collapsed to one line
-    so an extract cannot forge the end marker and write outside the fence. The page is never fetched.
-  - Measured against a real instance: `format=json` is **off by default** (a fresh SearxNG answers `403`, so
-    both failure paths name `search.formats` in `settings.yml`); `unresponsive_engines` is non-empty on nearly
-    every call of a healthy instance, so it is debug and not failure; `number_of_results` was never sent, so
-    nothing depends on it. 0.6-1.1 s a query.
-  - **Two findings that the feature did not work without, neither of them in the plan.**
-    1. **The model has to be told what day it is.** Both models *refused to search*, certain the event was
-       still in the future. Clean A/B on that one sentence, five attempts each: without it Gemma called 3/5 and
-       answered right 2/5, Qwen 2/5 and 2/5; with it **5/5 and 5/5, both models**. The date now sits in the
-       system message (`ConversationPrompt`), which is where the plugin's own facts belong. Not persuasion — a
-       missing fact: one model called real pages "fictions générées par l'IA" rather than update.
-    2. **A round that offers tools needs its own token budget.** With the 120 of `max_reply_tokens`, Gemma spent
-       *exactly* 120 completion tokens thinking and returned no call and empty content; 200 likewise; only 600
-       produced a call. New `conversation.max_tool_tokens` (600). The effort flag is irrelevant here — `low`,
-       `medium` and omitted all starved identically — so this is a different bug from `reasoning_effort`, found
-       the same way.
-  - **That second finding corrects an earlier entry of this plan.** The "Gemma calls a memory tool only 1 time
-    in 3" figure was measured through a 200-token probe, i.e. the starvation above. Re-measured with the
-    shipped budget: Qwen **4/5**, Gemma **4/5**, both answering from the result. `memory_tools` still defaults
-    to false, but for the honest reason — an extra round costs 3 to 8 seconds — not because the fast model
-    cannot call tools.
-  - 31 tests (16 on the SearxNG client, 11 on the tool, 4 on the dispatch) plus the budget split and the date;
-    module 252 -> 285.
+- [x] **Full-duplex Realtime** (2026-10-03, the second half of what Victor asked for on 2026-09-27).
+  `conversation.realtime.*` makes `/converse start` open one WebSocket session for the channel instead of the
+  four-step relay: the service hears continuously, decides itself when a turn is over, and can be cut off
+  mid-word.
+  - **Split so that what can be tested is tested.** `RealtimeProtocol` is pure functions — frames in, frames
+    out — and carries all the knowledge of the wire; `RealtimeSession` is the socket and nothing else;
+    `RealtimeConversation` holds every decision and is driven in tests through a recording `RealtimeLink`. Same
+    bargain the core makes with `JDADiscordAPI`: the untestable part is small enough to read.
+  - **The single-input-buffer problem, solved by naming the speaker.** A session has one audio buffer while this
+    plugin hears per person, and that attribution is the point of it. The audio is shared and a text item names
+    whoever starts talking, keeping attribution at utterance granularity — what the turn-based path already
+    works in. The name goes in a *user* item, like every other display name.
+  - Interruption is two things: `response.cancel` to the service **and** dropping what is queued here. New
+    `TextToSpeechService.interrupt`, which clears without deregistering — `stop` deregisters, and the core then
+    closes the voice connection, so the bot could not speak again a moment later.
+  - The memory, persona, mood and tools are the same objects as the turn-based path. `ToolSource` earned itself
+    here: the web and the memory work identically over either transport.
+  - **Unverified against the real service, and said so in the README, the config and the class comments.** Two
+    names moved since the beta and are the first place to look: audio deltas are `response.output_audio.delta`
+    (not `response.audio.delta`), and the audio format is a nested
+    `session.audio.input.format = {"type": "audio/pcm", "rate": 24000}` (not a flat `input_audio_format`). An
+    unrecognised event is ignored rather than failed, since the service has 28 and this acts on six.
+  - No new dependency: `java.net.http` has had a WebSocket client since Java 11. The one trap handled in the
+    transport is that **a text frame arrives in pieces** — `onText` is called with `last == false` for every
+    part but the last, and an audio delta is big enough that this is the normal case, so parts are accumulated
+    before parsing.
+  - No wake word on this path: turn detection is the service's, so the bot hears everything in the channel. A
+    different social contract, stated in the README.
+  - 39 tests (19 on the protocol, 16 on the conversation, the command branch); module 302 -> 341.
+- [ ] **`AiSettings` has outgrown a flat record.** It gained a component in three consecutive chantiers and each
+  time every construction site in the tests broke — seven of them this time. The nested records
+  (`ChatSettings`, `PersonaSettings`, `WebSearchSettings`, `RealtimeSettings`) are the right idea; the top-level
+  record should be a handful of those rather than 17 positional components. A builder or a `with*` seam for the
+  tests would make this painless. Worth doing before the next capability is added.
 - [ ] **A SearxNG instance is reachable only from the network it runs on.** The bot in the cluster and a local
   run do not see the same one, so `web_search.base_url` is per-deployment configuration, not a shared default.
   Worth a line in the deployment notes rather than in code.

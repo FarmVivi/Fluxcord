@@ -156,6 +156,24 @@ conversation:
     # the two this plugin can decode.
     format: "wav"
 
+  # Full duplex: one WebSocket session instead of a turn at a time. The service hears continuously and
+  # decides itself when somebody has finished talking, so the bot can start answering before the sentence
+  # ends - and you can cut it off mid-word, which the turn-based path cannot do.
+  #
+  # Two things to know before switching this on. There is no wake word here: the bot hears everything said
+  # in the channel, because turn detection is the service's job and not this plugin's. And the whole path
+  # is UNVERIFIED against the real service - the frames are built from the published event names and
+  # covered by tests on this side only, so nobody has yet watched it work end to end.
+  #
+  # Hosted only today: no self-hosted server speaks this protocol. It needs both a url and an api_key, and
+  # stays off unless it has them.
+  realtime:
+    enabled: false
+    url: "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1"
+    api_key: ""
+    # The provider's voice name for the spoken answer.
+    voice: "marin"
+
 # Letting the model look something up on the web, as a tool call, so it can answer what it does not know
 # instead of answering last year's facts confidently.
 #
