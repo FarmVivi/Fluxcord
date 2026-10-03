@@ -1,6 +1,7 @@
 package fr.farmvivi.fluxcord.core.audio;
 
 import fr.farmvivi.fluxcord.api.audio.AudioService;
+import fr.farmvivi.fluxcord.api.audio.events.AudioDuckingChangedEvent;
 import fr.farmvivi.fluxcord.api.audio.events.AudioFrameMixedEvent;
 import fr.farmvivi.fluxcord.api.audio.events.AudioVolumeChangedEvent;
 import fr.farmvivi.fluxcord.api.event.EventManager;
@@ -304,9 +305,13 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
             if (ducking != null) {
                 if (!ducking.equals(lastActivePluginName)) {
                     startFade(ducking);
+                    // Announced on the change and never per frame: at 50 frames a second, an event per
+                    // frame would be a firehose that no listener could afford to be slow about.
+                    announceDucking(ducking, true);
                 }
             } else if (lastActivePluginName != null) {
                 startFadeIn();
+                announceDucking(lastActivePluginName, false);
             }
             lastActivePluginName = ducking;
 
@@ -448,6 +453,27 @@ public class AudioPipeline implements AudioSendHandler, AudioReceiveHandler {
      *
      * @param activePlugin le plugin qui reste à volume normal
      */
+    /**
+     * Tells the plugins that a priority source took the floor, or gave it back.
+     *
+     * <p>Turning the others down is all this class can do for them, and for a music player it is not enough:
+     * a track nobody can hear is still running, so the listener loses the seconds the answer covered. Only
+     * the player can pause, and this is how it learns that it should.
+     *
+     * <p>Never allowed to throw. This runs inside {@code canProvide}, on the audio thread, and an exception
+     * here would take the whole frame down over a listener's bug.
+     */
+    private void announceDucking(String duckingPlugin, boolean ducking) {
+        if (eventManager == null) {
+            return;
+        }
+        try {
+            eventManager.fireEvent(new AudioDuckingChangedEvent(guild, duckingPlugin, ducking));
+        } catch (RuntimeException e) {
+            logger.warn("A ducking listener failed in guild {}: {}", guild.getId(), e.getMessage());
+        }
+    }
+
     private void startFade(String activePlugin) {
         for (String pluginName : sendHandlers.keySet()) {
             if (!pluginName.equals(activePlugin)) {

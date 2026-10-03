@@ -36,6 +36,8 @@ import java.util.concurrent.ScheduledExecutorService;
 public class MusicPlugin extends AbstractPlugin {
 
     private MusicManager musicManager;
+    /** Pauses the track while a higher-priority source is talking, so none of it is missed. */
+    private DuckingPauseListener duckingPause;
     private PlaylistManager playlistManager;
     private ScheduledExecutorService scheduler;
 
@@ -80,6 +82,11 @@ public class MusicPlugin extends AbstractPlugin {
         } catch (Exception e) {
             logger.warn("Failed to register JDA listeners for MusicPlugin", e);
         }
+
+        // Pause the track while something more important is talking. On the internal bus, not JDA's: this is
+        // the core telling its plugins what it is doing with their audio.
+        duckingPause = new DuckingPauseListener(getId(), musicManager);
+        eventManager.registerListener(duckingPause, this);
 
         logger.info("Music Plugin enabled successfully!");
     }
@@ -152,7 +159,12 @@ public class MusicPlugin extends AbstractPlugin {
         getCommands().registerCommand(builder -> {
             builder.name(name)
                     .description(text("music.command." + name + ".description"))
-                    .category("Music");
+                    .category("Music")
+                    // Ephemeral by default: these answers are acknowledgements - "paused", "volume set",
+                    // "removed" - that say nothing to anybody but the person who ran them, and a channel
+                    // used for an evening of music ends up being mostly them. A command whose answer the
+                    // room wants turns it back off; "play" is the one that does.
+                    .ephemeral(true);
             configurer.accept(builder);
         });
     }
@@ -165,6 +177,9 @@ public class MusicPlugin extends AbstractPlugin {
     private void registerCommands() {
         musicCommand("play", builder -> {
             builder
+                    // The one answer the room wants: what was just queued, and by whom. Hiding it would
+                    // leave everybody else wondering where the music came from.
+                    .ephemeral(false)
                     .permission(permissionKey(PERM_PLAY))
                     .aliases("p")
                     .stringOption("query", text("music.command.play.option.query"), true, this::suggestRecentTracks)
