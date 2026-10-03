@@ -112,9 +112,29 @@ is the whole point of the OpenAI shape.
 | a long four-clause answer | 12.7 s | 5.0 s |
 
 Steady at **2.4 to 2.5× realtime** with no warm-up penalty after the first call, which is what makes CPU
-synthesis usable here: a one-sentence answer is spoken about a second and a half after the model finishes it.
+synthesis usable at all: a one-sentence answer is spoken about a second and a half after the model finishes it.
 The answer comes back as 24 kHz mono 16-bit WAV with a 16-byte `fmt` chunk, which `PcmAudio` reads directly and
 resamples to what Discord takes.
+
+**A GPU makes it eight times faster and barely takes any of the card.** The same four sentences through the CUDA
+image on a laptop RTX 2060 Max-Q — an unremarkable 6 GB card:
+
+| What is said | On CPU | On the RTX 2060 |
+| --- | --- | --- |
+| short sentence | 0.83 s | 0.40 s |
+| one typical answer | 1.6 s | **0.22 s** |
+| two sentences | 1.8 s | 0.23 s |
+| a long four-clause answer | 5.0 s | 0.56 s |
+| warm, same sentence ×3 | 1.55 / 1.58 / 1.62 s | 0.19 / 0.18 / 0.25 s |
+
+**15 to 22× realtime, in under 1 GB of VRAM** (939 MiB with the model loaded, 57 % utilisation during a
+request). That last number is the one that decides it: on a 12 GB card, synthesis takes less than a twelfth of
+it and leaves the rest for the language model. Quality is identical — the round trip below transcribes the GPU
+output just as exactly.
+
+So the useful shape, on one machine with one card: the LLM gets the VRAM, the voice gets a sliver of it, and a
+spoken answer starts about two tenths of a second after the model stops thinking instead of a second and a
+half.
 
 **The French voice really is French**, checked the only way possible from outside a voice channel — by sending
 Kokoro's output back through transcription. Three French sentences synthesised with `ff_siwis`, resampled to
@@ -147,8 +167,12 @@ the RDNA 2 cards ROCm treats as unsupported (gfx1031, which covers the RX 6700 s
 - ROCm does not list it as officially supported; the usual workaround is
   `HSA_OVERRIDE_GFX_VERSION=10.3.0` in the server's environment, which makes it present itself as the
   supported gfx1030.
-- For **speech synthesis**, a GPU is not worth it: Piper and Kokoro run comfortably on CPU and answer in
-  well under a second. Keep the card for the LLM.
+- For **speech synthesis**, a GPU is worth it and costs almost nothing to give — see the measurements below.
+  An earlier version of this file said the opposite ("not worth it, keep the card for the LLM"); that was
+  reasoning rather than measuring, and it was wrong on both counts.
+- The ROCm image is `ghcr.io/remsky/kokoro-fastapi-rocm:latest`, run with
+  `--device=/dev/kfd --device=/dev/dri --group-add video`. It is marked experimental and x86_64 only. Combine it
+  with the `HSA_OVERRIDE_GFX_VERSION=10.3.0` above for a gfx1031 card.
 
 Raise `request.timeout_seconds` when a model shares the card with something else — a cold first request on
 a loaded GPU can take a long time.

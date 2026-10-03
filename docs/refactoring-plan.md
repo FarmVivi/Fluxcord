@@ -307,7 +307,17 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
     which is the voice's own quality rather than a misconfiguration.
   - Two behaviours worth not rediscovering: an unknown voice is refused with **HTTP 400 and the list of real
     ones** rather than silently substituted, and `/v1/audio/voices` returns objects, not strings.
-  - One spoken turn on that hardware: ~0.45 s to transcribe, 0.5-3 s for the model, ~1.4 s to synthesise.
+  - One spoken turn on CPU: ~0.45 s to transcribe, 0.5-3 s for the model, ~1.4 s to synthesise.
+  - **And a GPU is worth it after all** (2026-10-03, measured at Victor's prompting): the CUDA image on a laptop
+    RTX 2060 Max-Q does **15-22x realtime** - 0.22 s for a typical answer against 1.6 s on CPU, eight times
+    faster - in **under 1 GB of VRAM** (939 MiB loaded). The README said the opposite ("a GPU is not worth it
+    for synthesis, keep the card for the LLM") and that line was reasoning rather than measurement; it is
+    corrected, with both tables. The VRAM figure is what settles it: on a 12 GB card the voice takes a twelfth
+    and leaves the rest to the model. Quality is identical - the round trip transcribes the GPU output just as
+    exactly.
+  - For the AMD box in production: `ghcr.io/remsky/kokoro-fastapi-rocm:latest`, run with
+    `--device=/dev/kfd --device=/dev/dri --group-add video`, marked experimental and x86_64 only, plus the
+    `HSA_OVERRIDE_GFX_VERSION=10.3.0` that an unsupported gfx1031 needs anyway. Not measured - no AMD card here.
 - [ ] The audit checklist built from all these plugins lives in `.claude/skills/fluxcord-plugin-dev/SKILL.md` ("Audit checklist for a generated plugin"): language wrapper, config keys read vs declared, framework features reimplemented by hand, permission names, lifecycle ordering, dependency scopes, dead/lying code, untestable inner classes, missing test setup.
 - [ ] In `music-plugin` the untested mass is now `MusicPlayerMessage` alone, plus the network-facing parts of `AudioPlayerManager` (source clients) and the JDA voice glue in `MusicPlayer`.
 
