@@ -200,6 +200,32 @@ class OpenAiClientsTest {
     }
 
     @Test
+    void wordsNoSpeechModelCouldGuessAreSentAsWhisperCallsThem() {
+        // "Fluxcord" comes back as "flux cord" however clearly it is said; naming it first is the only
+        // lever there is, and "prompt" is the field documented for it.
+        answer("/v1/audio/transcriptions", 200, "application/json",
+                "{\"text\":\"Fluxcord\"}".getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiSpeechToText(endpoint("sk-test", "whisper-1"), http)
+                .transcribe(new PcmAudio(new byte[3200], 16_000, 1), "fr", List.of("Fluxcord", "TARDIS"));
+
+        String body = new String(lastBody.get(), StandardCharsets.ISO_8859_1);
+        assertTrue(body.contains("name=\"prompt\""), body.substring(0, Math.min(600, body.length())));
+        assertTrue(body.contains("Fluxcord, TARDIS"), "a plain list, which is cheaper than a sentence");
+    }
+
+    @Test
+    void nothingToSpellOutMeansNoPromptFieldAndNoWastedContext() {
+        answer("/v1/audio/transcriptions", 200, "application/json",
+                "{\"text\":\"hello\"}".getBytes(StandardCharsets.UTF_8));
+
+        new OpenAiSpeechToText(endpoint("sk-test", "whisper-1"), http)
+                .transcribe(new PcmAudio(new byte[3200], 16_000, 1), "fr");
+
+        assertFalse(new String(lastBody.get(), StandardCharsets.ISO_8859_1).contains("name=\"prompt\""));
+    }
+
+    @Test
     void anAutomaticLanguageSendsNoLanguageFieldAtAll() {
         answer("/v1/audio/transcriptions", 200, "application/json",
                 "{\"text\":\"hello\"}".getBytes(StandardCharsets.UTF_8));
@@ -300,6 +326,23 @@ class OpenAiClientsTest {
         assertEquals("RIFF", new String(decoded, 0, 4, StandardCharsets.US_ASCII));
         assertTrue(message.get("content").getAsString().contains("fr"),
                 "naming the language helps a general-purpose model");
+    }
+
+    @Test
+    void ollamaTranscriptionIsToldTheNamesItCouldNotGuess() {
+        answer("/api/chat", 200, "application/json",
+                "{\"message\":{\"content\":\"Fluxcord\"}}".getBytes(StandardCharsets.UTF_8));
+
+        new OllamaSpeechToText(ollamaEndpoint("gemma4:e4b-it-qat"), http)
+                .transcribe(new PcmAudio(new byte[3200], 16_000, 1), "fr", List.of("Fluxcord", "TARDIS"));
+
+        String instruction = JsonParser.parseString(new String(lastBody.get(), StandardCharsets.UTF_8))
+                .getAsJsonObject().getAsJsonArray("messages").get(0).getAsJsonObject()
+                .get("content").getAsString();
+        assertTrue(instruction.contains("Fluxcord, TARDIS"), instruction);
+        // Words that may occur, not words to prefer: told to prefer them, a chat model starts putting
+        // them into sentences that never contained them.
+        assertTrue(instruction.contains("may occur"), instruction);
     }
 
     @Test

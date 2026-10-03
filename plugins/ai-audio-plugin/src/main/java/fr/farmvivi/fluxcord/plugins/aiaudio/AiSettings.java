@@ -9,6 +9,7 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.persona.Persona;
 import org.slf4j.Logger;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -55,9 +56,11 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
      *                   still transcribed
      * @param minSegment utterances shorter than this are dropped rather than sent - a cough costs a request
      *                   otherwise
+     * @param vocabulary words the provider is told to expect, for names no speech model can guess
      */
     public record TranscriptionSettings(AiEndpoint endpoint, SpeechApi api, String language,
-                                        Duration silence, Duration maxSegment, Duration minSegment) {
+                                        Duration silence, Duration maxSegment, Duration minSegment,
+                                        List<String> vocabulary) {
 
         /**
          * Keeps the one invariant the segmenter depends on: an utterance has to be allowed to last longer
@@ -67,6 +70,13 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
             if (maxSegment.compareTo(silence) <= 0) {
                 maxSegment = silence.multipliedBy(10);
             }
+            vocabulary = vocabulary == null ? List.of() : List.copyOf(vocabulary);
+        }
+
+        /** Transcription with nothing to spell out, which is what every caller wanted before there was. */
+        public TranscriptionSettings(AiEndpoint endpoint, SpeechApi api, String language,
+                                     Duration silence, Duration maxSegment, Duration minSegment) {
+            this(endpoint, api, language, silence, maxSegment, minSegment, List.of());
         }
     }
 
@@ -136,7 +146,8 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
                                 config.getInt("transcription.max_segment_seconds", DEFAULT_MAX_SEGMENT_SECONDS),
                                 DEFAULT_MAX_SEGMENT_SECONDS, "transcription.max_segment_seconds", logger)),
                         Duration.ofMillis(Math.max(0,
-                                config.getInt("transcription.min_segment_ms", DEFAULT_MIN_SEGMENT_MS)))),
+                                config.getInt("transcription.min_segment_ms", DEFAULT_MIN_SEGMENT_MS))),
+                        config.getStringList("speech_to_text.vocabulary", List.of())),
                 new SpeechSettings(tts,
                         nonBlank(config.getString("text_to_speech.voice", DEFAULT_VOICE), DEFAULT_VOICE),
                         clamp(config.getInt("text_to_speech.volume", AudioService.DEFAULT_VOLUME),
@@ -308,7 +319,7 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
 
         private static final String DEFAULT_CHAT_MODEL = "gpt-4o-mini";
         private static final int DEFAULT_HISTORY_TURNS = 8;
-        private static final int DEFAULT_MAX_REPLY_TOKENS = 120;
+        private static final int DEFAULT_MAX_REPLY_TOKENS = 220;
         private static final int DEFAULT_MAX_TOOL_ROUNDS = 3;
         /**
          * Measured, and the reason this is a separate setting: with the 120 of
@@ -439,7 +450,7 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
         /** @return the persona the plugin runs with before the configuration has been read */
         public static PersonaSettings defaults() {
             return new PersonaSettings(
-                    new Persona("Fluxcord", java.util.List.of(), "neutre", Locale.FRANCE, ""),
+                    new Persona("Fluxcord", List.of(), "neutre", Locale.FRANCE, ""),
                     true, DEFAULT_ENERGY_PER_TURN, true, DEFAULT_MOOD_WEIGHT);
         }
 
@@ -453,9 +464,9 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
             return energyPerTurnBasis / 100.0;
         }
 
-        private static java.util.List<String> traits(String configured) {
+        private static List<String> traits(String configured) {
             if (configured == null || configured.isBlank()) {
-                return java.util.List.of();
+                return List.of();
             }
             return java.util.Arrays.stream(configured.split(",")).map(String::strip)
                     .filter(trait -> !trait.isEmpty()).toList();

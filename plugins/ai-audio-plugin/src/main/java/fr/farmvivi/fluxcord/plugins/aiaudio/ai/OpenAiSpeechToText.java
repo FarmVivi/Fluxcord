@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /**
  * Speech-to-text over {@code POST /audio/transcriptions}, the OpenAI Whisper endpoint.
@@ -33,11 +34,11 @@ public class OpenAiSpeechToText implements SpeechToText {
     }
 
     @Override
-    public String transcribe(PcmAudio audio, String language) {
+    public String transcribe(PcmAudio audio, String language, List<String> vocabulary) {
         if (audio == null || audio.isEmpty()) {
             throw new IllegalArgumentException("audio is required");
         }
-        byte[] body = multipartBody(audio.toWav(), language);
+        byte[] body = multipartBody(audio.toWav(), language, vocabulary);
 
         HttpRequest request = AiHttp.request(endpoint, "/audio/transcriptions")
                 .header("Content-Type", "multipart/form-data; boundary=" + BOUNDARY)
@@ -53,7 +54,7 @@ public class OpenAiSpeechToText implements SpeechToText {
      * Builds the {@code multipart/form-data} body by hand: the JDK client has no multipart publisher,
      * and a WAV plus three short fields does not justify a dependency.
      */
-    private byte[] multipartBody(byte[] wav, String language) {
+    private byte[] multipartBody(byte[] wav, String language, List<String> vocabulary) {
         ByteArrayOutputStream out = new ByteArrayOutputStream(wav.length + 512);
         writeField(out, "model", endpoint.model());
         writeField(out, "response_format", "json");
@@ -61,12 +62,32 @@ public class OpenAiSpeechToText implements SpeechToText {
         if (!code.isEmpty()) {
             writeField(out, "language", code);
         }
+        // Whisper's documented use for "prompt": words it should be ready to hear. A plain comma-separated
+        // list works, and is cheaper than a sentence - the prompt is charged as context on every request.
+        String hint = hint(vocabulary);
+        if (!hint.isEmpty()) {
+            writeField(out, "prompt", hint);
+        }
         write(out, "--" + BOUNDARY + "\r\n"
                 + "Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n"
                 + "Content-Type: audio/wav\r\n\r\n");
         out.writeBytes(wav);
         write(out, "\r\n--" + BOUNDARY + "--\r\n");
         return out.toByteArray();
+    }
+
+    /**
+     * @return the vocabulary as the provider wants it, or an empty string when there is nothing to say
+     */
+    static String hint(List<String> vocabulary) {
+        if (vocabulary == null || vocabulary.isEmpty()) {
+            return "";
+        }
+        return vocabulary.stream()
+                .filter(word -> word != null && !word.isBlank())
+                .map(String::trim)
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("");
     }
 
     private void writeField(ByteArrayOutputStream out, String name, String value) {

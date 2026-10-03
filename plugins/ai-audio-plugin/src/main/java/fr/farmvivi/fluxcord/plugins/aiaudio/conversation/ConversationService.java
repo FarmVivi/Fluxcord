@@ -56,6 +56,8 @@ public class ConversationService {
     private final java.util.Map<String, MessageChannel> outputs = new ConcurrentHashMap<>();
     /** Guilds already told that the bot cannot speak, so the warning is said once and not once a sentence. */
     private final Set<String> warned = ConcurrentHashMap.newKeySet();
+    /** Guilds where starting this conversation is also what started the transcription. */
+    private final Set<String> ownsListening = ConcurrentHashMap.newKeySet();
 
     public ConversationService(AIAudioPlugin plugin, ChatModel model, ConversationMemory memory) {
         this(plugin, model, memory, System::currentTimeMillis, List.of());
@@ -123,6 +125,27 @@ public class ConversationService {
     }
 
     /**
+     * Records that this conversation is what started the transcription in a guild.
+     *
+     * <p>The bot cannot answer what it does not hear, so starting a conversation starts listening too - and
+     * what a command switched on, the matching command has to switch off again. Somebody who asked for the
+     * written record separately keeps it: only the listening this conversation started is claimed here.
+     *
+     * @param guild the guild whose transcription was started along with the conversation
+     */
+    public void ownListening(Guild guild) {
+        ownsListening.add(guild.getId());
+    }
+
+    /**
+     * @param guild the guild to look at
+     * @return true when stopping this conversation should stop the transcription as well
+     */
+    public boolean ownsListening(Guild guild) {
+        return ownsListening.contains(guild.getId());
+    }
+
+    /**
      * Stops answering in a guild.
      *
      * @return false when it was not answering there
@@ -130,6 +153,7 @@ public class ConversationService {
     public boolean stop(Guild guild) {
         outputs.remove(guild.getId());
         warned.remove(guild.getId());
+        ownsListening.remove(guild.getId());
         return activeGuilds.remove(guild.getId());
     }
 

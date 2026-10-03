@@ -12,6 +12,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.List;
 
 /**
  * Transcription by asking a multimodal model directly, over Ollama's {@code /api/chat}.
@@ -59,7 +60,7 @@ public class OllamaSpeechToText implements SpeechToText {
     }
 
     @Override
-    public String transcribe(PcmAudio audio, String language) {
+    public String transcribe(PcmAudio audio, String language, List<String> vocabulary) {
         if (audio == null || audio.isEmpty()) {
             throw new IllegalArgumentException("audio is required");
         }
@@ -68,7 +69,7 @@ public class OllamaSpeechToText implements SpeechToText {
 
         JsonObject message = new JsonObject();
         message.addProperty("role", "user");
-        message.addProperty(CONTENT, instructionFor(language));
+        message.addProperty(CONTENT, instructionFor(language, vocabulary));
         // Not "audio": Ollama carries every medium in "images", and an "audio" field is ignored in
         // silence - the model then replies that it received nothing to transcribe.
         message.add("images", media);
@@ -96,9 +97,19 @@ public class OllamaSpeechToText implements SpeechToText {
     }
 
     /** Naming the language helps a general model; {@code auto} lets it decide. */
-    private String instructionFor(String language) {
+    private String instructionFor(String language, List<String> vocabulary) {
+        StringBuilder out = new StringBuilder(INSTRUCTION);
         String code = OpenAiSpeechToText.languageCode(language);
-        return code.isEmpty() ? INSTRUCTION : INSTRUCTION + " The audio is in " + code + ".";
+        if (!code.isEmpty()) {
+            out.append(" The audio is in ").append(code).append('.');
+        }
+        // Spelled out as words that may occur rather than as words to prefer: told to prefer them, a chat
+        // model starts putting them in sentences that never contained them.
+        String hint = OpenAiSpeechToText.hint(vocabulary);
+        if (!hint.isEmpty()) {
+            out.append(" These names may occur, spelled exactly like this: ").append(hint).append('.');
+        }
+        return out.toString();
     }
 
     private String readContent(byte[] response) {

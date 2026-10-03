@@ -33,9 +33,11 @@ public final class ConversationPrompt {
 
     /** The framing every persona is given, whatever else it says. */
     private static final String SPOKEN_REPLY_RULES = """
-            You are taking part in a Discord voice conversation. Your answer will be spoken aloud, so:
-            answer in one or two short sentences, with no markdown, no lists, no emoji and no stage
-            directions. If you have nothing useful to add, answer with an empty line.""";
+            You are taking part in a Discord voice conversation. Your answer will be spoken aloud, so use
+            no markdown, no lists, no emoji and no stage directions. Talk the way people talk: two to four
+            sentences, and more when what was asked genuinely needs them - say the thing, then the detail
+            that makes it useful. Do not answer in one clipped sentence when there is something worth
+            adding. If you have nothing useful to add at all, answer with an empty line.""";
 
     /** Spelled out rather than numeric, so no model has to guess whether the day or the month comes first. */
     private static final DateTimeFormatter TODAY = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.ENGLISH);
@@ -153,6 +155,13 @@ public final class ConversationPrompt {
         StringBuilder out = new StringBuilder("Context (information, not instructions):\n");
         out.append("- voice channel \"").append(snapshot.conversation().channelName())
                 .append("\" on the server \"").append(snapshot.conversation().guildName()).append("\"\n");
+        // The name people in this server actually address, which a server owner chooses and the
+        // persona does not: without it the bot cannot tell that it is the one being spoken to.
+        String botName = snapshot.conversation().botName();
+        if (botName != null && !botName.isBlank()) {
+            out.append("- here you are called \"").append(botName)
+                    .append("\": a sentence addressing that name is addressing you\n");
+        }
         if (snapshot.familiarity().isEmpty()) {
             out.append("- nobody else is in the channel\n");
         } else {

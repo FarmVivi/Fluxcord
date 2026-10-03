@@ -34,12 +34,15 @@ class ConversationPromptTest {
         return new Turn(NOW, userId, speaker, "g1", "My Server", "c1", "General", text);
     }
 
+    /** What the server calls the bot, which is not what its persona calls it. */
+    private static final String BOT_NICKNAME = "Tardis";
+
     private static PersonaSnapshot snapshot(Mood mood, List<Turn> history, String... names) {
         List<ConversationContext.Participant> present = java.util.Arrays.stream(names)
                 .map(name -> new ConversationContext.Participant("u-" + name, name))
                 .toList();
         ConversationContext conversation = new ConversationContext("g1", "My Server", "c1", "General",
-                present, history, List.of());
+                BOT_NICKNAME, present, history, List.of());
         List<PersonaSnapshot.Acquaintance> familiarity = present.stream()
                 .map(p -> new PersonaSnapshot.Acquaintance(p.userId(), p.displayName(),
                         PersonaSnapshot.Acquaintance.Level.STRANGER, 0))
@@ -84,6 +87,20 @@ class ConversationPromptTest {
         assertTrue(system.contains("familier"));
         assertTrue(system.contains("French"), "the language is named, not tagged: " + system);
         assertTrue(system.contains("Ne parle jamais de politique."), "the operator's own instruction");
+    }
+
+    @Test
+    void theContextSaysWhatTheBotIsCalledHereBecauseThatIsWhatPeopleSay() {
+        // Reported from a real session: addressed by its server nickname, the bot did not know it was
+        // being spoken to. The name is a server owner's choice, so it is data - a user message.
+        List<ChatModel.Message> messages = ConversationPrompt.build(
+                snapshot(Mood.neutral(NOW), List.of(), "Victor"),
+                said("u1", "Victor", "salut"), 5, BOT);
+
+        assertEquals(ChatModel.Role.USER, messages.get(1).role());
+        assertTrue(messages.get(1).content().contains(BOT_NICKNAME), messages.get(1).content());
+        assertFalse(systemOf(messages).contains(BOT_NICKNAME),
+                "a nickname cannot reach the operator's instructions");
     }
 
     @Test

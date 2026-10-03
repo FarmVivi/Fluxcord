@@ -10,9 +10,10 @@ import java.util.Optional;
 /**
  * {@code /converse <start|stop>} — lets the bot answer out loud what is said in the voice channel.
  *
- * <p>Starting a conversation starts transcription too: the bot cannot answer what it does not hear. Stopping
- * leaves the transcription running, since writing down a conversation without taking part in it is a perfectly
- * reasonable thing to want.
+ * <p>Starting a conversation starts transcription too: the bot cannot answer what it does not hear — and
+ * stopping it stops that transcription again, because a bot told to stop conversing has visibly not stopped
+ * while it still writes down every sentence. Transcription asked for on its own, with {@code /transcribe},
+ * survives: only what this command started is taken away.
  */
 public class ConverseCommand extends AiAudioCommand {
 
@@ -36,8 +37,13 @@ public class ConverseCommand extends AiAudioCommand {
         Guild guild = optGuild.get();
 
         if (STOP.equalsIgnoreCase(action)) {
+            // Asked before stopping, because stopping is what releases the claim.
+            boolean ourListening = plugin.getConversation().ownsListening(guild);
             // Either path may be the one that is running, and stopping the other is a no-op.
             boolean stopped = plugin.getRealtime().stop(guild) | plugin.getConversation().stop(guild);
+            if (ourListening) {
+                plugin.getSpeechRecognition().stop(guild);
+            }
             plugin.getTextToSpeech().interrupt(guild);
             ctx.replySuccess(text(ctx, stopped ? "messages.converse_stopped" : "errors.not_conversing"));
             return;
@@ -66,12 +72,16 @@ public class ConverseCommand extends AiAudioCommand {
             return;
         }
         // Answering requires hearing: starting transcription here saves running two commands, and starting it
-        // twice is harmless.
-        plugin.getSpeechRecognition().start(guild, ctx.getChannel());
+        // twice is harmless. Whether this command is the one that started it decides whether /converse stop
+        // may stop it again.
+        boolean startedListening = plugin.getSpeechRecognition().start(guild, ctx.getChannel());
 
         if (!plugin.getConversation().start(guild, ctx.getChannel())) {
             ctx.replyError(text(ctx, "errors.already_conversing"));
             return;
+        }
+        if (startedListening) {
+            plugin.getConversation().ownListening(guild);
         }
         String wakeWord = plugin.getSettings().chat().wakeWord();
         ctx.replySuccess(wakeWord.isEmpty()

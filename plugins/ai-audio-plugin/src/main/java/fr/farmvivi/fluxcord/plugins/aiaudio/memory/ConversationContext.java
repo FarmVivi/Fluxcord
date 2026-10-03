@@ -20,13 +20,25 @@ import java.util.List;
  * @param guildName   the server's name
  * @param channelId   the voice channel's id
  * @param channelName the voice channel's name
+ * @param botName     what the bot itself is called in this server, or null when it cannot be resolved
  * @param present     who is in the voice channel right now, the bot excluded
  * @param channelTurns what was said in this channel, oldest first
  * @param serverTurns  what was said in this server across its channels, oldest first
  */
 public record ConversationContext(String guildId, String guildName, String channelId, String channelName,
-                                  List<Participant> present, List<Turn> channelTurns,
+                                  String botName, List<Participant> present, List<Turn> channelTurns,
                                   List<Turn> serverTurns) {
+
+    /**
+     * A conversation in a server that does not say what the bot is called there.
+     *
+     * <p>Kept because the name is an addition: everything that only cares about the place and the history
+     * was written before the bot knew its own nickname, and does not have one to pass.
+     */
+    public ConversationContext(String guildId, String guildName, String channelId, String channelName,
+                               List<Participant> present, List<Turn> channelTurns, List<Turn> serverTurns) {
+        this(guildId, guildName, channelId, channelName, null, present, channelTurns, serverTurns);
+    }
 
     /**
      * Takes a snapshot of a voice channel.
@@ -45,9 +57,23 @@ public record ConversationContext(String guildId, String guildName, String chann
                 .map(Participant::of)
                 .toList();
         return new ConversationContext(guildId, channel.getGuild().getName(),
-                channel.getId(), channel.getName(), present,
+                channel.getId(), channel.getName(), selfName(channel), present,
                 memory.channelHistory(guildId, channel.getId(), channelLimit),
                 memory.serverHistory(guildId, serverLimit));
+    }
+
+    /**
+     * What the bot is called in this server.
+     *
+     * <p>A guild may rename it, and people in the channel then address that name and no other - so a bot
+     * that does not know it cannot tell that it is the one being spoken to. Resolved from JDA's own cache,
+     * never over REST: this runs on the way to a model call.
+     *
+     * @return the name, or null when the member is not cached
+     */
+    private static String selfName(AudioChannel channel) {
+        Member self = channel.getGuild().getSelfMember();
+        return self == null ? null : self.getEffectiveName();
     }
 
     /** @return true when there is nobody to talk to */

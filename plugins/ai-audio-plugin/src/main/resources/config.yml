@@ -32,6 +32,15 @@ speech_to_text:
   # accurate on short sentences.
   language: "auto"
 
+  # Words the transcriber cannot be expected to guess: a bot name, a server's jargon, a nickname, a
+  # fandom term. A speech model writes down the nearest word it believes exists, so "Fluxcord" comes
+  # back as "flux cord" however clearly it was said, and saying it again does not help.
+  #
+  # With api: OPENAI the list is sent as Whisper's "prompt" field, which is documented for this. With
+  # api: OLLAMA the model is told the words. Both cost context on every request, so keep the list to
+  # the names that actually come up -- a few dozen, not a dictionary.
+  vocabulary: []
+
 # Text to speech: the bot's own voice.
 text_to_speech:
   base_url: "${AI_AUDIO_TTS_URL:https://api.openai.com/v1}"
@@ -113,8 +122,11 @@ conversation:
   # How many earlier turns of the channel the model is shown. More context costs latency and tokens.
   history_turns: 8
 
-  # Longest answer to ask for. A spoken reply wants a short one.
-  max_reply_tokens: 120
+  # Longest answer to ask for. A spoken reply wants a short one, but not a clipped one: at 120 the model
+  # ran out of budget mid-thought on anything that needed an explanation, and the symptom was a bot that
+  # sounded curt rather than one that had been cut off. Latency grows with the tokens actually produced,
+  # so only the answers that are genuinely longer pay for this.
+  max_reply_tokens: 220
 
   # Let the model look the memory up itself, as tool calls, instead of only being handed the last turns
   # above: what was said in this channel, on this server, or by one person across every server. It then

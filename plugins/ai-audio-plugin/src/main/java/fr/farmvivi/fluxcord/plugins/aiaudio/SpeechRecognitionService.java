@@ -147,7 +147,9 @@ public class SpeechRecognitionService {
     private void submit(Guild guild, Session session, SpeechSegmenter.Segment segment) {
         worker.execute(() -> {
             try {
-                String text = provider.transcribe(segment.audio(), plugin.getSettings().transcription().language());
+                AiSettings.TranscriptionSettings transcription = plugin.getSettings().transcription();
+                String text = provider.transcribe(segment.audio(), transcription.language(),
+                        transcription.vocabulary());
                 if (text == null || text.isBlank()) {
                     return;
                 }

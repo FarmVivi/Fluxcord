@@ -267,7 +267,7 @@ class ServicesTest {
 
     @Test
     void theHandlerAsksForPerUserAudioBecauseAttributionDependsOnIt() {
-        AudioReceiveHandler handler = startTranscribing((audio, language) -> "", mock(MessageChannel.class));
+        AudioReceiveHandler handler = startTranscribing((audio, language, vocabulary) -> "", mock(MessageChannel.class));
 
         assertTrue(handler.canReceiveUser());
         assertFalse(handler.canReceiveCombined(), "a mixed stream cannot be attributed to anyone");
@@ -280,7 +280,7 @@ class ServicesTest {
         when(guild.getMemberById(USER_ID)).thenReturn(member);
         List<String> posted = new java.util.ArrayList<>();
 
-        AudioReceiveHandler handler = startTranscribing((audio, language) -> "  bonjour tout le monde  ",
+        AudioReceiveHandler handler = startTranscribing((audio, language, vocabulary) -> "  bonjour tout le monde  ",
                 recordingChannel(posted));
         speaks(handler, USER_ID, 600);
         now.addAndGet(2000); // the speaker falls silent
@@ -304,7 +304,7 @@ class ServicesTest {
         when(guild.getMemberById(USER_ID)).thenReturn(null);
         List<String> posted = new java.util.ArrayList<>();
 
-        AudioReceiveHandler handler = startTranscribing((audio, language) -> "salut", recordingChannel(posted));
+        AudioReceiveHandler handler = startTranscribing((audio, language, vocabulary) -> "salut", recordingChannel(posted));
         speaks(handler, USER_ID, 600);
         now.addAndGet(2000);
 
@@ -317,7 +317,7 @@ class ServicesTest {
     void anEmptyTranscriptionIsNeitherPostedNorRemembered() throws Exception {
         List<String> posted = new java.util.ArrayList<>();
 
-        AudioReceiveHandler handler = startTranscribing((audio, language) -> "   ", recordingChannel(posted));
+        AudioReceiveHandler handler = startTranscribing((audio, language, vocabulary) -> "   ", recordingChannel(posted));
         speaks(handler, USER_ID, 600);
         now.addAndGet(2000);
 
@@ -331,7 +331,7 @@ class ServicesTest {
         // A scheduled task that throws is never run again, so a bad segment must not kill the poller.
         List<String> posted = new java.util.ArrayList<>();
         java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
-        AudioReceiveHandler handler = startTranscribing((audio, language) -> {
+        AudioReceiveHandler handler = startTranscribing((audio, language, vocabulary) -> {
             if (calls.incrementAndGet() == 1) {
                 throw new AiRequestException("rate limited");
             }
@@ -351,7 +351,7 @@ class ServicesTest {
 
     @Test
     void startingTwiceIsRefusedAndRegistersOneHandlerOnly() {
-        startTranscribing((audio, language) -> "", mock(MessageChannel.class));
+        startTranscribing((audio, language, vocabulary) -> "", mock(MessageChannel.class));
 
         assertFalse(stt.start(guild, mock(MessageChannel.class)));
 
@@ -362,7 +362,7 @@ class ServicesTest {
     @Test
     void stoppingTranscribesWhatWasStillBufferedAndReleasesTheHandler() throws Exception {
         List<String> posted = new java.util.ArrayList<>();
-        AudioReceiveHandler handler = startTranscribing((audio, language) -> "la derniere phrase",
+        AudioReceiveHandler handler = startTranscribing((audio, language, vocabulary) -> "la derniere phrase",
                 recordingChannel(posted));
         speaks(handler, USER_ID, 600); // never followed by silence
 
@@ -378,7 +378,7 @@ class ServicesTest {
     @Test
     void shuttingDownDropsWhatWasBufferedWithoutTranscribingIt() throws Exception {
         List<String> posted = new java.util.ArrayList<>();
-        AudioReceiveHandler handler = startTranscribing((audio, language) -> "never sent", recordingChannel(posted));
+        AudioReceiveHandler handler = startTranscribing((audio, language, vocabulary) -> "never sent", recordingChannel(posted));
         speaks(handler, USER_ID, 600);
 
         stt.shutdown();

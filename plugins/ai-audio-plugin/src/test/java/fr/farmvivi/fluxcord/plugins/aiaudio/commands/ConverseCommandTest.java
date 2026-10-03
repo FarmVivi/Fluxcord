@@ -135,10 +135,14 @@ class ConverseCommandTest {
         // Answering requires hearing; two commands for one behaviour is one too many.
         when(conversation.start(same(guild), any())).thenReturn(true);
 
+        when(speech.start(same(guild), any())).thenReturn(true);
+
         run(ConverseCommand.START);
 
         verify(speech).start(same(guild), any());
         verify(conversation).start(same(guild), any());
+        // Claimed, because that claim is what lets /converse stop give the listening back.
+        verify(conversation).ownListening(guild);
         verify(ctx).replySuccess("messages.converse_started");
     }
 
@@ -216,14 +220,29 @@ class ConverseCommandTest {
     }
 
     @Test
-    void stoppingLeavesTheTranscriptionRunning() {
-        // Writing down a conversation without taking part in it is a reasonable thing to want.
+    void stoppingAlsoStopsTheListeningItStarted() {
+        // Reported from a real session: told to stop, the bot kept writing down every sentence, which from
+        // the outside is a bot that ignored the command. What start switched on, stop switches off.
+        when(conversation.ownsListening(guild)).thenReturn(true);
         when(conversation.stop(guild)).thenReturn(true);
 
         run(ConverseCommand.STOP);
 
+        verify(speech).stop(guild);
         verify(ctx).replySuccess("messages.converse_stopped");
+    }
+
+    @Test
+    void stoppingLeavesATranscriptionSomebodyAskedForSeparately() {
+        // Writing down a conversation without taking part in it is a reasonable thing to want, and
+        // /transcribe is how it is asked for - stopping the conversation must not take it away.
+        when(conversation.ownsListening(guild)).thenReturn(false);
+        when(conversation.stop(guild)).thenReturn(true);
+
+        run(ConverseCommand.STOP);
+
         verify(speech, never()).stop(any());
+        verify(ctx).replySuccess("messages.converse_stopped");
     }
 
     @Test
@@ -300,4 +319,17 @@ class ConverseCommandTest {
     private CommandContext ctxVerifier() {
         return verify(ctx);
     }
+
+    @Test
+    void aTranscriptionThatWasAlreadyRunningIsNotClaimed() {
+        // Somebody ran /transcribe first; starting a conversation borrows that listening rather than
+        // owning it, so stopping the conversation later leaves it alone.
+        when(conversation.start(same(guild), any())).thenReturn(true);
+        when(speech.start(same(guild), any())).thenReturn(false);
+
+        run(ConverseCommand.START);
+
+        verify(conversation, never()).ownListening(any());
+    }
+
 }

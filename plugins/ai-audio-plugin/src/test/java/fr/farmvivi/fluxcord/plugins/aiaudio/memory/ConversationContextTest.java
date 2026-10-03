@@ -54,6 +54,25 @@ class ConversationContextTest {
     }
 
     @Test
+    void theSnapshotKnowsWhatTheBotIsCalledInThisServer() {
+        // A server may rename the bot, and people then address that name and no other.
+        net.dv8tion.jda.api.entities.SelfMember self =
+                mock(net.dv8tion.jda.api.entities.SelfMember.class);
+        when(self.getEffectiveName()).thenReturn("Tardis");
+        when(guild.getSelfMember()).thenReturn(self);
+
+        assertEquals("Tardis", ConversationContext.of(channel, memory, 10, 10).botName());
+    }
+
+    @Test
+    void anUncachedSelfMemberIsNotWorthFailingOver() {
+        // Resolving it over REST would sit on the way to a model call; the name is a nicety, not a need.
+        when(guild.getSelfMember()).thenReturn(null);
+
+        assertNull(ConversationContext.of(channel, memory, 10, 10).botName());
+    }
+
+    @Test
     void theSnapshotNamesThePlaceAndWhoIsThere() {
         Member victor = member("u1", "Victor", false);
         Member alice = member("u2", "Alice", false);
