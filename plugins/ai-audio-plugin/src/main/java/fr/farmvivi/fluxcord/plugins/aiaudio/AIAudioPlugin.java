@@ -60,6 +60,14 @@ public class AIAudioPlugin extends AbstractPlugin {
     private ConversationService conversation;
     private RealtimeService realtime;
     private HttpClient http;
+    private fr.farmvivi.fluxcord.plugins.aiaudio.conversation.WakeGate wakeGate;
+    /** One thread, one tick a second: closing an idle session is not latency-sensitive. */
+    private final java.util.concurrent.ScheduledExecutorService gateTicker =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "ai-audio-wake-gate");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     private AiSettings settings = AiSettings.defaults();
 
@@ -96,6 +104,10 @@ public class AIAudioPlugin extends AbstractPlugin {
 
     @Override
     public void onDisable() {
+        if (wakeGate != null) {
+            wakeGate.shutdown();
+        }
+        gateTicker.shutdownNow();
         // Idempotent: a failed enable, a reload and a shutdown all land here.
         if (speechRecognition != null) {
             speechRecognition.shutdown();
@@ -144,6 +156,7 @@ public class AIAudioPlugin extends AbstractPlugin {
         realtime = new RealtimeService(this, memory, tools);
         // The transcription service feeds the conversation, so it is built last.
         speechRecognition = new SpeechRecognitionService(this, speechToText(), memory);
+        wakeGate = buildWakeGate();
     }
 
     /**
@@ -173,6 +186,39 @@ public class AIAudioPlugin extends AbstractPlugin {
         }
         names.sort(java.util.Comparator.comparingInt(String::length).reversed());
         return java.util.List.copyOf(names);
+    }
+
+    /**
+     * The gate that decides when a hosted session is worth opening.
+     *
+     * <p>Always built, even when no realtime service is configured: it simply never engages. That keeps
+     * every caller free of a null check and the decision in one place — the settings.
+     */
+    private fr.farmvivi.fluxcord.plugins.aiaudio.conversation.WakeGate buildWakeGate() {
+        var gate = new fr.farmvivi.fluxcord.plugins.aiaudio.conversation.WakeGate(
+                getLogger(), System::currentTimeMillis, memory,
+                new fr.farmvivi.fluxcord.plugins.aiaudio.conversation.WakeGate.Engagement(
+                        (guild, output) -> realtime.start(guild, output, false),
+                        realtime::stop,
+                        (guild, diversion) -> speechRecognition.divert(guild, diversion),
+                        realtime::hear,
+                        realtime::ask,
+                        realtime::lastActivityMs),
+                settings.realtime().engageWindow().toMillis());
+        gateTicker.scheduleWithFixedDelay(() -> {
+            try {
+                gate.tick();
+            } catch (RuntimeException e) {
+                // A scheduled task that throws is never run again, and this one has to outlive a bad frame.
+                getLogger().warn("Closing an idle hosted session failed: {}", e.getMessage());
+            }
+        }, 1, 1, java.util.concurrent.TimeUnit.SECONDS);
+        return gate;
+    }
+
+    /** @return the gate deciding when the hosted session listens, never null */
+    public fr.farmvivi.fluxcord.plugins.aiaudio.conversation.WakeGate getWakeGate() {
+        return wakeGate;
     }
 
     /** @return the shared HTTP client, which the realtime session builds its WebSocket from */

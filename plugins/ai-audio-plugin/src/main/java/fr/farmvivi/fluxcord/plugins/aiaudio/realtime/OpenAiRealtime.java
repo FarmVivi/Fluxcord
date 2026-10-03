@@ -156,23 +156,34 @@ public final class OpenAiRealtime implements RealtimeProtocol {
         return type("response.cancel");
     }
 
+    /**
+     * MEASURED, 2026-10-03: this frame is accepted and the item comes back as
+     * {@code conversation.item.added} then {@code conversation.item.done}. Asking for an answer is a
+     * separate {@code response.create}, which is why {@link #userAsked} is the same frame.
+     */
     @Override
-    public String speakerChanged(String displayName) {
-        JsonObject text = new JsonObject();
-        text.addProperty("type", "input_text");
-        text.addProperty("text", "\"" + displayName + "\" is speaking now.");
-        JsonArray content = new JsonArray();
-        content.add(text);
+    public String userText(String text) {
+        JsonObject content = new JsonObject();
+        content.addProperty("type", "input_text");
+        content.addProperty("text", text);
+        JsonArray contents = new JsonArray();
+        contents.add(content);
 
         JsonObject item = new JsonObject();
         item.addProperty("type", "message");
         item.addProperty("role", "user");
-        item.add("content", content);
+        item.add("content", contents);
 
         JsonObject frame = new JsonObject();
         frame.addProperty("type", "conversation.item.create");
         frame.add("item", item);
         return frame.toString();
+    }
+
+    /** The same frame: on this API the request for an answer is {@link #createResponse()}. */
+    @Override
+    public String userAsked(String text) {
+        return userText(text);
     }
 
     @Override

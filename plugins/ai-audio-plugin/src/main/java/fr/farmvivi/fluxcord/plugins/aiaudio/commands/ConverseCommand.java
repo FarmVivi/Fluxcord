@@ -38,6 +38,9 @@ public class ConverseCommand extends AiAudioCommand {
 
         if (STOP.equalsIgnoreCase(action)) {
             // Asked before stopping, because stopping is what releases the claim.
+            if (plugin.getWakeGate() != null) {
+                plugin.getWakeGate().disengage(guild, "the conversation was stopped");
+            }
             boolean ourListening = plugin.getConversation().ownsListening(guild);
             // Either path may be the one that is running, and stopping the other is a no-op.
             boolean stopped = plugin.getRealtime().stop(guild) | plugin.getConversation().stop(guild);
@@ -67,7 +70,10 @@ public class ConverseCommand extends AiAudioCommand {
         if (!ensureConnected(ctx, guild)) {
             return;
         }
-        if (plugin.getSettings().realtime().isUsable()) {
+        // A realtime session that waits to be addressed is started by the gate, not here: the local
+        // transcriber has to be listening first, for free, and it is what notices the name.
+        if (plugin.getSettings().realtime().isUsable()
+                && !plugin.getSettings().realtime().wakeLocally()) {
             startRealtime(ctx, guild);
             return;
         }

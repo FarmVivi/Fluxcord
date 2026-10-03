@@ -697,13 +697,26 @@ The figure that settles it is one nobody has to pay for: **silence is already fr
 packets while somebody is actually transmitting, so an idle channel sends nothing and a channel where people
 talk half the time costs half. There is no 24-hour stream to switch off.
 
-**Decision (Victor, 2026-10-03): leave it.** While a realtime session is open, everything said in the channel
-goes to the service. On Gemini that is a few cents an hour of conversation and not worth engineering around;
-on OpenAI it is 0.36 $/h of speech, which is worth knowing before leaving it on in a busy channel. The
-fully local path — transcription, Gemma, Kokoro, nothing leaving the network — remains the default, and
-realtime is opt-in.
+**So the session is only opened once the bot has been addressed** (`conversation.realtime.wake_locally`,
+on by default). The free local transcriber listens to the channel on the operator's own hardware; a hosted
+session is opened when somebody says the bot's name, hears the channel directly while it is open — that is
+what makes it full duplex — and closes again `engage_window_seconds` after the last thing said or answered,
+so a follow-up needs no name. The bill is then the conversation and nothing else.
 
-The cheaper arrangement, if it is ever wanted, is written up under *Where a wake word should live* below.
+The two listeners share one receive handler, because the core allows one per plugin per guild: engaging
+**diverts** the audio at `TranscriptionSession` rather than registering a second handler. Diverted, not
+duplicated — transcribing the same sentence locally *and* remotely would cost twice and remember it twice.
+
+**A session opened mid-conversation is told what it missed.** The sentence containing the name was heard
+before the session existed, so it is handed over as text along with the last eight turns from
+`ConversationMemory`. Without that the bot opens a connection and waits for a question that has already been
+asked. This is also what the two services' own documentation prescribes for restoring context: replay the
+conversation as items, capped, rather than hope the service kept something it never had.
+
+Switching `wake_locally` off gives the older behaviour — the session is opened by `/converse start` and hears
+everything until `/converse stop`. That is one round trip faster on the first word of each exchange, and you
+pay for every second anybody speaks. The fully local path — transcription, Gemma, Kokoro, nothing leaving the
+network — remains the default, and realtime as a whole is opt-in.
 
 #### Session lifetime, and what happens when it runs out
 
@@ -749,11 +762,11 @@ the wrong one.
    per-guild name would mean training a model per server. The standard answer is the wrong answer here.
 2. **A local transcript gate** — the plugin's own speech-to-text, which is already running, free, and on the
    operator's own hardware, decides whether the name was said; the paid service hears nothing until it was.
-   This handles any name on any server with no training, and it is the shape to build if the cost ever
-   matters. What blocks it today is not the AI at all: **the core allows one `AudioReceiveHandler` per plugin
-   per guild**, and the two paths each want it — `TranscriptionSession` for the local one, `RealtimeReceiver`
-   for the other. A composite handler feeding both is the whole change.
-3. **The service's transcription**, which is what ships.
+   This handles any name on any server with no training. **This is what ships**, as `WakeGate`; the one
+   obstacle was that the core allows a single `AudioReceiveHandler` per plugin per guild, solved by diverting
+   the audio at the existing handler rather than registering a second one.
+3. **The service's transcription** — what the bot used while the session was open all the time. Still the
+   path taken with `wake_locally: false`, and still how an utterance is gated *within* an open session.
 
 Something worth keeping from (1) even so: an acoustic detector never mishears, while a transcript gate can.
 That is exactly why the bot's names are injected into `speech_to_text.vocabulary` automatically — a gate that

@@ -154,7 +154,33 @@ public interface RealtimeProtocol {
      * @param displayName the speaker, as the others in the server see them
      * @return the frame to send
      */
-    String speakerChanged(String displayName);
+    default String speakerChanged(String displayName) {
+        return userText("\"" + displayName + "\" is speaking now.");
+    }
+
+    /**
+     * Something a person said, as context, with no answer wanted yet.
+     *
+     * <p>Used for the two things a session has to be told rather than hear: who is talking now, and — when
+     * the session was opened in the middle of a conversation — what was said before it existed.
+     *
+     * @param text the text, which is user content and never instructions
+     * @return the frame to send
+     */
+    String userText(String text);
+
+    /**
+     * Something a person said that the bot is expected to answer.
+     *
+     * <p>Separate from {@link #userText} because the two services draw the line differently: one needs the
+     * turn marked as finished for the model to reply at all, the other needs a {@link #createResponse()}
+     * afterwards. A caller sends this and then {@code createResponse()}, and both services do the right
+     * thing.
+     *
+     * @param text what was said
+     * @return the frame to send
+     */
+    String userAsked(String text);
 
     /**
      * What a tool answered.

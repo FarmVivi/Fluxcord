@@ -225,18 +225,35 @@ public final class GeminiRealtime implements RealtimeProtocol {
         return "";
     }
 
+    /**
+     * Context, with the turn left open.
+     *
+     * <p>Open on purpose: naming the speaker or recalling what was said earlier is not a question, and
+     * ending the turn here would make the model answer the label instead of the sentence that follows it.
+     */
     @Override
-    public String speakerChanged(String displayName) {
-        JsonObject turn = textContent("\"" + displayName + "\" is speaking now.");
+    public String userText(String text) {
+        return clientContent(text, false);
+    }
+
+    /**
+     * A question, with the turn closed — which on this API is the same thing as asking for the answer, so
+     * {@link #createResponse()} has nothing left to send.
+     */
+    @Override
+    public String userAsked(String text) {
+        return clientContent(text, true);
+    }
+
+    private static String clientContent(String text, boolean turnComplete) {
+        JsonObject turn = textContent(text);
         turn.addProperty("role", "user");
         JsonArray turns = new JsonArray();
         turns.add(turn);
 
         JsonObject clientContent = new JsonObject();
         clientContent.add("turns", turns);
-        // False on purpose: naming the speaker is not a question, and ending the turn here would make the
-        // model answer the label instead of the sentence that follows it.
-        clientContent.addProperty("turnComplete", false);
+        clientContent.addProperty("turnComplete", turnComplete);
 
         JsonObject frame = new JsonObject();
         frame.add("clientContent", clientContent);

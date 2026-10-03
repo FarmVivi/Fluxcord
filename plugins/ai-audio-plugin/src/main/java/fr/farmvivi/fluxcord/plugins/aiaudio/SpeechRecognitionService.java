@@ -91,16 +91,39 @@ public class SpeechRecognitionService {
         sessions.computeIfAbsent(guild.getId(), id -> {
             SpeechSegmenter segmenter = new SpeechSegmenter(settings.transcription().silence(), settings.transcription().maxSegment(),
                     settings.transcription().minSegment());
-            plugin.getContext().getAudioService()
-                    .registerReceiveHandler(guild, plugin, new TranscriptionSession(segmenter, clock));
+            TranscriptionSession handler = new TranscriptionSession(segmenter, clock);
+            plugin.getContext().getAudioService().registerReceiveHandler(guild, plugin, handler);
             ScheduledFuture<?> poller = scheduler.scheduleWithFixedDelay(
                     () -> drain(guild), POLL_INTERVAL_MS, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
             logger.info("Transcribing guild {} in {} (silence {}, max {})",
                     id, settings.transcription().language(), settings.transcription().silence(), settings.transcription().maxSegment());
             started.set(true);
-            return new Session(output, segmenter, poller);
+            return new Session(output, segmenter, poller, handler);
         });
         return started.get();
+    }
+
+    /**
+     * Sends a guild's audio somewhere other than the local transcriber.
+     *
+     * <p>What makes the economical arrangement possible: the local pipeline listens for free, and the
+     * packets only start reaching a hosted service once the bot has been addressed. Whatever was half-said
+     * when the diversion starts is dropped, because it has already been written down.
+     *
+     * @param guild     the guild
+     * @param diversion where the packets go, or null to transcribe locally again
+     * @return false when this guild is not being transcribed at all
+     */
+    public boolean divert(Guild guild, java.util.function.BiConsumer<String, PcmAudio> diversion) {
+        Session session = sessions.get(guild.getId());
+        if (session == null) {
+            return false;
+        }
+        session.handler.divertTo(diversion);
+        if (diversion != null) {
+            session.segmenter.flush();
+        }
+        return true;
     }
 
     /**
@@ -262,11 +285,14 @@ public class SpeechRecognitionService {
         private final MessageChannel output;
         private final SpeechSegmenter segmenter;
         private final ScheduledFuture<?> poller;
+        private final TranscriptionSession handler;
 
-        private Session(MessageChannel output, SpeechSegmenter segmenter, ScheduledFuture<?> poller) {
+        private Session(MessageChannel output, SpeechSegmenter segmenter, ScheduledFuture<?> poller,
+                        TranscriptionSession handler) {
             this.output = output;
             this.segmenter = segmenter;
             this.poller = poller;
+            this.handler = handler;
         }
     }
 }

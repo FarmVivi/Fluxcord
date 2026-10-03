@@ -15,11 +15,19 @@ import net.dv8tion.jda.api.audio.UserAudio;
  * <p>This class does no I/O: it converts the byte order and forwards. Deciding when an utterance is over
  * belongs to the segmenter, and transcribing it to the service — which keeps the JDA audio thread free,
  * since it must return well within 20 ms.
+ *
+ * <p><strong>The audio can be diverted</strong> ({@link #divertTo}), and that is how the plugin avoids
+ * paying a hosted service to listen to a conversation it is not part of. While a diversion is in place the
+ * packets go there and the segmenter sees nothing — not <em>also</em> there, because transcribing the same
+ * sentence twice would cost twice and remember it twice. The core allows one receive handler per plugin per
+ * guild, so this is the seam that lets two listeners share it.
  */
 public class TranscriptionSession implements AudioReceiveHandler {
 
     private final SpeechSegmenter segmenter;
     private final java.util.function.LongSupplier clock;
+    /** Volatile: written by whichever thread engages, read by JDA's audio thread on every packet. */
+    private volatile java.util.function.BiConsumer<String, PcmAudio> diversion;
 
     /**
      * @param segmenter where the received audio accumulates
@@ -28,6 +36,20 @@ public class TranscriptionSession implements AudioReceiveHandler {
     public TranscriptionSession(SpeechSegmenter segmenter, java.util.function.LongSupplier clock) {
         this.segmenter = segmenter;
         this.clock = clock;
+    }
+
+    /**
+     * Sends the audio somewhere else instead of to the segmenter.
+     *
+     * @param diversion where the packets go, as (speaker id, audio); null to transcribe locally again
+     */
+    public void divertTo(java.util.function.BiConsumer<String, PcmAudio> diversion) {
+        this.diversion = diversion;
+    }
+
+    /** @return true while the audio is going somewhere other than the segmenter */
+    public boolean isDiverted() {
+        return diversion != null;
     }
 
     @Override
@@ -48,6 +70,12 @@ public class TranscriptionSession implements AudioReceiveHandler {
         // the transcription model is the listener, not a human.
         PcmAudio audio = PcmAudio.fromBigEndian(userAudio.getAudioData(1.0),
                 PcmAudio.DISCORD_SAMPLE_RATE, PcmAudio.DISCORD_CHANNELS);
-        segmenter.accept(userAudio.getUser().getId(), audio, clock.getAsLong());
+        String userId = userAudio.getUser().getId();
+        java.util.function.BiConsumer<String, PcmAudio> elsewhere = diversion;
+        if (elsewhere != null) {
+            elsewhere.accept(userId, audio);
+            return;
+        }
+        segmenter.accept(userId, audio, clock.getAsLong());
     }
 }

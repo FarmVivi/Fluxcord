@@ -207,6 +207,22 @@ public class ConversationService {
         if (channel == null) {
             return;
         }
+        // The economical arrangement: the sentence was heard for free, and only now - because it named the
+        // bot - is a hosted session worth opening. It answers from here on, so this path stops.
+        WakeGate gate = plugin.getWakeGate();
+        if (gate != null && plugin.getSettings().realtime().isUsable()
+                && plugin.getSettings().realtime().wakeLocally()) {
+            MessageChannel output = outputs.get(guild.getId());
+            worker.execute(() -> {
+                try {
+                    gate.engage(guild, output, turn);
+                } catch (RuntimeException e) {
+                    logger.warn("Could not engage the hosted session in guild {}: {}",
+                            guild.getId(), e.getMessage());
+                }
+            });
+            return;
+        }
         worker.execute(() -> answer(guild, channel, turn, chat, audio));
     }
 

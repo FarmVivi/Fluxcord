@@ -438,14 +438,29 @@ a model limit with a partial lever, and one turned into the two features below.
     everything". `conversation.wake_on_name: false` restores that.
   - Also found: Gemini streams the *input* transcription in fragments, so treating each as an utterance
     wrote one memory entry per syllable.
-- [x] **Decision (Victor, 2026-10-03): do not gate what reaches the paid service.** While a realtime session
-  is open, everything said in the channel goes to it. Grounded in a measurement — 5.05 s of speech = 50 audio
-  input tokens, ~10 tokens/second, so ~$0.36 per hour of *speech* on OpenAI mini and ~$0.02–0.06 on Gemini —
-  and in the fact that **silence is already free**, because JDA only delivers packets while somebody is
-  transmitting. There is no 24-hour stream to switch off. The cheaper arrangement is written up in the
-  plugin README under *Where a wake word should live*; the conclusion there is that the standard answer (a
-  local acoustic wake word) is the wrong one for this bot, because the wake word is whatever each server
-  renamed it to and an acoustic model has to be trained per phrase.
+- [x] **The paid session is only opened once the bot has been addressed** (`WakeGate`, 2026-10-03). Victor
+  first said to leave it ungated, then asked for the cheap arrangement built properly; this is it, and it is
+  the shape a smart speaker uses. The free local transcriber listens; a hosted session opens on the name,
+  hears the channel directly while open, and closes `engage_window_seconds` after the last thing said or
+  answered so a follow-up needs no name.
+  - Grounded in a measurement: 5.05 s of speech = 50 audio input tokens, ~10 tokens/second, so ~$0.36 per
+    hour of *speech* on OpenAI mini and ~$0.02–0.06 on Gemini. **Silence was already free** — JDA only
+    delivers packets while somebody transmits — so there never was a 24-hour stream; what this removes is
+    paying to overhear a conversation the bot is not part of.
+  - **The two listeners share one handler by diversion, not duplication.** The core allows one
+    `AudioReceiveHandler` per plugin per guild, so engaging redirects the audio inside
+    `TranscriptionSession` instead of registering a second handler. Transcribing the same sentence both
+    locally and remotely would cost twice and remember it twice.
+  - **A session opened mid-conversation is handed the question and the last eight turns**, because the
+    sentence that woke the bot was heard before the session existed. This is what both services' own
+    guidance prescribes for restoring context; OpenAI has no resume at all, so replaying items is the only
+    way.
+  - The standard answer for the trigger — a local *acoustic* wake word (openWakeWord, Porcupine) — was
+    rejected with a reason worth keeping: the wake word here is whatever each server renamed the bot to, and
+    an acoustic model has to be trained per phrase. A transcript gate handles any name for free.
+  - Found while testing it: a turn is stored under `timestamp-userId`, so two turns from the same speaker in
+    the same millisecond overwrite each other. Real speech cannot do it (the segmenter enforces a minimum
+    utterance) but a test with a frozen clock can.
 - [ ] **A realtime session dies of old age and does not come back.** OpenAI ends it at 60 minutes and
   publishes `expires_at` in the session it confirms; Gemini ends an audio-only session at about 15 and warns
   with `goAway`, while handing out `sessionResumption` handles unasked (both observed from real sessions,

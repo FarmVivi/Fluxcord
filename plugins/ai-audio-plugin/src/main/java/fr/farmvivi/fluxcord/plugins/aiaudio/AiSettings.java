@@ -666,7 +666,8 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
      * @param voice   the provider's voice name for the spoken answer
      */
     public record RealtimeSettings(boolean enabled, RealtimeApi api, String url, String apiKey, String voice,
-                                   String model, boolean serviceDecidesTurns, Duration silence) {
+                                   String model, boolean serviceDecidesTurns, Duration silence,
+                                   boolean wakeLocally, Duration engageWindow) {
 
         /**
          * The mini model, which is about a third of the flagship's price per minute of conversation and
@@ -689,12 +690,23 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
 
         /** The default silence that ends an utterance when this plugin is the one closing turns. */
         private static final int DEFAULT_REALTIME_SILENCE_MS = 1_200;
+        /**
+         * How long a hosted session stays open after the last thing said or answered.
+         *
+         * <p>Thirty seconds, which is long enough that a follow-up needs no name and short enough that a
+         * conversation moving on does not keep paying. The cost of being wrong in one direction is an
+         * awkward "say my name again"; in the other it is a few cents.
+         */
+        private static final int DEFAULT_ENGAGE_WINDOW_SECONDS = 30;
 
         public RealtimeSettings {
             api = api == null ? RealtimeApi.OPENAI : api;
             silence = silence == null || silence.isZero() || silence.isNegative()
                     ? Duration.ofMillis(DEFAULT_REALTIME_SILENCE_MS)
                     : silence;
+            engageWindow = engageWindow == null || engageWindow.isNegative()
+                    ? Duration.ofSeconds(DEFAULT_ENGAGE_WINDOW_SECONDS)
+                    : engageWindow;
             url = url == null ? "" : url.strip();
             apiKey = apiKey == null ? "" : apiKey.strip();
             voice = voice == null ? "" : voice.strip();
@@ -710,13 +722,22 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
         public RealtimeSettings(boolean enabled, RealtimeApi api, String url, String apiKey, String voice,
                                 String model) {
             this(enabled, api, url, apiKey, voice, model, true,
-                    Duration.ofMillis(DEFAULT_REALTIME_SILENCE_MS));
+                    Duration.ofMillis(DEFAULT_REALTIME_SILENCE_MS), false,
+                    Duration.ofSeconds(DEFAULT_ENGAGE_WINDOW_SECONDS));
+        }
+
+        /** Realtime settings from before the session was opened on demand, which means it was always open. */
+        public RealtimeSettings(boolean enabled, RealtimeApi api, String url, String apiKey, String voice,
+                                String model, boolean serviceDecidesTurns, Duration silence) {
+            this(enabled, api, url, apiKey, voice, model, serviceDecidesTurns, silence, false,
+                    Duration.ofSeconds(DEFAULT_ENGAGE_WINDOW_SECONDS));
         }
 
         /** @return the settings used when nothing was configured */
         public static RealtimeSettings disabled() {
             return new RealtimeSettings(false, RealtimeApi.OPENAI, DEFAULT_URL, "", DEFAULT_VOICE, "",
-                    false, Duration.ofMillis(DEFAULT_REALTIME_SILENCE_MS));
+                    false, Duration.ofMillis(DEFAULT_REALTIME_SILENCE_MS), true,
+                    Duration.ofSeconds(DEFAULT_ENGAGE_WINDOW_SECONDS));
         }
 
         static RealtimeSettings from(Configuration config, Logger logger) {
@@ -738,7 +759,10 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
                             DEFAULT_GEMINI_MODEL),
                     config.getBoolean("conversation.realtime.service_turns", false),
                     Duration.ofMillis(config.getInt("conversation.realtime.silence_ms",
-                            DEFAULT_REALTIME_SILENCE_MS)));
+                            DEFAULT_REALTIME_SILENCE_MS)),
+                    config.getBoolean("conversation.realtime.wake_locally", true),
+                    Duration.ofSeconds(config.getInt("conversation.realtime.engage_window_seconds",
+                            DEFAULT_ENGAGE_WINDOW_SECONDS)));
         }
 
         /**

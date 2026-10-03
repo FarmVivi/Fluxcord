@@ -252,6 +252,28 @@ conversation:
     # How long nobody may speak before an open turn is closed. Ignored when service_turns is true.
     silence_ms: 1200
 
+    # Only pay the hosted service once the bot has been addressed.
+    #
+    # ON (the default) is the smart-speaker arrangement, and the only one that is cheap: the LOCAL
+    # transcriber listens to the channel for nothing, on your own hardware, and a hosted session is opened
+    # only when somebody says the bot's name (see wake_on_name). While that session is open it hears the
+    # channel directly -- that is what makes it full duplex -- and the local transcriber steps aside, so no
+    # sentence is transcribed, billed or remembered twice. When it opens, the session is handed the
+    # sentence it could not hear plus the last few turns, because it did not exist when they were said.
+    #
+    # Measured: a session hears about 10 audio input tokens per second of speech, so leaving one open in a
+    # busy channel costs roughly 0.36 $/h of speech on OpenAI's mini model and a couple of cents on
+    # Gemini's cheap one. Silence is free either way -- Discord only delivers packets while somebody is
+    # actually talking.
+    #
+    # OFF means the session is opened by /converse start and hears everything until /converse stop. Lower
+    # latency on the first word of each exchange, and you pay for every second anybody speaks.
+    wake_locally: true
+
+    # How long the hosted session stays open after the last thing said or answered. Short enough that a
+    # conversation moving on stops costing, long enough that a follow-up needs no name again.
+    engage_window_seconds: 30
+
 # Letting the model look something up on the web, as a tool call, so it can answer what it does not know
 # instead of answering last year's facts confidently.
 #

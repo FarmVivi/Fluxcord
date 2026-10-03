@@ -105,6 +105,17 @@ public class RealtimeService {
      * @throws RealtimeException if the connection could not be opened
      */
     public boolean start(Guild guild, MessageChannel output) {
+        return start(guild, output, true);
+    }
+
+    /**
+     * Opens a conversation, optionally without taking the receive handler.
+     *
+     * @param registerHandler false when somebody else owns the handler and will divert the audio here,
+     *                        which is how the session is only opened once the bot has been addressed
+     * @return false when one was already open, or when there is no voice channel
+     */
+    public boolean start(Guild guild, MessageChannel output, boolean registerHandler) {
         AudioChannel channel = guild.getAudioManager().getConnectedChannel();
         if (channel == null || conversations.containsKey(guild.getId())) {
             return false;
@@ -134,12 +145,17 @@ public class RealtimeService {
                 sink -> links.apply(realtime, sink), java.util.List.copyOf(vocabulary));
 
         conversations.put(guild.getId(), conversation);
+        if (registerHandler) {
+            handlers.add(guild.getId());
+        }
         if (!realtime.serviceDecidesTurns()) {
             ticker.scheduleWithFixedDelay(() -> tick(guild.getId()), TICK_MS, TICK_MS,
                     java.util.concurrent.TimeUnit.MILLISECONDS);
         }
-        plugin.getContext().getAudioService().registerReceiveHandler(guild, plugin,
-                new RealtimeReceiver(conversation, userId -> displayName(guild, userId)));
+        if (registerHandler) {
+            plugin.getContext().getAudioService().registerReceiveHandler(guild, plugin,
+                    new RealtimeReceiver(conversation, userId -> displayName(guild, userId)));
+        }
         logger.info("Realtime conversation open in guild {} ({} decides turns)", guild.getId(),
                 realtime.serviceDecidesTurns() ? "the service" : "the plugin");
         return true;
@@ -147,6 +163,47 @@ public class RealtimeService {
 
     /** Short enough to feel immediate, cheap enough to run forever; the same figure the segmenter uses. */
     private static final long TICK_MS = 250;
+
+    /** Guilds whose receive handler this service registered, and must therefore give back. */
+    private final java.util.Set<String> handlers = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Hands one packet to a guild's conversation, for a caller that owns the receive handler itself.
+     *
+     * @param guild  the guild
+     * @param userId who is speaking
+     * @param audio  the captured chunk
+     */
+    public void hear(Guild guild, String userId, fr.farmvivi.fluxcord.api.audio.PcmAudio audio) {
+        RealtimeConversation conversation = conversations.get(guild.getId());
+        if (conversation != null) {
+            conversation.hear(userId, displayName(guild, userId), audio);
+        }
+    }
+
+    /**
+     * Hands a guild's conversation a question it could not have heard, with the turns before it.
+     *
+     * @param guild    the guild
+     * @param question what was asked, as the local transcription wrote it
+     * @param history  what was said before, oldest first
+     */
+    public void ask(Guild guild, String question,
+                    java.util.List<fr.farmvivi.fluxcord.plugins.aiaudio.memory.Turn> history) {
+        RealtimeConversation conversation = conversations.get(guild.getId());
+        if (conversation != null) {
+            conversation.ask(question, history);
+        }
+    }
+
+    /**
+     * @param guild the guild
+     * @return when anything last happened on that conversation, or 0 when there is none
+     */
+    public long lastActivityMs(Guild guild) {
+        RealtimeConversation conversation = conversations.get(guild.getId());
+        return conversation == null ? 0L : conversation.lastActivityMs();
+    }
 
     /**
      * One tick for one guild's conversation, if it is still there.
@@ -176,7 +233,11 @@ public class RealtimeService {
         if (conversation == null) {
             return false;
         }
-        plugin.getContext().getAudioService().deregisterReceiveHandler(guild, plugin);
+        // Only the handler this service registered: when the gate owns it, taking it away here would stop
+        // the local transcriber from hearing anything ever again.
+        if (handlers.remove(guild.getId())) {
+            plugin.getContext().getAudioService().deregisterReceiveHandler(guild, plugin);
+        }
         conversation.close();
         return true;
     }
