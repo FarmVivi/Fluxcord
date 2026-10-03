@@ -54,12 +54,16 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 - 2026-09-20: `ConsoleCommandService(commandService, InputStream)` is the test seam for the stdin loop (`ConsoleCommandServiceTest`); `stop()` only flips the flag and shuts the executor down, the blocked `readLine` ends at EOF.
 
 - 2026-10-03: `HealthServer` binds with `SO_REUSEADDR` (`new ServerSocket()` + `setReuseAddress` + `bind`,
-  because `new ServerSocket(port)` binds in the constructor and is therefore too late to set it). Found as a
-  Linux-only CI failure in `HealthServerTest` — "Bind: Address already in use" when rebinding a port the
-  test's own requests had left TIME_WAIT sockets on. The production consequence is the one that matters: the
-  kubelet probes `/healthz` every few seconds, so a container restarting quickly always has TIME_WAIT
-  sockets on 8081, and without the option the health server cannot bind, never answers, and gets restarted
-  again. Any future listening socket in this codebase wants the same three lines.
+  because `new ServerSocket(port)` binds in the constructor and is therefore too late to set it). Right for
+  the fixed production port — the kubelet probes `/healthz` every few seconds, so a container restarting
+  quickly finds TIME_WAIT sockets on 8081 and binding over those is what the option is for — and any future
+  listening socket here wants the same three lines.
+- 2026-10-03: **but that was not why CI was red**, and the wrong fix shipped first with a commit message
+  asserting it was. `HealthServerTest` proved `stop()` had released the port by re-binding it; the server
+  runs on an *ephemeral* port, so the kernel is free to hand it to anything the instant it is released,
+  including the test JVM's own outbound HTTP connections. Adding the option to both sides and failing again
+  is what ruled TIME_WAIT out. Never assert that a just-released ephemeral port can be re-bound; assert the
+  observable behaviour instead.
 
 ## Known issues / open questions
 - Hygiene: `YamlConfiguration.save()` (snakeyaml dump) drops every comment of `config.yml`; since B3 the core only calls it on config migration (`setPrefix` global is in-memory now). Characterized by `YamlConfigurationTest.saveDropsComments`.

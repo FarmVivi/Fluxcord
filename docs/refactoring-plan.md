@@ -459,12 +459,16 @@ a model limit with a partial lever, and one turned into the two features below.
 - [x] **The realtime path takes `speech_to_text.vocabulary` too** (2026-10-03): OpenAI's
   `session.audio.input.transcription` accepts a `prompt`, so the same names reach it. Google has no such
   field, so a realtime session there can still mishear a name the turn-based path was taught.
-- [x] **CI was red on a flake that was really a defect** (2026-10-03). `HealthServerTest` failed on Linux
-  with "Bind: Address already in use" and passed on Windows. The cause was not the test:
-  `HealthServer.start()` used `new ServerSocket(port)`, which binds in the constructor and so cannot set
-  `SO_REUSEADDR` first. The requests the test had just made left sockets in TIME_WAIT on that port, and
-  binding over those is exactly what the option exists for. **In production it is worse than a flake**: the
-  kubelet probes `/healthz` every few seconds, so after a quick container restart that port always has
-  TIME_WAIT sockets on it — the health server would fail to start, `/healthz` would never answer, and the
-  kubelet would restart the container again. Fixed in the server; the test now rebinds the same way the
-  server does.
+- [x] **CI was red on a test asserting something the OS never promised** (2026-10-03).
+  `HealthServerTest.stopReleasesThePortAndStartIsIdempotent` failed on Linux with "Bind: Address already in
+  use" and passed on Windows. It proved that `stop()` had released the port by **re-binding it**, and that
+  is not a valid proof: the server runs on an *ephemeral* port, so the moment it is released the kernel may
+  hand it to anything — including this same JVM's HTTP client dialling out. The assertion is gone; what
+  remains is what a caller can actually observe, that the server stops answering.
+  - **And a correction worth keeping, because it is the mistake this project has made before.** The first
+    attempt blamed TIME_WAIT and added `SO_REUSEADDR` to `HealthServer`, with a confident commit message
+    saying so. CI failed again, on the new line, with the option set — which is what ruled the explanation
+    out. A plausible mechanism is not a diagnosis, again. The `SO_REUSEADDR` change was kept because it is
+    right for the *fixed* production port (8081 is probed every few seconds by the kubelet, and binding over
+    TIME_WAIT sockets after a quick restart is exactly what the option is for), but it fixed nothing in CI
+    and the earlier commit message overstates it.
