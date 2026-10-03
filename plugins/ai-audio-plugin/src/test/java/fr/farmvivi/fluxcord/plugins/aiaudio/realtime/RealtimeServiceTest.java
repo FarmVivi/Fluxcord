@@ -270,4 +270,24 @@ class RealtimeServiceTest {
         return captor.getValue();
     }
 
+    @Test
+    void theDialectComesFromTheConfigurationAndNotFromTheUrl() {
+        // A proxy in front of either service would make the URL say nothing about the protocol behind it.
+        assertInstanceOf(OpenAiRealtime.class, RealtimeService.dialect(
+                new AiSettings.RealtimeSettings(true, AiSettings.RealtimeApi.OPENAI,
+                        "wss://example.test/realtime", "sk-x", "marin", "")));
+        assertInstanceOf(GeminiRealtime.class, RealtimeService.dialect(
+                new AiSettings.RealtimeSettings(true, AiSettings.RealtimeApi.GEMINI,
+                        "wss://example.test/live", "AIza-x", "Puck", "gemini-live-2.5-flash-preview")));
+    }
+
+    @Test
+    void settingsWrittenBeforeThereWasAChoiceStillMeanOpenAi() {
+        AiSettings.RealtimeSettings settings =
+                new AiSettings.RealtimeSettings(true, "wss://example.test/realtime", "sk-x", "marin");
+
+        assertEquals(AiSettings.RealtimeApi.OPENAI, settings.api());
+        assertInstanceOf(OpenAiRealtime.class, RealtimeService.dialect(settings));
+    }
+
 }

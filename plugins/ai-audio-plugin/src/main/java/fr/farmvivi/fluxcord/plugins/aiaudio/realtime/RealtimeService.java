@@ -47,8 +47,8 @@ public class RealtimeService {
     RealtimeService(AIAudioPlugin plugin, ConversationMemory memory, java.util.List<ToolSource> toolSources,
                     LongSupplier clock) {
         this(plugin, memory, toolSources, clock,
-                (settings, sink) -> RealtimeSession.open(plugin.getHttp(), settings.url(), settings.apiKey(),
-                        sink));
+                (settings, sink) -> RealtimeSession.open(plugin.getHttp(), dialect(settings),
+                        settings.url(), settings.apiKey(), sink));
     }
 
     /**
@@ -66,6 +66,22 @@ public class RealtimeService {
         this.logger = plugin.getLogger();
         this.clock = clock;
         this.links = links;
+    }
+
+    /**
+     * The dialect the configured service speaks.
+     *
+     * <p>Chosen from the configuration rather than guessed from the URL: a self-hosted proxy in front of
+     * either service would make the URL say nothing about the protocol behind it.
+     *
+     * @param settings the realtime settings
+     * @return the protocol to talk
+     */
+    static RealtimeProtocol dialect(AiSettings.RealtimeSettings settings) {
+        return switch (settings.api()) {
+            case OPENAI -> new OpenAiRealtime();
+            case GEMINI -> new GeminiRealtime(settings.model());
+        };
     }
 
     /**
@@ -87,7 +103,8 @@ public class RealtimeService {
         PersonaSnapshot snapshot = PersonaSnapshot.of(plugin.getPersonaStore(), memory,
                 ConversationContext.of(channel, memory, settings.chat().historyTurns(), 0), now);
 
-        RealtimeConversation conversation = new RealtimeConversation(logger, clock, toolSources,
+        RealtimeConversation conversation = new RealtimeConversation(logger, dialect(realtime), clock,
+                toolSources,
                 audio -> plugin.getTextToSpeech().play(guild, audio),
                 () -> plugin.getTextToSpeech().interrupt(guild),
                 memory::remember,

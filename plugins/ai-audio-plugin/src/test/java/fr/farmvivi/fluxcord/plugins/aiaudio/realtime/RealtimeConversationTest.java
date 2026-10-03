@@ -102,7 +102,8 @@ class RealtimeConversationTest {
     @BeforeEach
     void setUp() {
         conversation = new RealtimeConversation(
-                LoggerFactory.getLogger(RealtimeConversationTest.class), () -> NOW, List.of(tools),
+                LoggerFactory.getLogger(RealtimeConversationTest.class), new OpenAiRealtime(),
+                () -> NOW, List.of(tools),
                 played::add, stops::incrementAndGet, remembered::add, reported::add);
         conversation.start(snapshot(), "You are Fluxcord.", "marin", "bot-1", sink -> {
             events = sink;
@@ -120,7 +121,7 @@ class RealtimeConversationTest {
     }
 
     private static PcmAudio audio(int bytes) {
-        return new PcmAudio(new byte[bytes], RealtimeProtocol.SAMPLE_RATE, 1);
+        return new PcmAudio(new byte[bytes], OpenAiRealtime.SAMPLE_RATE, 1);
     }
 
     private static String audioDelta(PcmAudio audio) {
@@ -167,7 +168,7 @@ class RealtimeConversationTest {
     void audioFromTheServiceIsPlayed() {
         PcmAudio voice = audio(960);
 
-        events.accept(RealtimeProtocol.parse(audioDelta(voice)));
+        events.accept(new OpenAiRealtime().parse(audioDelta(voice)));
 
         assertEquals(List.of(voice), played);
     }
@@ -175,9 +176,9 @@ class RealtimeConversationTest {
     @Test
     void somebodyTalkingOverTheBotStopsItOnBothSides() {
         // Cancelling without clearing would leave the bot finishing a sentence the service has abandoned.
-        events.accept(RealtimeProtocol.parse(audioDelta(audio(960))));
+        events.accept(new OpenAiRealtime().parse(audioDelta(audio(960))));
 
-        events.accept(RealtimeProtocol.parse("{\"type\":\"input_audio_buffer.speech_started\"}"));
+        events.accept(new OpenAiRealtime().parse("{\"type\":\"input_audio_buffer.speech_started\"}"));
 
         assertTrue(types().contains("response.cancel"), types().toString());
         assertEquals(1, stops.get(), "and what was queued here is dropped");
@@ -185,12 +186,12 @@ class RealtimeConversationTest {
 
     @Test
     void whatTheBotSaidIsRememberedByItsWordsWhenTheAnswerEnds() {
-        events.accept(RealtimeProtocol.parse(
+        events.accept(new OpenAiRealtime().parse(
                 "{\"type\":\"response.output_audio_transcript.delta\",\"delta\":\"il est \"}"));
-        events.accept(RealtimeProtocol.parse(
+        events.accept(new OpenAiRealtime().parse(
                 "{\"type\":\"response.output_audio_transcript.delta\",\"delta\":\"six heures\"}"));
 
-        events.accept(RealtimeProtocol.parse("{\"type\":\"response.done\"}"));
+        events.accept(new OpenAiRealtime().parse("{\"type\":\"response.done\"}"));
 
         assertEquals(1, remembered.size());
         assertEquals("il est six heures", remembered.get(0).text(), "the deltas are one sentence");
@@ -200,10 +201,10 @@ class RealtimeConversationTest {
 
     @Test
     void anInterruptedAnswerKeepsWhatWasActuallySaid() {
-        events.accept(RealtimeProtocol.parse(
+        events.accept(new OpenAiRealtime().parse(
                 "{\"type\":\"response.output_audio_transcript.delta\",\"delta\":\"alors en fait\"}"));
 
-        events.accept(RealtimeProtocol.parse("{\"type\":\"input_audio_buffer.speech_started\"}"));
+        events.accept(new OpenAiRealtime().parse("{\"type\":\"input_audio_buffer.speech_started\"}"));
 
         assertEquals(1, remembered.size(), "cut off, but it did say that much");
         assertEquals("alors en fait", remembered.get(0).text());
@@ -211,7 +212,7 @@ class RealtimeConversationTest {
 
     @Test
     void anAnswerWithNoWordsInItIsNotRemembered() {
-        events.accept(RealtimeProtocol.parse("{\"type\":\"response.done\"}"));
+        events.accept(new OpenAiRealtime().parse("{\"type\":\"response.done\"}"));
 
         assertTrue(remembered.isEmpty());
     }
@@ -220,7 +221,7 @@ class RealtimeConversationTest {
     void whatSomebodySaidIsAttributedToWhoeverWasSpeaking() {
         conversation.hear("u1", "Victor", audio(480));
 
-        events.accept(RealtimeProtocol.parse(
+        events.accept(new OpenAiRealtime().parse(
                 "{\"type\":\"conversation.item.input_audio_transcription.completed\","
                         + "\"transcript\":\"quelle heure il est ?\"}"));
 
@@ -233,7 +234,7 @@ class RealtimeConversationTest {
 
     @Test
     void aToolIsRunAndItsResultGoesBackWithTheIdTheModelUsed() {
-        events.accept(RealtimeProtocol.parse(
+        events.accept(new OpenAiRealtime().parse(
                 "{\"type\":\"response.function_call_arguments.done\",\"call_id\":\"call_9\","
                         + "\"name\":\"search_the_web\",\"arguments\":\"{}\"}"));
 
@@ -248,7 +249,7 @@ class RealtimeConversationTest {
 
     @Test
     void aToolNobodyOwnsIsAnsweredRatherThanLeavingTheModelWaiting() {
-        events.accept(RealtimeProtocol.parse(
+        events.accept(new OpenAiRealtime().parse(
                 "{\"type\":\"response.function_call_arguments.done\",\"call_id\":\"c\","
                         + "\"name\":\"order_a_pizza\",\"arguments\":\"{}\"}"));
 
@@ -259,8 +260,8 @@ class RealtimeConversationTest {
 
     @Test
     void aBrokenConnectionIsReportedOnceAndClosed() {
-        events.accept(RealtimeProtocol.parse("{\"type\":\"error\",\"error\":{\"message\":\"quota gone\"}}"));
-        events.accept(RealtimeProtocol.parse("{\"type\":\"error\",\"error\":{\"message\":\"again\"}}"));
+        events.accept(new OpenAiRealtime().parse("{\"type\":\"error\",\"error\":{\"message\":\"quota gone\"}}"));
+        events.accept(new OpenAiRealtime().parse("{\"type\":\"error\",\"error\":{\"message\":\"again\"}}"));
 
         assertEquals(List.of("quota gone"), reported, "once, not once a frame");
         assertEquals(1, closes.get());
@@ -282,7 +283,7 @@ class RealtimeConversationTest {
         assertDoesNotThrow(() -> {
             conversation.close();
             conversation.close();
-            new RealtimeConversation(LoggerFactory.getLogger("x"), () -> NOW, List.of(),
+            new RealtimeConversation(LoggerFactory.getLogger("x"), new OpenAiRealtime(), () -> NOW, List.of(),
                     played::add, stops::incrementAndGet, remembered::add, reported::add).close();
         });
     }
@@ -290,7 +291,7 @@ class RealtimeConversationTest {
     @Test
     void silenceIsNotSent() {
         conversation.hear("u1", "Victor", null);
-        conversation.hear("u1", "Victor", new PcmAudio(new byte[0], RealtimeProtocol.SAMPLE_RATE, 1));
+        conversation.hear("u1", "Victor", new PcmAudio(new byte[0], OpenAiRealtime.SAMPLE_RATE, 1));
 
         assertTrue(sent.isEmpty());
     }

@@ -194,8 +194,28 @@ conversation:
   # stays off unless it has them.
   realtime:
     enabled: false
+
+    # Which service, and therefore which protocol. The two share no field names at all, and this cannot be
+    # guessed from the URL -- a proxy in front of either one would say nothing about what is behind it.
+    #
+    #   OPENAI - the Realtime API. Every frame carries a "type", the model is named in the url below, and
+    #            the key is sent as a bearer token. Voices: marin, cedar, alloy...
+    #   GEMINI - Google's Live API (BidiGenerateContent). The model is named in the first frame (see
+    #            "model" below), the key goes in the URL, and input audio is 16 kHz rather than 24.
+    #            Roughly an order of magnitude cheaper per minute of conversation, which for a bot that
+    #            sits in a voice channel is the difference between a demo and something left switched on.
+    #            Voices: Puck, Charon, Kore, Fenrir, Aoede...
+    #
+    # Leaving "url" and "voice" out is the safest way to switch: each service's defaults follow this
+    # setting, and a Gemini URL with an OpenAI voice name fails in a way nobody can read.
+    api: "OPENAI"
+
     url: "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1"
     api_key: ""
+
+    # GEMINI only: the model to open the session with. "models/" is added if you leave it out.
+    model: "gemini-live-2.5-flash-preview"
+
     # The provider's voice name for the spoken answer.
     voice: "marin"
 

@@ -28,13 +28,20 @@ import java.util.function.LongSupplier;
  * ({@link RealtimeProtocol#speakerChanged}), which keeps attribution at the granularity of an utterance. That
  * is the same granularity the turn-based path works in, so nothing is lost that was previously kept.
  *
- * <p><strong>None of this has been run against the real service.</strong> Every decision here is covered by
- * tests through {@link RealtimeLink}, so what this class does with an event is known; whether OpenAI sends that
- * event under that name is not, from this repository. The turn-based path stays the default for that reason.
+ * <p>Which service is on the other end is not this class's business: it is handed a {@link RealtimeProtocol}
+ * and every frame it sends comes from there. That is what let a second provider arrive without a line of this
+ * logic changing — and a dialect with no frame for something returns an empty string, which {@link #send}
+ * drops, because on one of the two services interruption really is the server's decision alone.
+ *
+ * <p><strong>None of this has been run against a real service.</strong> Every decision here is covered by
+ * tests through {@link RealtimeLink}, so what this class does with an event is known; whether the service
+ * sends that event under that name is not, from this repository. The turn-based path stays the default for
+ * that reason.
  */
 public class RealtimeConversation {
 
     private final Logger logger;
+    private final RealtimeProtocol protocol;
     private final LongSupplier clock;
     private final List<ToolSource> toolSources;
     private final Consumer<PcmAudio> playback;
@@ -51,6 +58,7 @@ public class RealtimeConversation {
 
     /**
      * @param logger       where to put the debug trail
+     * @param protocol     the dialect the service on the other end speaks
      * @param clock        the current time in milliseconds
      * @param toolSources  the groups of tools the model may call, the same ones the turn-based path offers
      * @param playback     where a piece of the bot's voice goes
@@ -58,10 +66,12 @@ public class RealtimeConversation {
      * @param remember     where a finished turn is recorded
      * @param report       where to tell a human that the conversation broke
      */
-    public RealtimeConversation(Logger logger, LongSupplier clock, List<ToolSource> toolSources,
+    public RealtimeConversation(Logger logger, RealtimeProtocol protocol, LongSupplier clock,
+                                List<ToolSource> toolSources,
                                 Consumer<PcmAudio> playback, Runnable stopPlayback,
                                 Consumer<Turn> remember, Consumer<String> report) {
         this.logger = logger;
+        this.protocol = protocol;
         this.clock = clock;
         this.toolSources = toolSources == null ? List.of() : List.copyOf(toolSources);
         this.playback = playback;
@@ -85,7 +95,18 @@ public class RealtimeConversation {
         this.botId = botUserId == null ? "bot" : botUserId;
         this.failed = false;
         this.link = links.apply(this::onEvent);
-        link.send(RealtimeProtocol.sessionUpdate(instructions, voice, declaredTools()));
+        send(protocol.session(instructions, voice, declaredTools()));
+    }
+
+    /**
+     * Sends a frame, unless the dialect had none to give.
+     *
+     * <p>An empty frame is not an error: it is how a dialect says that this service does the thing by itself.
+     */
+    private void send(String frame) {
+        if (link != null && frame != null && !frame.isBlank()) {
+            link.send(frame);
+        }
     }
 
     private List<ChatModel.Tool> declaredTools() {
@@ -109,9 +130,9 @@ public class RealtimeConversation {
         if (!userId.equals(speaking)) {
             // The one thing a single input buffer cannot carry: who is talking.
             speaking = userId;
-            link.send(RealtimeProtocol.speakerChanged(displayName));
+            send(protocol.speakerChanged(displayName));
         }
-        link.send(RealtimeProtocol.appendAudio(audio));
+        send(protocol.appendAudio(audio));
     }
 
     /** Called for every event the service sends. */
@@ -143,7 +164,7 @@ public class RealtimeConversation {
             return;
         }
         logger.debug("Interrupted: dropping what was queued");
-        link.send(RealtimeProtocol.cancelResponse());
+        send(protocol.cancelResponse());
         stopPlayback.run();
         // What was being said was cut off, so what is kept is what was actually heard.
         finishTurn();
@@ -192,14 +213,29 @@ public class RealtimeConversation {
         String result = toolSources.stream()
                 .filter(source -> source.handles(call.name()))
                 .findFirst()
-                .map(source -> source.execute(call, snapshot, clock.getAsLong()))
+                .map(source -> source.execute(call, snapshot, clock.getAsLong(), askingTurn()))
                 .orElseGet(() -> {
                     logger.warn("The model asked for a tool that is not offered: {}", call.name());
                     return "There is no tool called " + call.name() + ".";
                 });
         logger.debug("Tool {} answered {} character(s)", call.name(), result.length());
-        link.send(RealtimeProtocol.toolResult(call.id(), result));
-        link.send(RealtimeProtocol.createResponse());
+        send(protocol.toolResult(call, result));
+        send(protocol.createResponse());
+    }
+
+    /**
+     * Who the tool should act for: whoever the session was last hearing.
+     *
+     * <p>Full duplex knows this as precisely as the turn-based path does, because the speaker is named on
+     * every change — so a tool that runs a command on somebody's behalf works here too, with their rights.
+     *
+     * @return the turn to attribute the call to, or null while nobody has spoken yet
+     */
+    private Turn askingTurn() {
+        if (speaking.isEmpty() || snapshot == null) {
+            return null;
+        }
+        return turn(speaking, nameOf(speaking), "");
     }
 
     /** Said once: a broken connection would otherwise report itself on every frame that follows. */

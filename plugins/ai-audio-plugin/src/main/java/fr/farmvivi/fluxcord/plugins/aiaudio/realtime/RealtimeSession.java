@@ -16,7 +16,7 @@ import java.util.function.Consumer;
  * The WebSocket, and nothing else.
  *
  * <p>Deliberately the thinnest class in the plugin: it opens the socket, reassembles text frames, hands them to
- * {@link RealtimeProtocol#parse} and forwards the result. Every decision lives in
+ * {@link RealtimeProtocol#parseAll} and forwards the results. Every decision lives in
  * {@link RealtimeConversation}, which is tested against {@link RealtimeLink} instead. This is the same bargain
  * the core makes with {@code JDADiscordAPI} — the part that cannot be exercised without the real service is
  * kept small enough to read.
@@ -46,28 +46,28 @@ public class RealtimeSession implements RealtimeLink {
      * Opens a conversation.
      *
      * @param http     the shared client
-     * @param url      the service's WebSocket URL, model included
-     * @param apiKey   the bearer token; a Realtime service without one is not a case that exists yet
+     * @param protocol the dialect, which decides both how the handshake authenticates and how a frame reads
+     * @param url      the service's WebSocket URL as configured
+     * @param apiKey   the key; one service sends it as a bearer header, the other in the URL
      * @param events   where parsed events go, on the socket's own thread
      * @return the open session
      * @throws RealtimeException if the socket could not be opened
      */
-    public static RealtimeSession open(HttpClient http, String url, String apiKey,
+    public static RealtimeSession open(HttpClient http, RealtimeProtocol protocol, String url, String apiKey,
                                        Consumer<RealtimeProtocol.Event> events) {
         StringBuilder partial = new StringBuilder();
         WebSocket.Builder builder = http.newWebSocketBuilder().connectTimeout(CONNECT_TIMEOUT);
-        if (apiKey != null && !apiKey.isBlank()) {
-            builder.header("Authorization", "Bearer " + apiKey.strip());
-        }
+        protocol.headers(apiKey).forEach(builder::header);
+        String endpoint = protocol.endpoint(url, apiKey);
         try {
-            WebSocket socket = builder.buildAsync(URI.create(url), new WebSocket.Listener() {
+            WebSocket socket = builder.buildAsync(URI.create(endpoint), new WebSocket.Listener() {
                 @Override
                 public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
                     partial.append(data);
                     if (last) {
                         String frame = partial.toString();
                         partial.setLength(0);
-                        deliver(events, frame);
+                        deliver(protocol, events, frame);
                     }
                     webSocket.request(1);
                     return null;
@@ -87,6 +87,7 @@ public class RealtimeSession implements RealtimeLink {
                     return null;
                 }
             }).join();
+            // The configured URL and not the endpoint: one dialect puts the key in the latter.
             LOG.debug("Realtime connection open to {}", url);
             return new RealtimeSession(socket);
         } catch (CompletionException e) {
@@ -98,9 +99,10 @@ public class RealtimeSession implements RealtimeLink {
     }
 
     /** Parsing is the protocol's job; a bug in it must not kill the socket's thread. */
-    private static void deliver(Consumer<RealtimeProtocol.Event> events, String frame) {
+    private static void deliver(RealtimeProtocol protocol, Consumer<RealtimeProtocol.Event> events,
+                                String frame) {
         try {
-            events.accept(RealtimeProtocol.parse(frame));
+            protocol.parseAll(frame).forEach(events::accept);
         } catch (RuntimeException e) {
             LOG.warn("Could not handle a realtime frame: {}", e.getMessage());
         }

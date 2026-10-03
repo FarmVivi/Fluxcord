@@ -166,7 +166,7 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
                 PersonaSettings.from(config),
                 ChatSettings.from(config, timeout),
                 WebSearchSettings.from(config, timeout),
-                RealtimeSettings.from(config));
+                RealtimeSettings.from(config, logger));
     }
 
     /** @return the settings the plugin runs with before {@code onEnable} has read the configuration */
@@ -519,6 +519,33 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
         }
     }
 
+    /**
+     * Which full-duplex service the realtime path talks to.
+     *
+     * <p>Not derivable from the URL: a proxy in front of either one would say nothing about the protocol
+     * behind it, and the two protocols share no field names at all.
+     */
+    public enum RealtimeApi {
+        /** OpenAI's Realtime API: every frame carries a {@code type}, the model is named in the URL. */
+        OPENAI,
+        /**
+         * Google's Live API ({@code BidiGenerateContent}): the model is named in the first frame, the key
+         * goes in the URL, and what happened is told by which top-level key a frame has. Roughly an order
+         * of magnitude cheaper per minute of conversation.
+         */
+        GEMINI;
+
+        static RealtimeApi of(String value, Logger logger) {
+            for (RealtimeApi api : values()) {
+                if (api.name().equalsIgnoreCase(value == null ? "" : value.trim())) {
+                    return api;
+                }
+            }
+            logger.warn("Unknown conversation.realtime.api '{}'; using {}", value, OPENAI);
+            return OPENAI;
+        }
+    }
+
     /** Which search API a {@code WebSearch} implementation speaks. */
     public enum SearchApi {
         /** A self-hosted SearxNG instance, queried over its JSON API. */
@@ -603,28 +630,50 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
      * @param apiKey  the bearer token
      * @param voice   the provider's voice name for the spoken answer
      */
-    public record RealtimeSettings(boolean enabled, String url, String apiKey, String voice) {
+    public record RealtimeSettings(boolean enabled, RealtimeApi api, String url, String apiKey, String voice,
+                                   String model) {
 
         private static final String DEFAULT_URL = "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1";
         private static final String DEFAULT_VOICE = "marin";
+        /** Google's cheapest live model, which is the reason that dialect exists at all. */
+        private static final String DEFAULT_GEMINI_MODEL = "gemini-live-2.5-flash-preview";
+        private static final String DEFAULT_GEMINI_VOICE = "Puck";
 
         public RealtimeSettings {
+            api = api == null ? RealtimeApi.OPENAI : api;
             url = url == null ? "" : url.strip();
             apiKey = apiKey == null ? "" : apiKey.strip();
             voice = voice == null ? "" : voice.strip();
+            model = model == null ? "" : model.strip();
+        }
+
+        /** Realtime settings from before there was a choice of service, which means OpenAI. */
+        public RealtimeSettings(boolean enabled, String url, String apiKey, String voice) {
+            this(enabled, RealtimeApi.OPENAI, url, apiKey, voice, "");
         }
 
         /** @return the settings used when nothing was configured */
         public static RealtimeSettings disabled() {
-            return new RealtimeSettings(false, DEFAULT_URL, "", DEFAULT_VOICE);
+            return new RealtimeSettings(false, RealtimeApi.OPENAI, DEFAULT_URL, "", DEFAULT_VOICE, "");
         }
 
-        static RealtimeSettings from(Configuration config) {
+        static RealtimeSettings from(Configuration config, Logger logger) {
+            RealtimeApi api = RealtimeApi.of(
+                    config.getString("conversation.realtime.api", RealtimeApi.OPENAI.name()), logger);
+            // Each service has its own endpoint, voice names and model naming, so the defaults follow the
+            // chosen one - a Gemini URL with an OpenAI voice would fail in a way nobody could read.
+            String defaultUrl = api == RealtimeApi.GEMINI
+                    ? fr.farmvivi.fluxcord.plugins.aiaudio.realtime.GeminiRealtime.DEFAULT_URL
+                    : DEFAULT_URL;
+            String defaultVoice = api == RealtimeApi.GEMINI ? DEFAULT_GEMINI_VOICE : DEFAULT_VOICE;
             return new RealtimeSettings(
                     config.getBoolean("conversation.realtime.enabled", false),
-                    nonBlank(config.getString("conversation.realtime.url", DEFAULT_URL), DEFAULT_URL),
+                    api,
+                    nonBlank(config.getString("conversation.realtime.url", defaultUrl), defaultUrl),
                     config.getString("conversation.realtime.api_key", ""),
-                    nonBlank(config.getString("conversation.realtime.voice", DEFAULT_VOICE), DEFAULT_VOICE));
+                    nonBlank(config.getString("conversation.realtime.voice", defaultVoice), defaultVoice),
+                    nonBlank(config.getString("conversation.realtime.model", DEFAULT_GEMINI_MODEL),
+                            DEFAULT_GEMINI_MODEL));
         }
 
         /**
