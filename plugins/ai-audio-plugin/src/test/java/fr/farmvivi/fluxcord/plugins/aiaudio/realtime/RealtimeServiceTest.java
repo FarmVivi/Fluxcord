@@ -124,6 +124,12 @@ class RealtimeServiceTest {
         when(guild.getId()).thenReturn(GUILD_ID);
         when(guild.getName()).thenReturn("My Server");
         when(guild.getAudioManager()).thenReturn(audioManager);
+        // Faithful to the API: Guild.getSelfMember() is @Nonnull and JDA always has it cached, so a
+        // double that answers null would be testing a state that cannot happen.
+        net.dv8tion.jda.api.entities.SelfMember selfMember =
+                mock(net.dv8tion.jda.api.entities.SelfMember.class);
+        when(selfMember.getEffectiveName()).thenReturn("Fluxcord");
+        when(guild.getSelfMember()).thenReturn(selfMember);
         when(channel.getGuild()).thenReturn(guild);
 
         output = mock(MessageChannel.class, RETURNS_DEEP_STUBS);

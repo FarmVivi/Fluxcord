@@ -42,8 +42,12 @@ public class ConverseCommand extends AiAudioCommand {
                 plugin.getWakeGate().disengage(guild, "the conversation was stopped");
             }
             boolean ourListening = plugin.getConversation().ownsListening(guild);
-            // Either path may be the one that is running, and stopping the other is a no-op.
-            boolean stopped = plugin.getRealtime().stop(guild) | plugin.getConversation().stop(guild);
+            // Both are stopped, not the first one that answers: either path may be the one running, and
+            // stopping the other is a no-op. Spelled out in two statements rather than with a
+            // non-short-circuiting "|", which reads like a typo for "||" and hides the whole point.
+            boolean realtimeStopped = plugin.getRealtime().stop(guild);
+            boolean turnBasedStopped = plugin.getConversation().stop(guild);
+            boolean stopped = realtimeStopped || turnBasedStopped;
             if (ourListening) {
                 plugin.getSpeechRecognition().stop(guild);
             }

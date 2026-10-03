@@ -59,6 +59,9 @@ public class CommandTools implements ToolSource {
 
     private static final Logger logger = LoggerFactory.getLogger(CommandTools.class);
 
+    /** The tail of every "there is no such thing here" answer, written once. */
+    private static final String IN_THIS_SERVER = "\" in this server.";
+
     private final CommandService commands;
     private final Function<String, Optional<Guild>> guilds;
     private final Function<Turn, Optional<MessageChannel>> outputs;
@@ -350,7 +353,7 @@ public class CommandTools implements ToolSource {
                 .map(Member::getUser)
                 .map(User.class::cast)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "There is nobody called \"" + text + "\" in this server."));
+                        "There is nobody called \"" + text + IN_THIS_SERVER));
     }
 
     private Object channel(String text, Guild guild) {
@@ -364,7 +367,7 @@ public class CommandTools implements ToolSource {
                 .findFirst()
                 .map(Channel.class::cast)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "There is no channel called \"" + text + "\" in this server."));
+                        "There is no channel called \"" + text + IN_THIS_SERVER));
     }
 
     private Object role(String text, Guild guild) {
@@ -376,7 +379,7 @@ public class CommandTools implements ToolSource {
         return guild.getRolesByName(text, true).stream()
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "There is no role called \"" + text + "\" in this server."));
+                        "There is no role called \"" + text + IN_THIS_SERVER));
     }
 
     /** A mention, an id, or neither: {@code <@123>} and {@code 123} both mean the same person. */

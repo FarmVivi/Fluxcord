@@ -4,6 +4,9 @@ import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import net.dv8tion.jda.api.audio.AudioReceiveHandler;
 import net.dv8tion.jda.api.audio.UserAudio;
 
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
+
 /**
  * Receives what is said in one guild's voice channel and hands it to a {@link SpeechSegmenter}.
  *
@@ -26,8 +29,14 @@ public class TranscriptionSession implements AudioReceiveHandler {
 
     private final SpeechSegmenter segmenter;
     private final java.util.function.LongSupplier clock;
-    /** Volatile: written by whichever thread engages, read by JDA's audio thread on every packet. */
-    private volatile java.util.function.BiConsumer<String, PcmAudio> diversion;
+    /**
+     * Written by whichever thread engages, read by JDA's audio thread on every packet.
+     *
+     * <p>An {@code AtomicReference} rather than a {@code volatile} field: both publish the reference
+     * safely, and this one says so in its type instead of relying on the reader knowing what the keyword
+     * buys.
+     */
+    private final AtomicReference<BiConsumer<String, PcmAudio>> diversion = new AtomicReference<>();
 
     /**
      * @param segmenter where the received audio accumulates
@@ -43,13 +52,13 @@ public class TranscriptionSession implements AudioReceiveHandler {
      *
      * @param diversion where the packets go, as (speaker id, audio); null to transcribe locally again
      */
-    public void divertTo(java.util.function.BiConsumer<String, PcmAudio> diversion) {
-        this.diversion = diversion;
+    public void divertTo(BiConsumer<String, PcmAudio> diversion) {
+        this.diversion.set(diversion);
     }
 
     /** @return true while the audio is going somewhere other than the segmenter */
     public boolean isDiverted() {
-        return diversion != null;
+        return diversion.get() != null;
     }
 
     @Override
@@ -71,7 +80,7 @@ public class TranscriptionSession implements AudioReceiveHandler {
         PcmAudio audio = PcmAudio.fromBigEndian(userAudio.getAudioData(1.0),
                 PcmAudio.DISCORD_SAMPLE_RATE, PcmAudio.DISCORD_CHANNELS);
         String userId = userAudio.getUser().getId();
-        java.util.function.BiConsumer<String, PcmAudio> elsewhere = diversion;
+        BiConsumer<String, PcmAudio> elsewhere = diversion.get();
         if (elsewhere != null) {
             elsewhere.accept(userId, audio);
             return;

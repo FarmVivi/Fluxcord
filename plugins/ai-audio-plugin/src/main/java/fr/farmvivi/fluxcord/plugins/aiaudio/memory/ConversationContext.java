@@ -69,11 +69,15 @@ public record ConversationContext(String guildId, String guildName, String chann
      * that does not know it cannot tell that it is the one being spoken to. Resolved from JDA's own cache,
      * never over REST: this runs on the way to a model call.
      *
-     * @return the name, or null when the member is not cached
+     * <p>No null check: {@code getSelfMember()} is {@code @Nonnull} and JDA keeps the self member cached
+     * for every guild the bot is in. The guard that used to be here existed only because an unstubbed
+     * Mockito mock returns null — the test double dictating the shape of production code — and a double
+     * that answers something the real API cannot is the kind that hides bugs rather than finding them.
+     *
+     * @return the name
      */
     private static String selfName(AudioChannel channel) {
-        Member self = channel.getGuild().getSelfMember();
-        return self == null ? null : self.getEffectiveName();
+        return channel.getGuild().getSelfMember().getEffectiveName();
     }
 
     /** @return true when there is nobody to talk to */

@@ -39,7 +39,10 @@ class ConfigurationKeysTest {
      * literals are translation keys.
      */
     private static final Pattern CONFIG_READ = Pattern.compile(
-            "(\\w+)\\s*(?:\\(\\)\\s*)?\\.\\s*"
+            // Atomic (?>...) so the engine cannot come back and try another way of splitting the
+            // whitespace: "name  ()  ." has one reading, and on text that is not a config read at all the
+            // old form retried every split, which is super-linear over a scan of every source file.
+            "(\\w+)(?>\\s*(?:\\(\\))?\\s*)\\.\\s*"
                     + "get(?:String|Int|Boolean|Long|Double|StringList)\\s*\\(\\s*\"([^\"]+)\"");
 
     /** Read by the framework itself, not by any code path of this module. */

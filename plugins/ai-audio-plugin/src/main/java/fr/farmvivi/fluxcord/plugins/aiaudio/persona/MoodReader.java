@@ -53,8 +53,18 @@ public class MoodReader {
      * The separator is spelled out rather than "a few non-digits": a greedy {@code \D} class eats the minus
      * sign, which turns {@code warmth=-0.25} into a cheerful {@code +0.25}. A sign belongs to the number.
      */
-    private static final String NUMBER = "([-+]?\\d*\\.?\\d+)";
-    private static final String SEPARATOR = "[\"'\\s]*[=:]?[\"'\\s]*";
+    /**
+     * Both are written to be <strong>unambiguous</strong>, which matters because what they are run
+     * against is a language model's output and nobody controls its shape.
+     *
+     * <p>The separator used to be two quantifiers over overlapping classes with an optional between
+     * them, so a run of quotes and spaces not ending in a number made the engine try every way of
+     * splitting it - super-linear on input nobody chose. One class with one quantifier cannot
+     * backtrack at all. The number had the same defect, being ambiguous about where the integer part
+     * ended, and is now an alternation with exactly one reading per input.
+     */
+    private static final String NUMBER = "([-+]?(?:\\d+(?:\\.\\d+)?|\\.\\d+))";
+    private static final String SEPARATOR = "[\"'\\s=:]*";
     private static final Pattern ENERGY = Pattern.compile("energy" + SEPARATOR + NUMBER,
             Pattern.CASE_INSENSITIVE);
     private static final Pattern WARMTH = Pattern.compile("warmth" + SEPARATOR + NUMBER,

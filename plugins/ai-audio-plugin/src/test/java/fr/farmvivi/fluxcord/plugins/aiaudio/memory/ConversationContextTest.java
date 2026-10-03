@@ -26,6 +26,8 @@ class ConversationContextTest {
     private ConversationMemory memory;
     private AudioChannel channel;
     private Guild guild;
+    /** A field, because one test renames the bot. */
+    private net.dv8tion.jda.api.entities.SelfMember selfMember;
 
     @BeforeEach
     void setUp() {
@@ -39,6 +41,11 @@ class ConversationContextTest {
         channel = mock(AudioChannel.class);
         when(channel.getId()).thenReturn(CHANNEL_ID);
         when(channel.getName()).thenReturn("General");
+        // Faithful to the API: getSelfMember() is @Nonnull and JDA always has it cached. A double that
+        // answered null would be pinning a state that cannot happen, which is what it used to do.
+        selfMember = mock(net.dv8tion.jda.api.entities.SelfMember.class);
+        when(selfMember.getEffectiveName()).thenReturn("Fluxcord");
+        when(guild.getSelfMember()).thenReturn(selfMember);
         when(channel.getGuild()).thenReturn(guild);
         when(channel.getMembers()).thenReturn(List.of());
     }
@@ -56,20 +63,9 @@ class ConversationContextTest {
     @Test
     void theSnapshotKnowsWhatTheBotIsCalledInThisServer() {
         // A server may rename the bot, and people then address that name and no other.
-        net.dv8tion.jda.api.entities.SelfMember self =
-                mock(net.dv8tion.jda.api.entities.SelfMember.class);
-        when(self.getEffectiveName()).thenReturn("Tardis");
-        when(guild.getSelfMember()).thenReturn(self);
+        when(selfMember.getEffectiveName()).thenReturn("Tardis");
 
         assertEquals("Tardis", ConversationContext.of(channel, memory, 10, 10).botName());
-    }
-
-    @Test
-    void anUncachedSelfMemberIsNotWorthFailingOver() {
-        // Resolving it over REST would sit on the way to a model call; the name is a nicety, not a need.
-        when(guild.getSelfMember()).thenReturn(null);
-
-        assertNull(ConversationContext.of(channel, memory, 10, 10).botName());
     }
 
     @Test

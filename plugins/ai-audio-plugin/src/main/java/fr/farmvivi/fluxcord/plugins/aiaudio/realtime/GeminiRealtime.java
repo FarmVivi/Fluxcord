@@ -54,6 +54,21 @@ public final class GeminiRealtime implements RealtimeProtocol {
     public static final String DEFAULT_URL = "wss://generativelanguage.googleapis.com/ws/"
             + "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 
+    /**
+     * The field names this dialect reads and writes.
+     *
+     * <p>Named rather than repeated because a misspelling in one of three copies is not a
+     * compile error and not a runtime error either: the field is simply absent, the frame parses
+     * to nothing, and the bot goes quiet. That failure has already cost this plugin a day.
+     */
+    private static final String PARTS = "parts";
+    private static final String ERROR = "error";
+    private static final String SERVER_CONTENT = "serverContent";
+    private static final String MODEL_TURN = "modelTurn";
+    private static final String INLINE_DATA = "inlineData";
+    private static final String FUNCTION_CALLS = "functionCalls";
+    private static final String GO_AWAY = "goAway";
+
     private final String model;
 
     /**
@@ -142,7 +157,7 @@ public final class GeminiRealtime implements RealtimeProtocol {
         JsonArray parts = new JsonArray();
         parts.add(part);
         JsonObject content = new JsonObject();
-        content.add("parts", parts);
+        content.add(PARTS, parts);
         return content;
     }
 
@@ -315,16 +330,16 @@ public final class GeminiRealtime implements RealtimeProtocol {
         } catch (JsonParseException | IllegalStateException e) {
             return List.of(new Event.Failure("the service sent something that is not JSON"));
         }
-        if (json.has("error")) {
+        if (json.has(ERROR)) {
             return List.of(new Event.Failure(errorMessage(json)));
         }
         if (json.has("setupComplete")) {
             return List.of(new Event.Ignored("setupComplete"));
         }
-        if (json.has("goAway")) {
+        if (json.has(GO_AWAY)) {
             // MEASURED limit: an audio-only session lasts about fifteen minutes, and this arrives first.
-            String left = json.get("goAway").isJsonObject()
-                    ? string(json.getAsJsonObject("goAway"), "timeLeft")
+            String left = json.get(GO_AWAY).isJsonObject()
+                    ? string(json.getAsJsonObject(GO_AWAY), "timeLeft")
                     : "";
             return List.of(new Event.ClosingSoon(left.isEmpty()
                     ? "the service is about to close the session"
@@ -333,8 +348,8 @@ public final class GeminiRealtime implements RealtimeProtocol {
         if (json.has("toolCall")) {
             return toolCalls(json.getAsJsonObject("toolCall"));
         }
-        if (json.has("serverContent") && json.get("serverContent").isJsonObject()) {
-            return serverContent(json.getAsJsonObject("serverContent"));
+        if (json.has(SERVER_CONTENT) && json.get(SERVER_CONTENT).isJsonObject()) {
+            return serverContent(json.getAsJsonObject(SERVER_CONTENT));
         }
         return List.of(new Event.Ignored(json.keySet().stream().findFirst().orElse("<unknown>")));
     }
@@ -384,24 +399,24 @@ public final class GeminiRealtime implements RealtimeProtocol {
      * @return the audio, or null when this frame carried none
      */
     private Event audioOf(JsonObject content) {
-        if (!content.has("modelTurn") || !content.get("modelTurn").isJsonObject()) {
+        if (!content.has(MODEL_TURN) || !content.get(MODEL_TURN).isJsonObject()) {
             return null;
         }
-        JsonObject turn = content.getAsJsonObject("modelTurn");
-        if (!turn.has("parts") || !turn.get("parts").isJsonArray()) {
+        JsonObject turn = content.getAsJsonObject(MODEL_TURN);
+        if (!turn.has(PARTS) || !turn.get(PARTS).isJsonArray()) {
             return null;
         }
         ByteArrayOutputStream samples = new ByteArrayOutputStream();
         int rate = OUTPUT_SAMPLE_RATE;
-        for (JsonElement element : turn.getAsJsonArray("parts")) {
+        for (JsonElement element : turn.getAsJsonArray(PARTS)) {
             if (!element.isJsonObject()) {
                 continue;
             }
             JsonObject part = element.getAsJsonObject();
-            if (!part.has("inlineData") || !part.get("inlineData").isJsonObject()) {
+            if (!part.has(INLINE_DATA) || !part.get(INLINE_DATA).isJsonObject()) {
                 continue;
             }
-            JsonObject inline = part.getAsJsonObject("inlineData");
+            JsonObject inline = part.getAsJsonObject(INLINE_DATA);
             String data = string(inline, "data");
             if (data.isEmpty()) {
                 continue;
@@ -455,11 +470,11 @@ public final class GeminiRealtime implements RealtimeProtocol {
     }
 
     private List<Event> toolCalls(JsonObject toolCall) {
-        if (!toolCall.has("functionCalls") || !toolCall.get("functionCalls").isJsonArray()) {
+        if (!toolCall.has(FUNCTION_CALLS) || !toolCall.get(FUNCTION_CALLS).isJsonArray()) {
             return List.of(new Event.Ignored("a toolCall with no calls"));
         }
         List<Event> events = new ArrayList<>();
-        for (JsonElement element : toolCall.getAsJsonArray("functionCalls")) {
+        for (JsonElement element : toolCall.getAsJsonArray(FUNCTION_CALLS)) {
             if (!element.isJsonObject()) {
                 continue;
             }
@@ -487,11 +502,11 @@ public final class GeminiRealtime implements RealtimeProtocol {
     }
 
     private static String errorMessage(JsonObject json) {
-        if (json.get("error").isJsonObject()) {
-            String message = string(json.getAsJsonObject("error"), "message");
+        if (json.get(ERROR).isJsonObject()) {
+            String message = string(json.getAsJsonObject(ERROR), "message");
             return message.isEmpty() ? "the service reported an error without a message" : message;
         }
-        String flat = string(json, "error");
+        String flat = string(json, ERROR);
         return flat.isEmpty() ? "the service reported an error without a message" : flat;
     }
 
