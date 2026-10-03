@@ -151,8 +151,29 @@ And it already happens with a 3.2 GB model on a 12 GB card, so it is **not** VRA
 on the compute or the allocator. A voice that answers in half a second four times and then takes two minutes is
 worse than one that always takes one and a half.
 
-**So on a single shared card, put synthesis on the CPU.** 2.4–2.5× realtime, measured steady, with none of
-this. The GPU figures above stand for a card that only does speech.
+**So on a single shared card, put synthesis on the CPU.** Re-measured after the production box was changed to
+exactly that, fifteen runs across the three states: **worst case 3.37 s instead of 267 s**, and the median is
+the same whether the card holds nothing, the small model or the big one. The stalls are gone.
+
+#### The whole chain, on the production servers
+
+| Step | `gemma4:e4b-it-qat` | `qwen3.5:9b` |
+| --- | --- | --- |
+| model answers | 0.24–0.30 s | 0.59 s warm |
+| synthesis of that answer | 2.41 s | 3.85 s |
+| **silence before the bot speaks** | **~2.6 s** | ~4.4 s |
+| a full web-search turn | 6.4–7.6 s | 5.7–5.8 s |
+
+Transcription of a French sentence came back word for word, both tries, through the production voice. The mood
+was read sensibly 6/6 by both models in 0.3 s. Tool calls at four attempts each: search 3/4 for Gemma and 2/4
+for Qwen, memory 2/4 and 4/4 — the same order as the earlier figures, and too few attempts to read more into.
+
+**Synthesis is now the slow step, and most of it is not synthesis.** Fitting the four lengths gives
+**1.9 s of fixed cost per request plus 0.27 s per second of audio**; the same image on a laptop CPU fits to
+**no fixed cost and 0.54 s per second**. So the production box is twice as fast once it starts and pays two
+seconds to start. That is the signature of per-request runtime setup, not of compute — worth trying the
+dedicated `-cpu` image (ONNX) rather than the ROCm one with the GPU disabled. If the fixed cost goes away, a
+spoken turn drops from 2.6 s to under one.
 
 This also corrects what this file said a day earlier — "the LLM gets the VRAM, the voice gets a sliver, no
 trade-off to weigh". That was measured honestly but in the wrong configuration: Kokoro alone on an idle card.
