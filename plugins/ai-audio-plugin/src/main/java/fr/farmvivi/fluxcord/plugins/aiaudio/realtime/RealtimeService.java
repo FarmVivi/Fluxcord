@@ -36,6 +36,18 @@ public class RealtimeService {
     private final Logger logger;
     private final LongSupplier clock;
     private final Map<String, RealtimeConversation> conversations = new ConcurrentHashMap<>();
+    /**
+     * Closes turns that silence has ended.
+     *
+     * <p>One scheduler for every guild, as in the transcription service: silence is an absence of packets
+     * and never an event, so somebody has to look.
+     */
+    private final java.util.concurrent.ScheduledExecutorService ticker =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "ai-audio-realtime-turns");
+                thread.setDaemon(true);
+                return thread;
+            });
     private final java.util.function.BiFunction<AiSettings.RealtimeSettings,
             java.util.function.Consumer<RealtimeProtocol.Event>, RealtimeLink> links;
 
@@ -103,22 +115,54 @@ public class RealtimeService {
         PersonaSnapshot snapshot = PersonaSnapshot.of(plugin.getPersonaStore(), memory,
                 ConversationContext.of(channel, memory, settings.chat().historyTurns(), 0), now);
 
+        java.util.List<String> names = plugin.botNames(guild);
         RealtimeConversation conversation = new RealtimeConversation(logger, dialect(realtime), clock,
                 toolSources,
                 audio -> plugin.getTextToSpeech().play(guild, audio),
                 () -> plugin.getTextToSpeech().interrupt(guild),
                 memory::remember,
-                message -> report(output, message));
+                message -> report(output, message),
+                realtime.serviceDecidesTurns(), realtime.silence().toMillis(),
+                spoken -> settings.chat().isAddressedToUs(spoken, names));
 
         String instructions = ConversationPrompt.systemMessageFor(snapshot, now);
+        // The bot's own names go in the vocabulary, because they are what wakes it: a name the transcriber
+        // cannot spell is a bot that never answers.
+        java.util.List<String> vocabulary = new java.util.ArrayList<>(settings.transcription().vocabulary());
+        names.stream().filter(name -> !vocabulary.contains(name)).forEach(vocabulary::add);
         conversation.start(snapshot, instructions, realtime.voice(), botUserId(),
-                sink -> links.apply(realtime, sink));
+                sink -> links.apply(realtime, sink), java.util.List.copyOf(vocabulary));
 
         conversations.put(guild.getId(), conversation);
+        if (!realtime.serviceDecidesTurns()) {
+            ticker.scheduleWithFixedDelay(() -> tick(guild.getId()), TICK_MS, TICK_MS,
+                    java.util.concurrent.TimeUnit.MILLISECONDS);
+        }
         plugin.getContext().getAudioService().registerReceiveHandler(guild, plugin,
                 new RealtimeReceiver(conversation, userId -> displayName(guild, userId)));
-        logger.info("Realtime conversation open in guild {}", guild.getId());
+        logger.info("Realtime conversation open in guild {} ({} decides turns)", guild.getId(),
+                realtime.serviceDecidesTurns() ? "the service" : "the plugin");
         return true;
+    }
+
+    /** Short enough to feel immediate, cheap enough to run forever; the same figure the segmenter uses. */
+    private static final long TICK_MS = 250;
+
+    /**
+     * One tick for one guild's conversation, if it is still there.
+     *
+     * <p>A scheduled task that throws is never run again, and this one has to survive a bad frame.
+     */
+    private void tick(String guildId) {
+        RealtimeConversation conversation = conversations.get(guildId);
+        if (conversation == null) {
+            return;
+        }
+        try {
+            conversation.tick();
+        } catch (RuntimeException e) {
+            logger.warn("Closing a realtime turn failed in guild {}: {}", guildId, e.getMessage());
+        }
     }
 
     /**

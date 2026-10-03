@@ -129,6 +129,27 @@ public class SpeechRecognitionService {
         return true;
     }
 
+    /**
+     * The words the provider is told to expect, which always include the bot's own names.
+     *
+     * <p>Always, and not as a line in the configuration an operator has to remember, because the wake word
+     * and the vocabulary are one feature: a bot woken by its name is never woken at all if the transcriber
+     * writes "flux cord" for "Fluxcord". The failure is silent and looks like the gate being broken.
+     *
+     * @param guild         the server, whose nickname for the bot is one of those names
+     * @param transcription the configured settings, whose own vocabulary comes first
+     * @return the vocabulary to send, deduplicated
+     */
+    private java.util.List<String> vocabulary(Guild guild, AiSettings.TranscriptionSettings transcription) {
+        java.util.List<String> words = new java.util.ArrayList<>(transcription.vocabulary());
+        for (String name : plugin.botNames(guild)) {
+            if (!words.contains(name)) {
+                words.add(name);
+            }
+        }
+        return java.util.List.copyOf(words);
+    }
+
     /** Called by the scheduler: closes finished utterances and hands them to the worker. */
     private void drain(Guild guild) {
         Session session = sessions.get(guild.getId());
@@ -149,7 +170,7 @@ public class SpeechRecognitionService {
             try {
                 AiSettings.TranscriptionSettings transcription = plugin.getSettings().transcription();
                 String text = provider.transcribe(segment.audio(), transcription.language(),
-                        transcription.vocabulary());
+                        vocabulary(guild, transcription));
                 if (text == null || text.isBlank()) {
                     return;
                 }

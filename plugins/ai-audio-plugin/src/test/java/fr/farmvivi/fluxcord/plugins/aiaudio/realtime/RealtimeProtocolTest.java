@@ -73,6 +73,36 @@ class RealtimeProtocolTest {
     }
 
     @Test
+    void turnDetectionIsSwitchedOffWhenThePluginClosesTurnsItself() {
+        // MEASURED, 2026-10-03: server VAD has to HEAR silence to end a turn, and JDA stops delivering
+        // packets the moment somebody stops talking - so in a voice channel the turn would never end.
+        // Streaming silence to keep it alive is billed as audio input for every quiet second.
+        JsonObject input = frame(OPENAI.session(new RealtimeProtocol.SessionConfig(
+                "x", "marin", List.of(), false, List.of())))
+                .getAsJsonObject("session").getAsJsonObject("audio").getAsJsonObject("input");
+
+        assertTrue(input.get("turn_detection").isJsonNull());
+    }
+
+    @Test
+    void theNamesThatWakeTheBotAreGivenToTheInputTranscriber() {
+        // Same lever as the turn-based path: a name the transcriber cannot spell is a bot that, woken by
+        // its name, is never woken at all.
+        JsonObject transcription = frame(OPENAI.session(new RealtimeProtocol.SessionConfig(
+                "x", "marin", List.of(), false, List.of("Fluxcord", "TARDIS"))))
+                .getAsJsonObject("session").getAsJsonObject("audio").getAsJsonObject("input")
+                .getAsJsonObject("transcription");
+
+        assertEquals("Fluxcord, TARDIS", transcription.get("prompt").getAsString());
+    }
+
+    @Test
+    void answeringIsASeparateGestureFromClosingTheTurn() {
+        // Which is what makes it possible to hear a sentence, write it down and deliberately not answer it.
+        assertFalse(OPENAI.answersOnTurnEnd());
+    }
+
+    @Test
     void theServiceIsAskedToDecideWhenSomebodyHasStoppedTalking() {
         // Server-side turn detection is what makes this full duplex: the turn-based path has to poll for
         // silence because JDA only delivers packets while somebody speaks.

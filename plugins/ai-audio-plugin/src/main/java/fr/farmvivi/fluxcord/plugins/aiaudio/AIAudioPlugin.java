@@ -146,6 +146,35 @@ public class AIAudioPlugin extends AbstractPlugin {
         speechRecognition = new SpeechRecognitionService(this, speechToText(), memory);
     }
 
+    /**
+     * What the bot is called, which is both what wakes it and what the transcriber has to be able to spell.
+     *
+     * <p>Two names, and they are rarely the same one: the persona has a name an operator chose, and the
+     * server may have renamed the bot to something else entirely. People in the channel say the second.
+     *
+     * @param guild the server, for the nickname; null for the persona name alone
+     * @return the names, longest first so that "Fluxcord Bot" is tried before "Fluxcord"
+     */
+    public java.util.List<String> botNames(net.dv8tion.jda.api.entities.Guild guild) {
+        java.util.List<String> names = new java.util.ArrayList<>();
+        if (settings != null && settings.persona().persona().name() != null) {
+            names.add(settings.persona().persona().name());
+        }
+        if (guild != null) {
+            try {
+                net.dv8tion.jda.api.entities.SelfMember self = guild.getSelfMember();
+                if (self != null) {
+                    names.add(self.getEffectiveName());
+                }
+            } catch (RuntimeException e) {
+                // A guild whose self member is not cached is not worth failing a transcription over.
+                getLogger().debug("Could not read the bot's name in guild {}", guild.getId());
+            }
+        }
+        names.sort(java.util.Comparator.comparingInt(String::length).reversed());
+        return java.util.List.copyOf(names);
+    }
+
     /** @return the shared HTTP client, which the realtime session builds its WebSocket from */
     public HttpClient getHttp() {
         return http;

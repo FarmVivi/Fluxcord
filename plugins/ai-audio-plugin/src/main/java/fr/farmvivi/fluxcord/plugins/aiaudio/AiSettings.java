@@ -312,11 +312,14 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
      *                       one above: a reasoning model thinks before it calls anything, and that thinking
      *                       comes out of the same budget
      * @param commandTools   whether the model may run the bot's own commands on behalf of whoever asked
+     * @param wakeOnName     whether the bot's own names count as a wake word, so it answers when addressed
+     *                       rather than on every sentence
      */
     public record ChatSettings(AiEndpoint endpoint, boolean enabled, String wakeWord, int historyTurns,
                                int maxReplyTokens, double temperature, String reasoningEffort,
                                String toolReasoningEffort, boolean memoryTools, int maxToolRounds,
-                               ChatAudio audio, int maxToolTokens, boolean commandTools) {
+                               ChatAudio audio, int maxToolTokens, boolean commandTools,
+                               boolean wakeOnName) {
 
         /** Chat settings from before commands could be run, which is off. */
         public ChatSettings(AiEndpoint endpoint, boolean enabled, String wakeWord, int historyTurns,
@@ -324,7 +327,7 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
                             String toolReasoningEffort, boolean memoryTools, int maxToolRounds,
                             ChatAudio audio, int maxToolTokens) {
             this(endpoint, enabled, wakeWord, historyTurns, maxReplyTokens, temperature, reasoningEffort,
-                    toolReasoningEffort, memoryTools, maxToolRounds, audio, maxToolTokens, false);
+                    toolReasoningEffort, memoryTools, maxToolRounds, audio, maxToolTokens, false, true);
         }
 
         private static final String DEFAULT_CHAT_MODEL = "gpt-4o-mini";
@@ -385,7 +388,8 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
                                     DEFAULT_AUDIO_VOICE),
                             config.getString("conversation.audio.format", ChatAudio.WAV)),
                     config.getInt("conversation.max_tool_tokens", DEFAULT_MAX_TOOL_TOKENS),
-                    config.getBoolean("conversation.command_tools", false));
+                    config.getBoolean("conversation.command_tools", false),
+                    config.getBoolean("conversation.wake_on_name", true));
         }
 
         /** @return the settings used before the configuration has been read */
@@ -394,7 +398,7 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
                     new AiEndpoint(DEFAULT_BASE_URL, "", DEFAULT_CHAT_MODEL, Duration.ofSeconds(30)),
                     false, "", DEFAULT_HISTORY_TURNS, DEFAULT_MAX_REPLY_TOKENS, DEFAULT_TEMPERATURE / 100.0,
                     DEFAULT_REASONING_EFFORT, OpenAiChatModel.DEFAULT_TOOL_REASONING_EFFORT, false,
-                    DEFAULT_MAX_TOOL_ROUNDS, ChatAudio.off(), DEFAULT_MAX_TOOL_TOKENS);
+                    DEFAULT_MAX_TOOL_ROUNDS, ChatAudio.off(), DEFAULT_MAX_TOOL_TOKENS, false, true);
         }
 
         /** @return true when a key is needed for this endpoint and none was given */
@@ -410,11 +414,42 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
          * @return true when there is no wake word, or the sentence contains it
          */
         public boolean isAddressedToUs(String spoken) {
-            if (wakeWord.isEmpty()) {
-                return true;
+            return isAddressedToUs(spoken, java.util.List.of());
+        }
+
+        /**
+         * Whether a sentence was aimed at the bot.
+         *
+         * <p>The triggers are the configured wake word plus, when {@code wake_on_name} is on, whatever the
+         * bot is actually called — its persona name and its nickname in that server. With no trigger at all
+         * every sentence counts, which is right for a channel with one person in it and wrong for one with
+         * eight.
+         *
+         * @param spoken   what was said, as transcribed
+         * @param botNames the bot's own names, ignored unless {@code wake_on_name} is on
+         * @return true when the bot should answer this sentence
+         */
+        public boolean isAddressedToUs(String spoken, java.util.Collection<String> botNames) {
+            java.util.List<String> triggers = new java.util.ArrayList<>();
+            if (!wakeWord.isEmpty()) {
+                triggers.add(wakeWord);
             }
-            return spoken != null
-                    && spoken.toLowerCase(Locale.ROOT).contains(wakeWord.toLowerCase(Locale.ROOT));
+            if (wakeOnName && botNames != null) {
+                triggers.addAll(botNames);
+            }
+            return fr.farmvivi.fluxcord.plugins.aiaudio.conversation.Address.addressed(spoken, triggers);
+        }
+
+        /** @return every name that wakes the bot, for the transcriber's vocabulary as much as for the gate */
+        public java.util.List<String> triggers(java.util.Collection<String> botNames) {
+            java.util.List<String> triggers = new java.util.ArrayList<>();
+            if (!wakeWord.isEmpty()) {
+                triggers.add(wakeWord);
+            }
+            if (botNames != null) {
+                triggers.addAll(botNames);
+            }
+            return java.util.List.copyOf(triggers);
         }
     }
 
@@ -631,7 +666,7 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
      * @param voice   the provider's voice name for the spoken answer
      */
     public record RealtimeSettings(boolean enabled, RealtimeApi api, String url, String apiKey, String voice,
-                                   String model) {
+                                   String model, boolean serviceDecidesTurns, Duration silence) {
 
         /**
          * The mini model, which is about a third of the flagship's price per minute of conversation and
@@ -652,8 +687,14 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
         private static final String DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-native-audio-latest";
         private static final String DEFAULT_GEMINI_VOICE = "Puck";
 
+        /** The default silence that ends an utterance when this plugin is the one closing turns. */
+        private static final int DEFAULT_REALTIME_SILENCE_MS = 1_200;
+
         public RealtimeSettings {
             api = api == null ? RealtimeApi.OPENAI : api;
+            silence = silence == null || silence.isZero() || silence.isNegative()
+                    ? Duration.ofMillis(DEFAULT_REALTIME_SILENCE_MS)
+                    : silence;
             url = url == null ? "" : url.strip();
             apiKey = apiKey == null ? "" : apiKey.strip();
             voice = voice == null ? "" : voice.strip();
@@ -665,9 +706,17 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
             this(enabled, RealtimeApi.OPENAI, url, apiKey, voice, "");
         }
 
+        /** Realtime settings from before turn-taking was a choice, which means the service decided. */
+        public RealtimeSettings(boolean enabled, RealtimeApi api, String url, String apiKey, String voice,
+                                String model) {
+            this(enabled, api, url, apiKey, voice, model, true,
+                    Duration.ofMillis(DEFAULT_REALTIME_SILENCE_MS));
+        }
+
         /** @return the settings used when nothing was configured */
         public static RealtimeSettings disabled() {
-            return new RealtimeSettings(false, RealtimeApi.OPENAI, DEFAULT_URL, "", DEFAULT_VOICE, "");
+            return new RealtimeSettings(false, RealtimeApi.OPENAI, DEFAULT_URL, "", DEFAULT_VOICE, "",
+                    false, Duration.ofMillis(DEFAULT_REALTIME_SILENCE_MS));
         }
 
         static RealtimeSettings from(Configuration config, Logger logger) {
@@ -686,7 +735,10 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
                     config.getString("conversation.realtime.api_key", ""),
                     nonBlank(config.getString("conversation.realtime.voice", defaultVoice), defaultVoice),
                     nonBlank(config.getString("conversation.realtime.model", DEFAULT_GEMINI_MODEL),
-                            DEFAULT_GEMINI_MODEL));
+                            DEFAULT_GEMINI_MODEL),
+                    config.getBoolean("conversation.realtime.service_turns", false),
+                    Duration.ofMillis(config.getInt("conversation.realtime.silence_ms",
+                            DEFAULT_REALTIME_SILENCE_MS)));
         }
 
         /**

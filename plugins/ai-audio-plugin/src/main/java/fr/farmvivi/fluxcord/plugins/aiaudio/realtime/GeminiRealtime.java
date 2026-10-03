@@ -76,7 +76,10 @@ public final class GeminiRealtime implements RealtimeProtocol {
     }
 
     @Override
-    public String session(String instructions, String voice, List<ChatModel.Tool> tools) {
+    public String session(SessionConfig config) {
+        String instructions = config.instructions();
+        String voice = config.voice();
+        List<ChatModel.Tool> tools = config.tools();
         JsonObject generationConfig = new JsonObject();
         JsonArray modalities = new JsonArray();
         modalities.add("AUDIO");
@@ -104,10 +107,32 @@ public final class GeminiRealtime implements RealtimeProtocol {
         // would leave nothing behind for the next conversation to remember.
         setup.add("inputAudioTranscription", new JsonObject());
         setup.add("outputAudioTranscription", new JsonObject());
+        setup.add("realtimeInputConfig", realtimeInput(config.serviceDecidesTurns()));
 
         JsonObject frame = new JsonObject();
         frame.add("setup", setup);
         return frame.toString();
+    }
+
+    /**
+     * Who closes a turn, and whether the bot may be talked over.
+     *
+     * <p>MEASURED, 2026-10-03: with {@code automaticActivityDetection.disabled} the service waits for
+     * {@code activityStart} and {@code activityEnd} and answers nothing in between, while still streaming
+     * the input transcription — which is what lets this plugin read who was being addressed before deciding
+     * to answer. {@code NO_INTERRUPTION} is the other half: without it, anybody making a noise cuts the bot
+     * off mid-sentence, which in a channel with eight people in it means it never finishes a sentence.
+     */
+    private static JsonObject realtimeInput(boolean serviceDecidesTurns) {
+        JsonObject realtimeInput = new JsonObject();
+        if (!serviceDecidesTurns) {
+            JsonObject detection = new JsonObject();
+            detection.addProperty("disabled", true);
+            realtimeInput.add("automaticActivityDetection", detection);
+        }
+        realtimeInput.addProperty("activityHandling",
+                serviceDecidesTurns ? "START_OF_ACTIVITY_INTERRUPTS" : "NO_INTERRUPTION");
+        return realtimeInput;
     }
 
     /** A {@code Content} holding one piece of text, the shape this API uses everywhere. */
@@ -154,10 +179,28 @@ public final class GeminiRealtime implements RealtimeProtocol {
         return frame.toString();
     }
 
+    /**
+     * @return {@code activityEnd}, which on this API both closes the turn and asks for the answer — see
+     *         {@link #answersOnTurnEnd()}
+     */
     @Override
     public String commitAudio() {
+        return activity("activityEnd");
+    }
+
+    @Override
+    public String beginTurn() {
+        return activity("activityStart");
+    }
+
+    @Override
+    public boolean answersOnTurnEnd() {
+        return true;
+    }
+
+    private static String activity(String marker) {
         JsonObject realtimeInput = new JsonObject();
-        realtimeInput.addProperty("audioStreamEnd", true);
+        realtimeInput.add(marker, new JsonObject());
         JsonObject frame = new JsonObject();
         frame.add("realtimeInput", realtimeInput);
         return frame.toString();
@@ -294,7 +337,8 @@ public final class GeminiRealtime implements RealtimeProtocol {
         }
         String heard = transcript(content, "inputTranscription");
         if (!heard.isEmpty()) {
-            events.add(new Event.HeardFromSomebody(heard));
+            // A fragment, not an utterance: this API streams the input transcription like the output one.
+            events.add(new Event.HeardDelta(heard));
         }
         if (bool(content, "turnComplete")) {
             events.add(new Event.ResponseDone());

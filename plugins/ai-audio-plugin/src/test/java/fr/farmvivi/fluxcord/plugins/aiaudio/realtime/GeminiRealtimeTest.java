@@ -132,9 +132,37 @@ class GeminiRealtimeTest {
     }
 
     @Test
-    void theEndOfAnUtteranceIsAFlagRatherThanAnEventName() {
-        assertTrue(frame(gemini.commitAudio()).getAsJsonObject("realtimeInput")
-                .get("audioStreamEnd").getAsBoolean());
+    void aTurnIsOpenedAndClosedWithActivityMarkers() {
+        // MEASURED, 2026-10-03: with automaticActivityDetection disabled the service answers nothing
+        // between these two markers, while still streaming the input transcription - which is what lets
+        // the plugin read who was being addressed before deciding to answer.
+        assertTrue(frame(gemini.beginTurn()).getAsJsonObject("realtimeInput").has("activityStart"));
+        assertTrue(frame(gemini.commitAudio()).getAsJsonObject("realtimeInput").has("activityEnd"));
+    }
+
+    @Test
+    void endingTheTurnIsAlsoHowAnAnswerIsAskedFor() {
+        // The one place the two services disagree about control flow, and the reason the flag exists.
+        assertTrue(gemini.answersOnTurnEnd());
+    }
+
+    @Test
+    void theTurnPolicyIsDeclaredInTheSetupFrame() {
+        JsonObject mine = frame(gemini.session(new RealtimeProtocol.SessionConfig(
+                "x", "Puck", List.of(), false, List.of()))).getAsJsonObject("setup")
+                .getAsJsonObject("realtimeInputConfig");
+
+        assertTrue(mine.getAsJsonObject("automaticActivityDetection").get("disabled").getAsBoolean());
+        // Without this, anybody making a noise cuts the bot off; in a channel with eight people in it the
+        // bot never finishes a sentence.
+        assertEquals("NO_INTERRUPTION", mine.get("activityHandling").getAsString());
+
+        JsonObject theirs = frame(gemini.session(new RealtimeProtocol.SessionConfig(
+                "x", "Puck", List.of(), true, List.of()))).getAsJsonObject("setup")
+                .getAsJsonObject("realtimeInputConfig");
+
+        assertFalse(theirs.has("automaticActivityDetection"), "the service detects it for itself");
+        assertEquals("START_OF_ACTIVITY_INTERRUPTS", theirs.get("activityHandling").getAsString());
     }
 
     @Test
@@ -248,8 +276,11 @@ class GeminiRealtimeTest {
     }
 
     @Test
-    void whatSomebodySaidArrivesAsItsOwnTranscription() {
-        var event = assertInstanceOf(RealtimeProtocol.Event.HeardFromSomebody.class,
+    void whatSomebodySaidArrivesInFragmentsAndIsLabelledAsOne() {
+        // MEASURED, 2026-10-03: this API streams the input transcription in pieces - "Une", "fai", "t" -
+        // exactly as it streams the output one. Treated as finished utterances they would write one memory
+        // entry per syllable, so they are deltas and the caller accumulates them.
+        var event = assertInstanceOf(RealtimeProtocol.Event.HeardDelta.class,
                 gemini.parse("{\"serverContent\":{\"inputTranscription\":{\"text\":\"quelle heure\"}}}"));
 
         assertEquals("quelle heure", event.text());

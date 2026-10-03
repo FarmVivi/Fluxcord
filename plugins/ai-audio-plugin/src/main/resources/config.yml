@@ -134,6 +134,17 @@ conversation:
   # model that supports tool calls (Gemma 4 and Qwen 3.5 do) and it adds one request per lookup.
   memory_tools: false
 
+  # Answer only when the bot is spoken to by name -- its persona name above, or whatever this server has
+  # renamed it to. The same idea as a smart speaker's wake word, except the word is its own name.
+  #
+  # ON (the default) is what makes a busy channel usable: the bot hears and remembers every sentence and
+  # only replies when somebody addressed it. OFF means it answers every sentence transcribed, which is
+  # fine in a channel with one person in it and unbearable with eight.
+  #
+  # The names are added to speech_to_text.vocabulary automatically, because a name the transcriber cannot
+  # spell is a bot that is never woken -- that failure is silent and looks like this setting not working.
+  wake_on_name: true
+
   # How many times in a row the model may ask for something before it has to answer. On the last round it
   # is offered no tools, so it answers with what it found rather than being cut off.
   max_tool_rounds: 3
@@ -226,6 +237,20 @@ conversation:
 
     # The provider's voice name for the spoken answer.
     voice: "marin"
+
+    # Who decides when somebody has finished talking.
+    #
+    # false (the default) - this plugin does. It closes the turn after silence_ms of quiet and then asks
+    #   for an answer only if the sentence was addressed to the bot (see wake_on_name). MEASURED and not a
+    #   preference: server-side detection has to HEAR silence to end a turn, and JDA stops delivering
+    #   packets the moment somebody stops talking, so a turn would never end -- and keeping the stream
+    #   alive with silence is billed as audio input for every quiet second.
+    # true - the service does. It answers every utterance and lets anybody talking cut the bot off
+    #   mid-sentence. Lower latency, and only sane in a channel with one person in it.
+    service_turns: false
+
+    # How long nobody may speak before an open turn is closed. Ignored when service_turns is true.
+    silence_ms: 1200
 
 # Letting the model look something up on the web, as a tool call, so it can answer what it does not know
 # instead of answering last year's facts confidently.

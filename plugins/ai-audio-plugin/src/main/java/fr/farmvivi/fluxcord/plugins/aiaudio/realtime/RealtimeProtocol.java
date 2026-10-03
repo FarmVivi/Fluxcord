@@ -53,7 +53,60 @@ public interface RealtimeProtocol {
      * @param tools        what the model may call, possibly empty
      * @return the frame to send first
      */
-    String session(String instructions, String voice, List<ChatModel.Tool> tools);
+    default String session(String instructions, String voice, List<ChatModel.Tool> tools) {
+        return session(new SessionConfig(instructions, voice, tools, true, List.of()));
+    }
+
+    /**
+     * The opening frame, with everything the session is configured with.
+     *
+     * @param config who the bot is, what it may call, and who decides when a turn is over
+     * @return the frame to send first
+     */
+    String session(SessionConfig config);
+
+    /**
+     * How a session is opened.
+     *
+     * @param instructions        the system prompt; operator-built, exactly as in the turn-based path
+     * @param voice               the provider's voice name
+     * @param tools               what the model may call, possibly empty
+     * @param serviceDecidesTurns true to let the service detect the end of an utterance and answer every
+     *                            one of them, false to have this plugin close turns and choose which to
+     *                            answer — which is what a channel with eight people in it needs
+     * @param vocabulary          words the input transcriber cannot be expected to guess, the bot's own
+     *                            names among them
+     */
+    record SessionConfig(String instructions, String voice, List<ChatModel.Tool> tools,
+                         boolean serviceDecidesTurns, List<String> vocabulary) {
+
+        public SessionConfig {
+            tools = tools == null ? List.of() : List.copyOf(tools);
+            vocabulary = vocabulary == null ? List.of() : List.copyOf(vocabulary);
+        }
+    }
+
+    /**
+     * @return the frame that declares somebody has started talking, for a service that needs telling;
+     *         empty for one that hears it for itself
+     */
+    default String beginTurn() {
+        return "";
+    }
+
+    /**
+     * Whether ending the input turn is also what makes the service answer.
+     *
+     * <p>The one place the two services genuinely disagree about control flow. OpenAI separates the two —
+     * a commit transcribes, a {@code response.create} answers — so an utterance can be heard, written down
+     * and deliberately left unanswered. Google has only the one gesture: ending the activity <em>is</em>
+     * asking for an answer, so an utterance nobody addressed to the bot has to be left open instead.
+     *
+     * @return true when {@link #commitAudio()} answers as well as closing the turn
+     */
+    default boolean answersOnTurnEnd() {
+        return false;
+    }
 
     /**
      * One chunk of what somebody is saying.
@@ -166,8 +219,18 @@ public interface RealtimeProtocol {
         record TranscriptDelta(String text) implements Event {
         }
 
-        /** What somebody in the channel said, as the service transcribed it. */
+        /** What somebody in the channel said, as the service transcribed it, complete. */
         record HeardFromSomebody(String text) implements Event {
+        }
+
+        /**
+         * A piece of what somebody is saying, while they are still saying it.
+         *
+         * <p>MEASURED, 2026-10-03: Google streams the input transcription in fragments — "Une", "fai", "t"
+         * — exactly as it streams the output one. Treating each as a finished utterance writes one memory
+         * entry per syllable, so these are accumulated and only the whole is kept.
+         */
+        record HeardDelta(String text) implements Event {
         }
 
         /** Somebody started talking: if the bot is speaking, it should stop. */

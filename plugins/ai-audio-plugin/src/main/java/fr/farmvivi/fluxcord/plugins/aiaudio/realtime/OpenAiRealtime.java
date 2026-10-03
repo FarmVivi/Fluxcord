@@ -44,22 +44,40 @@ public final class OpenAiRealtime implements RealtimeProtocol {
     }
 
     @Override
-    public String session(String instructions, String voice, List<ChatModel.Tool> tools) {
+    public String session(SessionConfig config) {
+        String instructions = config.instructions();
+        String voice = config.voice();
+        List<ChatModel.Tool> tools = config.tools();
         JsonObject format = new JsonObject();
         format.addProperty("type", "audio/pcm");
         format.addProperty("rate", SAMPLE_RATE);
 
         JsonObject input = new JsonObject();
         input.add("format", format.deepCopy());
-        JsonObject turnDetection = new JsonObject();
-        turnDetection.addProperty("type", "server_vad");
-        input.add("turn_detection", turnDetection);
+        if (config.serviceDecidesTurns()) {
+            JsonObject turnDetection = new JsonObject();
+            turnDetection.addProperty("type", "server_vad");
+            input.add("turn_detection", turnDetection);
+        } else {
+            // MEASURED, 2026-10-03: server VAD needs to HEAR silence to close a turn, and JDA only delivers
+            // packets while somebody is actually talking - so in a voice channel the stream dries up and the
+            // turn never ends. Streaming silence to keep it alive would be billed as audio input for every
+            // quiet second. With detection off, this plugin commits the buffer when its own silence timer
+            // fires, which is the same thing the turn-based path has always done, for free.
+            input.add("turn_detection", com.google.gson.JsonNull.INSTANCE);
+        }
         // MEASURED, 2026-10-03: session.audio.input.transcription comes back null unless it is asked for,
         // and without it conversation.item.input_audio_transcription.completed is never sent at all. The
         // session still works - the bot hears and answers - so the only symptom is a memory that records
         // every answer the bot gave and nothing anybody said to it.
         JsonObject transcription = new JsonObject();
         transcription.addProperty("model", TRANSCRIPTION_MODEL);
+        // The same lever the turn-based path uses: a name the model has not been told about comes back as
+        // the nearest ordinary word, and a bot woken by its name is then never woken at all.
+        String hint = String.join(", ", config.vocabulary());
+        if (!hint.isBlank()) {
+            transcription.addProperty("prompt", hint);
+        }
         input.add("transcription", transcription);
 
         JsonObject output = new JsonObject();

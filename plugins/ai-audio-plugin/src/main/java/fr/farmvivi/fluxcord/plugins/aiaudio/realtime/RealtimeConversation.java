@@ -28,6 +28,13 @@ import java.util.function.LongSupplier;
  * ({@link RealtimeProtocol#speakerChanged}), which keeps attribution at the granularity of an utterance. That
  * is the same granularity the turn-based path works in, so nothing is lost that was previously kept.
  *
+ * <p><strong>Who closes a turn is configurable, and in a busy channel it has to be this side.</strong>
+ * Left to the service, every single utterance is answered and anybody making a noise cuts the bot off
+ * mid-sentence — fine with one person in the channel, unusable with eight. With
+ * {@code serviceDecidesTurns} false this class closes the turn when nobody has spoken for a moment (the
+ * same silence rule the turn-based path uses) and answers only what was addressed to the bot by name. The
+ * bot still <em>hears</em> everything; it just stops replying to conversations it was not part of.
+ *
  * <p>Which service is on the other end is not this class's business: it is handed a {@link RealtimeProtocol}
  * and every frame it sends comes from there. That is what let a second provider arrive without a line of this
  * logic changing — and a dialect with no frame for something returns an empty string, which {@link #send}
@@ -43,6 +50,9 @@ public class RealtimeConversation {
     private final Logger logger;
     private final RealtimeProtocol protocol;
     private final LongSupplier clock;
+    private final boolean serviceDecidesTurns;
+    private final long silenceMs;
+    private final java.util.function.Predicate<String> addressed;
     private final List<ToolSource> toolSources;
     private final Consumer<PcmAudio> playback;
     private final Runnable stopPlayback;
@@ -54,7 +64,15 @@ public class RealtimeConversation {
     private String botId = "bot";
     private String speaking = "";
     private final StringBuilder transcript = new StringBuilder();
+    /** What the current speaker has said so far, accumulated because one service streams it in fragments. */
+    private final StringBuilder heard = new StringBuilder();
     private boolean failed;
+    /** Whether an input turn is open, so a silence can close it and a packet can open the next. */
+    private boolean turnOpen;
+    /** When the last packet of anybody's voice arrived, which is the only thing silence can be measured from. */
+    private long lastPacketMs;
+    /** Whether the bot is mid-sentence, so an interruption knows there is something to interrupt. */
+    private boolean botSpeaking;
 
     /**
      * @param logger       where to put the debug trail
@@ -70,6 +88,27 @@ public class RealtimeConversation {
                                 List<ToolSource> toolSources,
                                 Consumer<PcmAudio> playback, Runnable stopPlayback,
                                 Consumer<Turn> remember, Consumer<String> report) {
+        this(logger, protocol, clock, toolSources, playback, stopPlayback, remember, report,
+                true, 1_200, text -> true);
+    }
+
+    /**
+     * @param serviceDecidesTurns true to let the service end turns and answer all of them, false to close
+     *                            them here and answer only what was addressed to the bot
+     * @param silenceMs           how long nobody may speak before an open turn is closed, ignored when the
+     *                            service decides
+     * @param addressed           whether a sentence was aimed at the bot; the wake word and the bot's own
+     *                            names live in the settings, so the decision is passed in rather than taken
+     */
+    public RealtimeConversation(Logger logger, RealtimeProtocol protocol, LongSupplier clock,
+                                List<ToolSource> toolSources,
+                                Consumer<PcmAudio> playback, Runnable stopPlayback,
+                                Consumer<Turn> remember, Consumer<String> report,
+                                boolean serviceDecidesTurns, long silenceMs,
+                                java.util.function.Predicate<String> addressed) {
+        this.serviceDecidesTurns = serviceDecidesTurns;
+        this.silenceMs = silenceMs;
+        this.addressed = addressed == null ? text -> true : addressed;
         this.logger = logger;
         this.protocol = protocol;
         this.clock = clock;
@@ -91,11 +130,32 @@ public class RealtimeConversation {
      */
     public void start(PersonaSnapshot snapshot, String instructions, String voice, String botUserId,
                       Function<Consumer<RealtimeProtocol.Event>, RealtimeLink> links) {
+        start(snapshot, instructions, voice, botUserId, links, List.of());
+    }
+
+    /**
+     * Opens the conversation and tells the service who the bot is.
+     *
+     * @param snapshot     who the bot is, how it feels and who is present
+     * @param instructions the system prompt, built by the same code the turn-based path uses
+     * @param voice        the provider's voice name
+     * @param botUserId    the bot's own id, so its turns are recognised as its own
+     * @param links        how to open the link, given where events should go
+     * @param vocabulary   words the input transcriber would otherwise mangle — the bot's own names among
+     *                     them, since a bot woken by its name is never woken if the name is misheard
+     */
+    public void start(PersonaSnapshot snapshot, String instructions, String voice, String botUserId,
+                      Function<Consumer<RealtimeProtocol.Event>, RealtimeLink> links,
+                      List<String> vocabulary) {
         this.snapshot = snapshot;
         this.botId = botUserId == null ? "bot" : botUserId;
         this.failed = false;
+        this.turnOpen = false;
+        this.botSpeaking = false;
+        this.heard.setLength(0);
         this.link = links.apply(this::onEvent);
-        send(protocol.session(instructions, voice, declaredTools()));
+        send(protocol.session(new RealtimeProtocol.SessionConfig(instructions, voice, declaredTools(),
+                serviceDecidesTurns, vocabulary)));
     }
 
     /**
@@ -132,23 +192,115 @@ public class RealtimeConversation {
             speaking = userId;
             send(protocol.speakerChanged(displayName));
         }
+        if (!serviceDecidesTurns && !turnOpen) {
+            turnOpen = true;
+            send(protocol.beginTurn());
+        }
+        lastPacketMs = clock.getAsLong();
         send(protocol.appendAudio(audio));
+    }
+
+    /**
+     * Closes the input turn once nobody has spoken for a while.
+     *
+     * <p>Called on a timer, because silence is an absence of packets and never an event — the same reason
+     * the turn-based path polls. Does nothing at all when the service is the one deciding.
+     *
+     * <p>MEASURED, 2026-10-03: this is not an optimisation, it is the only thing that works. OpenAI's
+     * server-side detection has to <em>hear</em> silence to end a turn, and JDA stops delivering packets the
+     * moment somebody stops talking, so the turn would never end; keeping the stream alive with silence
+     * would be billed as audio input for every quiet second of the day.
+     */
+    public void tick() {
+        if (serviceDecidesTurns || !turnOpen || link == null || !link.isOpen()) {
+            return;
+        }
+        if (clock.getAsLong() - lastPacketMs < silenceMs) {
+            return;
+        }
+        if (protocol.answersOnTurnEnd()) {
+            // Ending the turn is this service's way of asking for an answer, so an utterance nobody
+            // addressed to the bot is left open: it keeps listening and the words keep accumulating.
+            if (addressed.test(heard.toString())) {
+                answerWhatWasHeard();
+            }
+            return;
+        }
+        // The other service separates the two, so the turn is closed to get it transcribed and the decision
+        // waits for the words.
+        turnOpen = false;
+        send(protocol.commitAudio());
+    }
+
+    /** Ends the turn on a service where that is also the request for an answer. */
+    private void answerWhatWasHeard() {
+        turnOpen = false;
+        String said = heard.toString().strip();
+        heard.setLength(0);
+        if (!said.isEmpty()) {
+            rememberHeard(said);
+        }
+        interruptIfSpeaking();
+        send(protocol.commitAudio());
     }
 
     /** Called for every event the service sends. */
     void onEvent(RealtimeProtocol.Event event) {
         switch (event) {
-            case RealtimeProtocol.Event.AudioDelta delta -> playback.accept(delta.audio());
+            case RealtimeProtocol.Event.AudioDelta delta -> {
+                botSpeaking = true;
+                playback.accept(delta.audio());
+            }
             case RealtimeProtocol.Event.TranscriptDelta delta -> transcript.append(delta.text());
             case RealtimeProtocol.Event.SpeechStarted _ -> interrupt();
             case RealtimeProtocol.Event.SpeechStopped _ ->
                     logger.debug("Somebody stopped talking; the service will answer");
-            case RealtimeProtocol.Event.HeardFromSomebody heard -> rememberHeard(heard.text());
+            case RealtimeProtocol.Event.HeardDelta delta -> heard.append(delta.text());
+            case RealtimeProtocol.Event.HeardFromSomebody said -> utteranceHeard(said.text());
             case RealtimeProtocol.Event.ToolCalled called -> run(called.call());
-            case RealtimeProtocol.Event.ResponseDone _ -> finishTurn();
+            case RealtimeProtocol.Event.ResponseDone _ -> {
+                botSpeaking = false;
+                finishTurn();
+            }
             case RealtimeProtocol.Event.Failure failure -> fail(failure.message());
             case RealtimeProtocol.Event.Ignored ignored ->
                     logger.debug("Realtime event not acted on: {}", ignored.type());
+        }
+    }
+
+    /**
+     * A whole utterance, written down: recorded either way, answered only if it was aimed at the bot.
+     *
+     * <p>This is where a channel with eight people in it becomes usable. The bot hears every sentence and
+     * remembers every sentence; what the name decides is whether it says anything back.
+     */
+    private void utteranceHeard(String text) {
+        heard.setLength(0);
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        rememberHeard(text);
+        if (serviceDecidesTurns) {
+            // The service has already decided to answer; it did not ask us.
+            return;
+        }
+        if (!addressed.test(text)) {
+            logger.debug("Heard but not addressed to us: {}", text);
+            return;
+        }
+        interruptIfSpeaking();
+        send(protocol.createResponse());
+    }
+
+    /**
+     * Stops the bot if it is mid-sentence, because somebody has now asked it something else.
+     *
+     * <p>Deliberately not "somebody started making noise": that is the behaviour being fixed. The bot is
+     * only cut off when the new thing said was addressed to it.
+     */
+    private void interruptIfSpeaking() {
+        if (botSpeaking) {
+            interrupt();
         }
     }
 
@@ -164,6 +316,7 @@ public class RealtimeConversation {
             return;
         }
         logger.debug("Interrupted: dropping what was queued");
+        botSpeaking = false;
         send(protocol.cancelResponse());
         stopPlayback.run();
         // What was being said was cut off, so what is kept is what was actually heard.
@@ -255,7 +408,10 @@ public class RealtimeConversation {
             link.close();
         }
         transcript.setLength(0);
+        heard.setLength(0);
         speaking = "";
+        turnOpen = false;
+        botSpeaking = false;
     }
 
     /** @return true while the conversation can carry audio */

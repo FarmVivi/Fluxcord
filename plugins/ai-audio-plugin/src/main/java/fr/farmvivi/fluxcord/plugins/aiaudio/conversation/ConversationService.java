@@ -198,8 +198,9 @@ public class ConversationService {
         if (!chat.enabled() || !isActive(guild) || turn.text() == null || turn.text().isBlank()) {
             return;
         }
-        if (!chat.isAddressedToUs(turn.text())) {
-            logger.debug("Not addressed to us (no '{}'): {}", chat.wakeWord(), turn.text());
+        java.util.List<String> names = plugin.botNames(guild);
+        if (!chat.isAddressedToUs(turn.text(), names)) {
+            logger.debug("Not addressed to us (none of {}): {}", chat.triggers(names), turn.text());
             return;
         }
         AudioChannel channel = guild.getAudioManager().getConnectedChannel();
