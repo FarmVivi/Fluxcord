@@ -260,6 +260,34 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
   - No wake word on this path: turn detection is the service's, so the bot hears everything in the channel. A
     different social contract, stated in the README.
   - 39 tests (19 on the protocol, 16 on the conversation, the command branch); module 302 -> 341.
+- [x] **Benchmarked against the production services** (2026-10-03), and it found a bug and a deployment
+  problem that no test could have.
+  - **Bug, now fixed: a streamed WAV was refused outright.** The production speech server answers chunked and
+    writes `0xFFFFFFFF` in the RIFF total and the `data` chunk size. `PcmAudio` read that as a signed `-1` and
+    threw, so **every spoken answer from that server would have failed**. Chunk sizes are read unsigned now and
+    the declared size is a hint that may only ever read *less* than what is present; a chunk with no samples at
+    all is refused, because an empty `PcmAudio` is indistinguishable from a model that chose to stay silent.
+    Verified by running the real parser over a real response. `fluxcord-api` 112 -> 116 tests.
+  - **Deployment finding: synthesis and the language model do not share one AMD GPU.** Same sentence, five runs
+    per state: nothing resident 0.47-0.49 s every time; `gemma4:e4b` (3.2 GB) resident, median 0.49 s but
+    single runs at **71 s and 160 s**; `gemma4:12b` (7.4 GB) resident, median 9.7 s and a worst of **267 s**.
+    Bimodal, not a slowdown, and it happens with 3.2 GB on a 12 GB card - so contention, not VRAM exhaustion.
+    **Recommendation: synthesis on the CPU** (2.4-2.5x realtime, steady) whenever the card also runs the LLM.
+    This corrects the README's "give the card to both", written the day before from a measurement of Kokoro
+    alone on an idle card.
+  - **`/v1` cannot bound the context or keep the model loaded.** `num_ctx`, `options.num_ctx` and `keep_alive`
+    all return 200 and do nothing - the fifth such flag on this route. Measured consequences:
+    `gemma4:12b-it-qat` at the server's 131072 context is **93 % GPU / 7 % CPU** and 8.3 s to first answer,
+    against **100 % GPU** and 3.6 s over the native route with `num_ctx: 8192`; and the model unloads after
+    five minutes, so the first sentence after a pause pays 2.8 s (small) or 8.3 s (big). `gemma4:e4b-it-qat` is
+    100 % GPU either way.
+  - Everything else held up against the real servers: the mood read 6/6 sensible in 0.28-0.35 s, web search
+    called and answered correctly, the memory tools likewise, and the French round trip came back word for
+    word through the production voice.
+- [ ] **An Ollama chat client on the native route**, next to `OllamaSpeechToText`, selected by config the same
+  way. It is the only way to send `num_ctx` and `keep_alive`, which the measurements above show are worth 2x on
+  the first answer of a big model and remove the five-minute reload pause entirely. The `ChatModel` interface
+  already fits; what it costs is a second implementation of the tool-call and audio plumbing.
 - [ ] **`AiSettings` has outgrown a flat record.** It gained a component in three consecutive chantiers and each
   time every construction site in the tests broke — seven of them this time. The nested records
   (`ChatSettings`, `PersonaSettings`, `WebSearchSettings`, `RealtimeSettings`) are the right idea; the top-level

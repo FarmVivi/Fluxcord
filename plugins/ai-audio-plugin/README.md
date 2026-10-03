@@ -132,9 +132,31 @@ request). That last number is the one that decides it: on a 12 GB card, synthesi
 it and leaves the rest for the language model. Quality is identical — the round trip below transcribes the GPU
 output just as exactly.
 
-So the useful shape, on one machine with one card: the LLM gets the VRAM, the voice gets a sliver of it, and a
-spoken answer starts about two tenths of a second after the model stops thinking instead of a second and a
-half.
+That was measured with **nothing else on the card**, and the production box later showed why that caveat
+matters — see below.
+
+#### Sharing one GPU with the language model: measured, and it does not work
+
+On the production machine (RX 6700 XT, 12 GB, ROCm) the same sentence was synthesised five times in each of
+three states:
+
+| What Ollama had resident | Synthesis of a 3.9 s sentence |
+| --- | --- |
+| nothing | 0.47–0.49 s, **every run** |
+| `gemma4:e4b` (3.2 GB) | median 0.49 s, but single runs at **71 s** and **160 s** |
+| `gemma4:12b` (7.4 GB) | median 9.7 s, worst **267 s** |
+
+It is not a slowdown, it is **bimodal**: either the normal 0.48 s or a stall of tens to hundreds of seconds.
+And it already happens with a 3.2 GB model on a 12 GB card, so it is **not** VRAM exhaustion — it is contention
+on the compute or the allocator. A voice that answers in half a second four times and then takes two minutes is
+worse than one that always takes one and a half.
+
+**So on a single shared card, put synthesis on the CPU.** 2.4–2.5× realtime, measured steady, with none of
+this. The GPU figures above stand for a card that only does speech.
+
+This also corrects what this file said a day earlier — "the LLM gets the VRAM, the voice gets a sliver, no
+trade-off to weigh". That was measured honestly but in the wrong configuration: Kokoro alone on an idle card.
+What runs in production is Kokoro *next to* a language model, and that is a different measurement.
 
 **The French voice really is French**, checked the only way possible from outside a voice channel — by sending
 Kokoro's output back through transcription. Three French sentences synthesised with `ff_siwis`, resampled to
@@ -513,6 +535,23 @@ An unrecognised event is ignored rather than treated as an error — the service
 plugin acts on six, so anything else must be harmless or the conversation breaks the day the service gains a
 feature. That is also why the turn-based path stays the default, and why this one needs both a URL and a key
 before it counts as configured.
+
+### What the OpenAI route cannot ask Ollama for
+
+`/v1/chat/completions` accepts `num_ctx`, `options.num_ctx` and `keep_alive` with **HTTP 200 and applies none
+of them** — the fifth setting on this route measured to be taken and dropped, after `think: false`,
+`reasoning_effort`, `modalities` and the tool-round token budget. Two consequences, both measured on the
+production server:
+
+- **The context stays at whatever the server was started with.** With `OLLAMA_CONTEXT_LENGTH=131072`,
+  `gemma4:12b-it-qat` loads 7.36 GB of 7.95 into VRAM — **93 % GPU, 7 % CPU**, and the first answer takes 8.3 s.
+  Asked over the native `/api/chat` with `num_ctx: 8192` the same model is **100 % GPU** and answers in 3.6 s.
+  `gemma4:e4b-it-qat` is 100 % GPU either way, which is one more reason it is the model to use here.
+- **The model unloads between conversations.** Without `keep_alive`, Ollama drops it after five minutes, so the
+  first sentence after a quiet spell pays the reload: 2.8 s for the small model, 8.3 s for the big one.
+
+Both are only reachable from Ollama's native route, which this plugin already speaks for transcription
+(`speech_to_text.api: OLLAMA`). A chat client on the same route would fix them; it is not built yet.
 
 ## What is next
 
