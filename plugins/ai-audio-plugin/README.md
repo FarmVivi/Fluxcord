@@ -159,21 +159,38 @@ the same whether the card holds nothing, the small model or the big one. The sta
 
 | Step | `gemma4:e4b-it-qat` | `qwen3.5:9b` |
 | --- | --- | --- |
-| model answers | 0.24–0.30 s | 0.59 s warm |
-| synthesis of that answer | 2.41 s | 3.85 s |
-| **silence before the bot speaks** | **~2.6 s** | ~4.4 s |
+| model answers | 0.35–0.43 s | 0.59 s warm |
+| synthesis of that answer | 1.0–1.45 s | 3.85 s |
+| **silence before the bot speaks, warm** | **1.4–1.9 s** | ~4.4 s |
+| **the first sentence after five quiet minutes** | **4.6 s** | — |
 | a full web-search turn | 6.4–7.6 s | 5.7–5.8 s |
 
 Transcription of a French sentence came back word for word, both tries, through the production voice. The mood
 was read sensibly 6/6 by both models in 0.3 s. Tool calls at four attempts each: search 3/4 for Gemma and 2/4
 for Qwen, memory 2/4 and 4/4 — the same order as the earlier figures, and too few attempts to read more into.
 
-**Synthesis is now the slow step, and most of it is not synthesis.** Fitting the four lengths gives
-**1.9 s of fixed cost per request plus 0.27 s per second of audio**; the same image on a laptop CPU fits to
-**no fixed cost and 0.54 s per second**. So the production box is twice as fast once it starts and pays two
-seconds to start. That is the signature of per-request runtime setup, not of compute — worth trying the
-dedicated `-cpu` image (ONNX) rather than the ROCm one with the GPU disabled. If the fixed cost goes away, a
-spoken turn drops from 2.6 s to under one.
+**Synthesis used to carry 1.9 s of fixed cost per request**, on top of 0.27 s per second of audio — a spoken
+turn was 2.6 s where the model itself answered in 0.3. The cause turned out to be **PyTorch thread
+oversubscription**: it starts one thread per vCPU, and the VM's 16 vCPUs sit on 8 physical cores shared with
+other guests, so the threads spent their time waiting for each other. Pinning it to the physical core count
+(`OMP_NUM_THREADS=8`, `MKL_NUM_THREADS=8`) collapsed the fixed cost to 0.27 s:
+
+| Threads | one word | a 3.9 s sentence |
+| --- | --- | --- |
+| 16 (default) | 1.5 s | 2.5–2.9 s |
+| **8 (physical cores)** | **0.33 s** | **~1.1 s** |
+| 4 | 0.40 s | 1.3 s |
+| 2 | 0.65 s | 2.0 s |
+
+Worth writing down because the guess that preceded it was wrong in every detail: the suspicion was that the
+ROCm image was running on a CPU fallback and reinitialising per request. It was already the `-cpu` image, that
+image is PyTorch rather than ONNX at v0.9.0, nothing reinitialised, and the whole cost was inside inference.
+**A plausible mechanism is not a diagnosis** — the logs and a thread sweep were.
+
+**What is left is the model unloading.** Ollama drops it after five minutes, so the first sentence after a
+quiet spell pays 3.3 s to reload before anything else happens — 4.6 s of silence instead of 1.5. In a voice
+channel, pauses longer than five minutes are the normal case, so this is the single largest remaining latency,
+and `keep_alive` is only reachable from Ollama's native route.
 
 This also corrects what this file said a day earlier — "the LLM gets the VRAM, the voice gets a sliver, no
 trade-off to weigh". That was measured honestly but in the wrong configuration: Kokoro alone on an idle card.
