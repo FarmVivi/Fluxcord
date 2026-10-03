@@ -39,6 +39,8 @@ public class ShutdownCommand {
                 .name("shutdown")
                 .description("Shuts down the bot")
                 .category("System")
+                // Answers whoever asked, and only them: none of this is news to the channel.
+                .ephemeral(true)
                 .aliases("stop", "exit", "quit")
                 .executor(this::execute)
                 .build();

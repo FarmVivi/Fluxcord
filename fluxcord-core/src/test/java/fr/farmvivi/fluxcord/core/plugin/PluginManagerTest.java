@@ -157,7 +157,7 @@ class PluginManagerTest {
         Plugin beta = manager.getPlugin("beta");
         permissions.registerPermission(new Perm("beta.x", PermissionDefault.TRUE), beta);
         registry.register(new fr.farmvivi.fluxcord.core.command.SimpleCommand("bcmd", "d", null, null, null, null, null,
-                null, null, false, null, false, null, true, 0, (c, x) -> null), beta);
+                null, null, false, false, null, false, null, true, 0, (c, x) -> null), beta);
         PluginCalls.reset();
 
         manager.close();
@@ -306,7 +306,7 @@ class PluginManagerTest {
         Plugin first = manager.getPlugin("alpha");
         permissions.registerPermission(new Perm("alpha.x", PermissionDefault.TRUE), first);
         registry.register(new fr.farmvivi.fluxcord.core.command.SimpleCommand("cmd", "d", null, null, null, null, null,
-                null, null, false, null, false, null, true, 0, (c, x) -> null), first);
+                null, null, false, false, null, false, null, true, 0, (c, x) -> null), first);
         PluginCalls.reset();
 
         assertTrue(manager.reloadPlugin("alpha"));

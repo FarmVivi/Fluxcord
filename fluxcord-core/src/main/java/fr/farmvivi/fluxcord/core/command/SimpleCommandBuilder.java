@@ -80,6 +80,12 @@ public class SimpleCommandBuilder implements CommandBuilder {
     }
 
     @Override
+    public CommandBuilder ephemeral(boolean ephemeral) {
+        builder.ephemeral(ephemeral);
+        return this;
+    }
+
+    @Override
     public CommandBuilder guilds(String... guildIds) {
         builder.guildIds(guildIds);
         return this;

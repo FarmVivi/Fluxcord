@@ -29,6 +29,8 @@ public class VersionCommand {
                 .name("version")
                 .description("Shows the bot version")
                 .category("System")
+                // Answers whoever asked, and only them: none of this is news to the channel.
+                .ephemeral(true)
                 .aliases("ver", "v", "about")
                 .executor(this::execute)
                 .build();

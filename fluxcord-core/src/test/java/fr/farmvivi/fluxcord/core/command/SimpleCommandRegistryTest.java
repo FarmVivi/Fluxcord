@@ -21,7 +21,8 @@ class SimpleCommandRegistryTest {
 
     private static SimpleCommand command(String name, String category, boolean enabled, String... aliases) {
         return new SimpleCommand(name, "desc", category, null, null, null, null, null,
-                Set.of(aliases), false, null, false, null, enabled, 0, (ctx, cmd) -> CommandResult.success());
+                Set.of(aliases), false, false, null, false, null, enabled, 0,
+                (ctx, cmd) -> CommandResult.success());
     }
 
     private static SimpleCommand command(String name, String... aliases) {

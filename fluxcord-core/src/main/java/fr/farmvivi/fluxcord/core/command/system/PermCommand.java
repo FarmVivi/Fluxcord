@@ -63,6 +63,8 @@ public class PermCommand {
                 .name("perm")
                 .description("Manages user permission overrides")
                 .category("System")
+                // Answers whoever asked, and only them: none of this is news to the channel.
+                .ephemeral(true)
                 .aliases("perms", OPTION_PERMISSION)
                 .stringOption(OPTION_ACTION, "set, unset, list or nodes", true,
                         new OptionChoice<>(ACTION_SET, ACTION_SET), new OptionChoice<>(ACTION_UNSET, ACTION_UNSET),

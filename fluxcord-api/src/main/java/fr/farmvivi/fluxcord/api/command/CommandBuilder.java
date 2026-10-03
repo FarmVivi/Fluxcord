@@ -102,6 +102,20 @@ public interface CommandBuilder {
     CommandBuilder guildOnly(boolean guildOnly);
 
     /**
+     * Shows this command's reply only to whoever ran it.
+     *
+     * <p>For the commands whose answer is an acknowledgement — "listening", "stopped", "volume set". They
+     * mean nothing to anybody else and they bury the channel they are run in. Leave it off for what the
+     * room actually wants to see, such as the track somebody just queued.
+     *
+     * @param ephemeral true to show the reply only to the caller
+     * @return this builder
+     */
+    default CommandBuilder ephemeral(boolean ephemeral) {
+        return this;
+    }
+
+    /**
      * Specifies the guilds where this command is available.
      * If not set, the command is available in all guilds.
      *

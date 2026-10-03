@@ -24,6 +24,7 @@ public record SimpleCommand(
         String translationKey,
         Set<String> aliases,
         boolean guildOnly,
+        boolean ephemeral,
         Set<String> guildIds,
         boolean isSubcommand,
         ParentLink parent,
@@ -70,7 +71,8 @@ public record SimpleCommand(
             return this;
         }
         return new SimpleCommand(name, description, category, options, subcommands, group, permission,
-                translationKey, aliases, guildOnly, guildIds, isSubcommand, parent, enabled, cooldown, executor);
+                translationKey, aliases, guildOnly, ephemeral, guildIds, isSubcommand, parent, enabled,
+                cooldown, executor);
     }
 
     @Override
@@ -121,6 +123,11 @@ public record SimpleCommand(
     @Override
     public boolean isGuildOnly() {
         return guildOnly;
+    }
+
+    @Override
+    public boolean isEphemeral() {
+        return ephemeral;
     }
 
     @Override
@@ -188,6 +195,7 @@ public record SimpleCommand(
         private String permission;
         private String translationKey;
         private boolean guildOnly = false;
+        private boolean ephemeral = false;
         private boolean isSubcommand = false;
         private ParentLink parent;
         private boolean enabled = true;
@@ -310,6 +318,17 @@ public record SimpleCommand(
          * @param guildOnly true if the command can only be executed in a guild
          * @return this builder
          */
+        /**
+         * Shows the reply only to whoever ran the command.
+         *
+         * @param ephemeral true to hide the reply from the rest of the channel
+         * @return this builder
+         */
+        public Builder ephemeral(boolean ephemeral) {
+            this.ephemeral = ephemeral;
+            return this;
+        }
+
         public Builder guildOnly(boolean guildOnly) {
             this.guildOnly = guildOnly;
             return this;
@@ -413,7 +432,7 @@ public record SimpleCommand(
 
             return new SimpleCommand(
                     name, description, category, options, subcommands, group,
-                    permission, translationKey, aliases, guildOnly, guildIds,
+                    permission, translationKey, aliases, guildOnly, ephemeral, guildIds,
                     isSubcommand, parent, enabled, cooldown, executor
             );
         }

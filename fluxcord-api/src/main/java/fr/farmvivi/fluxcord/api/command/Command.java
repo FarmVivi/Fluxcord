@@ -85,6 +85,23 @@ public interface Command {
     boolean isGuildOnly();
 
     /**
+     * Whether this command's reply is shown only to whoever ran it.
+     *
+     * <p>A property of the command and not of each reply, because the choice is the same every time a
+     * command runs and because a command that defers has already decided by the time its executor could
+     * say anything: Discord takes the flag from the deferral, so setting it afterwards is ignored. The
+     * service applies this to the context before the executor runs, which is early enough for both.
+     *
+     * <p>Defaults to false. The ones worth turning on are the acknowledgements — "listening", "stopped",
+     * "volume set" — which say nothing to anybody but the person who asked and which bury a channel.
+     *
+     * @return true when only the caller sees the reply
+     */
+    default boolean isEphemeral() {
+        return false;
+    }
+
+    /**
      * Gets the guild IDs where this command is available.
      * If empty, the command is available in all guilds.
      *

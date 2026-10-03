@@ -87,6 +87,13 @@ public class CommandExecutor {
             return refuse(locale, "commands.messages.execution_cancelled");
         }
 
+        // Set before the executor runs, and that timing is the whole reason this lives here: a command that
+        // defers its reply hands Discord the flag at the deferral, so an executor setting it afterwards is
+        // ignored and the answer appears for everybody anyway.
+        if (command.isEphemeral()) {
+            context.setEphemeral(true);
+        }
+
         long start = System.nanoTime();
         CommandResult result;
         try {

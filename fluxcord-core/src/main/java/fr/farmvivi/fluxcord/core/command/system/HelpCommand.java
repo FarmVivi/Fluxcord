@@ -39,6 +39,8 @@ public class HelpCommand {
                 .name("help")
                 .description("Shows information about available commands")
                 .category("System")
+                // Answers whoever asked, and only them: none of this is news to the channel.
+                .ephemeral(true)
                 .aliases("?")
                 .stringOption("command", "The command to get help for", false)
                 .stringOption("category", "The category to get help for", false, this::provideCategories)

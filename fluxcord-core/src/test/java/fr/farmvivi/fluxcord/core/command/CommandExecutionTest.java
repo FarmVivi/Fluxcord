@@ -35,6 +35,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -189,6 +190,38 @@ class CommandExecutionTest {
         assertEquals(1, service.getSuccessfulCommandExecutionCount());
         assertEquals(1, service.getFailedCommandExecutionCount());
         assertTrue(service.getAverageExecutionTimeMs() >= 0);
+    }
+
+    /**
+     * The flag has to be on the context <em>before</em> the executor runs. A command that defers its reply
+     * hands Discord the ephemeral flag at the deferral, so a command setting it in its own body would be
+     * ignored and the answer would appear for the whole channel anyway — which is the bug this ordering
+     * exists to prevent, not a detail of where the line sits.
+     */
+    @Test
+    void anEphemeralCommandHasItsFlagSetBeforeItRuns() {
+        AtomicBoolean seenByTheExecutor = new AtomicBoolean();
+        Command quiet = register("quiet", b -> b.ephemeral(true), (c, cmd) -> {
+            seenByTheExecutor.set(c.isEphemeral());
+            return CommandResult.success();
+        });
+
+        service.executeCommand(quiet, userContext(quiet, "u", null));
+
+        assertTrue(seenByTheExecutor.get(), "the executor must already see it, so deferReply() inherits it");
+    }
+
+    @Test
+    void aCommandThatSaidNothingAboutItIsPublic() {
+        AtomicBoolean seenByTheExecutor = new AtomicBoolean(true);
+        Command loud = register("loud", b -> { }, (c, cmd) -> {
+            seenByTheExecutor.set(c.isEphemeral());
+            return CommandResult.success();
+        });
+
+        service.executeCommand(loud, userContext(loud, "u", null));
+
+        assertFalse(seenByTheExecutor.get(), "visible to the channel is the default, as it was before");
     }
 
     @Test
