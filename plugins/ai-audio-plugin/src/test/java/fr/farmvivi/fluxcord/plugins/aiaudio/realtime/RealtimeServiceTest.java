@@ -278,7 +278,7 @@ class RealtimeServiceTest {
                         "wss://example.test/realtime", "sk-x", "marin", "")));
         assertInstanceOf(GeminiRealtime.class, RealtimeService.dialect(
                 new AiSettings.RealtimeSettings(true, AiSettings.RealtimeApi.GEMINI,
-                        "wss://example.test/live", "AIza-x", "Puck", "gemini-live-2.5-flash-preview")));
+                        "wss://example.test/live", "AIza-x", "Puck", "gemini-3.8-live")));
     }
 
     @Test

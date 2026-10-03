@@ -210,11 +210,19 @@ conversation:
     # setting, and a Gemini URL with an OpenAI voice name fails in a way nobody can read.
     api: "OPENAI"
 
-    url: "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1"
+    # gpt-realtime-2.1-mini is about a third of the flagship's price and was measured doing the whole
+    # job: persona, tool call, spoken answer. "gpt-realtime-2.1" is the flagship if you want it.
+    url: "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1-mini"
     api_key: ""
 
     # GEMINI only: the model to open the session with. "models/" is added if you leave it out.
-    model: "gemini-live-2.5-flash-preview"
+    #
+    # Pick a name that lists bidiGenerateContent in GET /v1beta/models: a wrong one is not a soft
+    # failure, the handshake succeeds and the socket is then closed with 1008.
+    #
+    # gemini-2.5-flash-native-audio-latest is the cheap one ($0.50 / $2.00 per million against
+    # $3.00 / $12.00 for gemini-3.8-live) and was measured answering, transcribing and calling a tool.
+    model: "gemini-2.5-flash-native-audio-latest"
 
     # The provider's voice name for the spoken answer.
     voice: "marin"

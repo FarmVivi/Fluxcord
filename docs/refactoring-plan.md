@@ -404,5 +404,28 @@ a model limit with a partial lever, and one turned into the two features below.
   speech-to-speech at all, Moshi is genuinely full duplex but English-only (the FR checkpoint slipped past its
   Q1-2026 target) and is a closed dialogue model with no tool calling, and Qwen3-Omni's Talker needs more than
   a 12 GB card. Mistral (audio in only) and DeepSeek (no audio out) have nothing to offer here.
-- [ ] **Neither realtime dialect has met its service.** 31 tests read the Gemini JSON field by field, which is
-  the ceiling from this repository. Needs a key.
+- [x] **Both realtime dialects met their service** (2026-10-03, Victor supplied keys). Four defects, and the
+  lesson is the one worth keeping: **the test suite could not have found any of them**, because it checked the
+  frames against the documentation and the documentation was what was wrong or incomplete. Three failed
+  silently.
+  - `session.type` is required; OpenAI refuses the whole `session.update` in a *separate* error frame and the
+    session stays up on its own defaults — so the bot answers with no persona, no tools and no memory, which
+    looks like a prompt problem.
+  - OpenAI does not transcribe the input unless asked (`session.audio.input.transcription` is null by
+    default), so the memory would have recorded every answer and nothing said to the bot.
+  - **Google sends every frame as a binary WebSocket frame**, and `RealtimeSession` only implemented
+    `onText` — the entire Gemini path was silently dead, with no error anywhere. Binary frames are
+    accumulated as bytes, since a multi-byte character can straddle two of them.
+  - A wrong Gemini model name closes the socket with 1008 after a successful handshake. Names that work list
+    `bidiGenerateContent` in `GET /v1beta/models`.
+  - Defaults are now the cheapest model that was measured doing the whole job: `gpt-realtime-2.1-mini`
+    ($10/$20 per 1M) and `gemini-2.5-flash-native-audio-latest` ($0.50/$2.00, six times cheaper than
+    `gemini-3.8-live` and about twenty times cheaper than OpenAI on output).
+- [ ] **`RealtimeSession` has no test, and the binary-frame bug lived in it.** It was deliberately the thin
+  untestable layer; that choice is what let a whole provider fail in silence. A loopback WebSocket server is
+  ~100 lines of handshake and framing, with no server in the JDK — worth it, or worth a different seam.
+- [ ] **Input transcription and interruption are still unverified** on both services: one needs real speech
+  rather than a text turn, the other needs two people talking at once.
+- [ ] **The realtime path ignores `speech_to_text.vocabulary`.** OpenAI's
+  `session.audio.input.transcription` accepts a `prompt`, which is the same lever the turn-based path uses for
+  names like "Fluxcord" — so a realtime session mishears exactly what the turn-based one was just taught.

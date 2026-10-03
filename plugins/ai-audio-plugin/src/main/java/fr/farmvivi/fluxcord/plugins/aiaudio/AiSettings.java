@@ -633,10 +633,23 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
     public record RealtimeSettings(boolean enabled, RealtimeApi api, String url, String apiKey, String voice,
                                    String model) {
 
-        private static final String DEFAULT_URL = "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1";
+        /**
+         * The mini model, which is about a third of the flagship's price per minute of conversation and
+         * was measured doing everything this plugin asks of it: the persona, a tool call, the answer.
+         */
+        private static final String DEFAULT_URL =
+                "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1-mini";
         private static final String DEFAULT_VOICE = "marin";
-        /** Google's cheapest live model, which is the reason that dialect exists at all. */
-        private static final String DEFAULT_GEMINI_MODEL = "gemini-live-2.5-flash-preview";
+        /**
+         * Google's current live model.
+         *
+         * <p>MEASURED, 2026-10-03: a wrong name here is not a soft failure. The handshake succeeds, the setup
+         * frame is accepted, and the socket is then closed with 1008 and
+         * "is not found for API version v1beta, or is not supported for bidiGenerateContent" - so the
+         * symptom is a conversation that opens and dies. The names that work are the ones listing
+         * {@code bidiGenerateContent} in {@code GET /v1beta/models}.
+         */
+        private static final String DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-native-audio-latest";
         private static final String DEFAULT_GEMINI_VOICE = "Puck";
 
         public RealtimeSettings {

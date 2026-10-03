@@ -3,9 +3,12 @@ package fr.farmvivi.fluxcord.plugins.aiaudio.realtime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -20,6 +23,10 @@ import java.util.function.Consumer;
  * {@link RealtimeConversation}, which is tested against {@link RealtimeLink} instead. This is the same bargain
  * the core makes with {@code JDADiscordAPI} — the part that cannot be exercised without the real service is
  * kept small enough to read.
+ *
+ * <p><strong>Frames arrive as text from one service and as binary from the other.</strong> Google's Live
+ * API sends binary frames holding UTF-8 JSON; OpenAI sends text. Both are handled, because a client that
+ * implements only one of them receives absolutely nothing from the other and says nothing about it.
  *
  * <p><strong>A text frame can arrive in pieces.</strong> {@link WebSocket.Listener#onText} is called with
  * {@code last == false} for every part but the final one, and a Realtime audio delta is large enough that this
@@ -56,6 +63,9 @@ public class RealtimeSession implements RealtimeLink {
     public static RealtimeSession open(HttpClient http, RealtimeProtocol protocol, String url, String apiKey,
                                        Consumer<RealtimeProtocol.Event> events) {
         StringBuilder partial = new StringBuilder();
+        // Binary frames are accumulated as bytes and not as text: a multi-byte character can be split
+        // across two frames, and decoding each piece on its own would corrupt it.
+        ByteArrayOutputStream binary = new ByteArrayOutputStream();
         WebSocket.Builder builder = http.newWebSocketBuilder().connectTimeout(CONNECT_TIMEOUT);
         protocol.headers(apiKey).forEach(builder::header);
         String endpoint = protocol.endpoint(url, apiKey);
@@ -67,6 +77,27 @@ public class RealtimeSession implements RealtimeLink {
                     if (last) {
                         String frame = partial.toString();
                         partial.setLength(0);
+                        deliver(protocol, events, frame);
+                    }
+                    webSocket.request(1);
+                    return null;
+                }
+
+                /**
+                 * MEASURED, 2026-10-03: Google's Live API sends <strong>every</strong> frame as a binary
+                 * frame holding UTF-8 JSON, where OpenAI sends text. A client implementing only
+                 * {@code onText} therefore receives nothing from it at all - no setupComplete, no audio, no
+                 * error - and the conversation opens, stays open and never speaks. Nothing in a log says
+                 * why, which is what made this worth a comment this long.
+                 */
+                @Override
+                public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
+                    byte[] bytes = new byte[data.remaining()];
+                    data.get(bytes);
+                    binary.write(bytes, 0, bytes.length);
+                    if (last) {
+                        String frame = binary.toString(StandardCharsets.UTF_8);
+                        binary.reset();
                         deliver(protocol, events, frame);
                     }
                     webSocket.request(1);

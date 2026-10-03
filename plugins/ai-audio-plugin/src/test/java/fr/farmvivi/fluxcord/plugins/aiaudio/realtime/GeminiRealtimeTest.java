@@ -29,7 +29,7 @@ class GeminiRealtimeTest {
     private static final ChatModel.Tool A_TOOL = new ChatModel.Tool("search_the_web", "Search the web",
             new LinkedHashMap<>(Map.of("query", ChatModel.Tool.Parameter.requiredString("what to look for"))));
 
-    private final GeminiRealtime gemini = new GeminiRealtime("gemini-live-2.5-flash-preview");
+    private final GeminiRealtime gemini = new GeminiRealtime("gemini-3.8-live");
 
     private static JsonObject frame(String json) {
         return JsonParser.parseString(json).getAsJsonObject();
@@ -42,7 +42,7 @@ class GeminiRealtimeTest {
         JsonObject setup = frame(gemini.session("You are Fluxcord.", "Puck", List.of()))
                 .getAsJsonObject("setup");
 
-        assertEquals("models/gemini-live-2.5-flash-preview", setup.get("model").getAsString());
+        assertEquals("models/gemini-3.8-live", setup.get("model").getAsString());
     }
 
     @Test

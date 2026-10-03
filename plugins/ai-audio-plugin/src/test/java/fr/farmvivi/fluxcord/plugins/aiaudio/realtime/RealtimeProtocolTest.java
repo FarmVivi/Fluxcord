@@ -34,6 +34,30 @@ class RealtimeProtocolTest {
             new LinkedHashMap<>(Map.of("query", ChatModel.Tool.Parameter.requiredString("what to look for"))));
 
     @Test
+    void theSessionSaysWhatKindOfSessionItIs() {
+        // MEASURED against the real service, 2026-10-03: without session.type the update is refused with
+        // "Missing required parameter: 'session.type'" in a SEPARATE error frame, so the session stays up
+        // on OpenAI's defaults - no persona, no tools, no voice. The bot answers as a generic assistant,
+        // which reads as a prompt problem rather than a rejected frame. This test is the guard.
+        JsonObject session = frame(OPENAI.session("You are Fluxcord.", "marin", List.of()))
+                .getAsJsonObject("session");
+
+        assertEquals("realtime", session.get("type").getAsString());
+    }
+
+    @Test
+    void theSessionAsksForTheInputToBeTranscribedBecauseItIsNotByDefault() {
+        // MEASURED, 2026-10-03: session.audio.input.transcription comes back null unless asked for, and
+        // conversation.item.input_audio_transcription.completed is then never sent. The session works, so
+        // the only symptom is a memory holding every answer the bot gave and nothing said to it.
+        JsonObject input = frame(OPENAI.session("x", "marin", List.of()))
+                .getAsJsonObject("session").getAsJsonObject("audio").getAsJsonObject("input");
+
+        assertEquals(OpenAiRealtime.TRANSCRIPTION_MODEL,
+                input.getAsJsonObject("transcription").get("model").getAsString());
+    }
+
+    @Test
     void theSessionAsksForTheAudioFormatTheServiceActuallyTakes() {
         JsonObject session = frame(OPENAI.session("You are Fluxcord.", "marin", List.of()))
                 .getAsJsonObject("session");

@@ -29,6 +29,15 @@ public final class OpenAiRealtime implements RealtimeProtocol {
     /** What the API takes and returns: 24 kHz mono 16-bit PCM. */
     public static final int SAMPLE_RATE = 24_000;
 
+    /**
+     * What writes down the input side, billed separately from the conversation.
+     *
+     * <p>The cheap one on purpose: this transcript is not what the model answers from — it hears the audio
+     * itself — it is only what the memory keeps, so the accuracy that matters is "good enough to read back
+     * next week".
+     */
+    public static final String TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
+
     @Override
     public int inputSampleRate() {
         return SAMPLE_RATE;
@@ -45,6 +54,13 @@ public final class OpenAiRealtime implements RealtimeProtocol {
         JsonObject turnDetection = new JsonObject();
         turnDetection.addProperty("type", "server_vad");
         input.add("turn_detection", turnDetection);
+        // MEASURED, 2026-10-03: session.audio.input.transcription comes back null unless it is asked for,
+        // and without it conversation.item.input_audio_transcription.completed is never sent at all. The
+        // session still works - the bot hears and answers - so the only symptom is a memory that records
+        // every answer the bot gave and nothing anybody said to it.
+        JsonObject transcription = new JsonObject();
+        transcription.addProperty("model", TRANSCRIPTION_MODEL);
+        input.add("transcription", transcription);
 
         JsonObject output = new JsonObject();
         output.add("format", format.deepCopy());
@@ -57,6 +73,11 @@ public final class OpenAiRealtime implements RealtimeProtocol {
         audio.add("output", output);
 
         JsonObject session = new JsonObject();
+        // MEASURED, 2026-10-03: without this the whole update is refused with
+        // "Missing required parameter: 'session.type'" - and the refusal is a separate error frame, so the
+        // session stays up on OpenAI's defaults. The bot then answers as a generic witty assistant with no
+        // persona, no tools and no memory, which looks like a prompt problem rather than a rejected frame.
+        session.addProperty("type", "realtime");
         session.add("audio", audio);
         if (instructions != null && !instructions.isBlank()) {
             session.addProperty("instructions", instructions);

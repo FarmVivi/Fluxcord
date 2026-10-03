@@ -582,9 +582,9 @@ conversation:
   realtime:
     enabled: false
     api: "OPENAI"          # or GEMINI
-    url: "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1"
+    url: "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1-mini"
     api_key: ""
-    model: "gemini-live-2.5-flash-preview"   # GEMINI only: this API names the model in the first frame
+    model: "gemini-2.5-flash-native-audio-latest"   # GEMINI only: this API names the model in the first frame
     voice: "marin"         # GEMINI voices are different: Puck, Charon, Kore...
 ```
 
@@ -637,6 +637,51 @@ held, and nothing about who the bot is depends on the transport.
 
 **There is no wake word here.** Turn detection belongs to the service, so the bot hears everything said in the
 channel. That is a different social contract from the turn-based path and worth knowing before switching it on.
+
+#### What running it against both services found
+
+Four defects, and the reason this section exists: **every one of them was invisible to the test suite**, which
+could only check the frames against the published documentation. Three of the four fail in a way that produces
+no error anybody would see.
+
+- **`session.type` is required** and OpenAI refuses the whole `session.update` without it — in a *separate*
+  error frame, so the socket stays up on OpenAI's defaults. The bot then answers as a generic witty assistant
+  with no persona, no tools and no memory. It reads exactly like a bad prompt.
+- **OpenAI does not transcribe the input unless asked.** `session.audio.input.transcription` comes back `null`,
+  and `conversation.item.input_audio_transcription.completed` is then never sent at all. The conversation works
+  perfectly; the only symptom is a memory that records every answer the bot gave and nothing anybody said to
+  it. Now requested explicitly with `gpt-4o-mini-transcribe` — cheap on purpose, since the model answers from
+  the audio itself and this transcript is only what the memory keeps.
+- **Google sends every frame as a WebSocket _binary_ frame** holding UTF-8 JSON, where OpenAI sends text. A
+  client implementing only `onText` receives *nothing* from it — no `setupComplete`, no audio, not even an
+  error — and the conversation opens, stays open and never speaks. `RealtimeSession` now handles both, and
+  accumulates binary frames as bytes rather than as text, because a multi-byte character can be split across
+  two frames and large frames do fragment in practice.
+- **A wrong Gemini model name is not a soft failure**: the handshake succeeds, the setup frame is accepted, and
+  the socket is then closed with 1008. Use a name that lists `bidiGenerateContent` in `GET /v1beta/models`.
+
+What the documentation had right, and is now confirmed from a real session: `response.output_audio.delta` and
+`response.output_audio_transcript.delta` (the names that moved since the beta), `response.done`,
+`response.function_call_arguments.done` with its `call_id`, and on Google's side `setupComplete`,
+`outputTranscription`, `modelTurn.parts[].inlineData` at 24 kHz, `toolCall.functionCalls` and `turnComplete`.
+Both dialects answered in French, called a declared tool with sensible arguments, and came back with playable
+audio.
+
+**Still unverified:** the input-transcription path on both services, which needs real speech rather than a text
+turn, and interruption, which needs two people talking at once. Also `RealtimeSession` itself has no test — it
+is the deliberate thin untestable layer, and the binary-frame bug lived exactly there, which is the honest
+argument against that choice.
+
+#### Which model, and what it costs
+
+| | Cheapest that does the job | Price per 1M tokens (in / out, audio) |
+| --- | --- | --- |
+| OpenAI | `gpt-realtime-2.1-mini` | $10 / $20 |
+| Google | `gemini-2.5-flash-native-audio-latest` | **$0.50 / $2.00** |
+
+Both are the shipped defaults. Google's flagship live model (`gemini-3.8-live`) is $3.00 / $12.00, so the
+native-audio 2.5 is six times cheaper for the same job and was measured doing it. Across providers the gap is
+roughly twentyfold on output, which is why the second dialect exists.
 
 #### What is not known
 
