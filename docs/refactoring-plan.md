@@ -286,10 +286,13 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
   - Everything else held up against the real servers: the mood read 6/6 sensible in 0.28-0.35 s, web search
     called and answered correctly, the memory tools likewise, and the French round trip came back word for
     word through the production voice.
-- [ ] **An Ollama chat client on the native route**, next to `OllamaSpeechToText`, selected by config the same
-  way. It is the only way to send `num_ctx` and `keep_alive`, which the measurements above show are worth 2x on
-  the first answer of a big model and remove the five-minute reload pause entirely. The `ChatModel` interface
-  already fits; what it costs is a second implementation of the tool-call and audio plumbing.
+- [x] **An Ollama chat client on the native route — decided against** (Victor, 2026-10-03). It was the only way
+  to send `num_ctx` and `keep_alive`, which `/v1` accepts and ignores. `num_ctx` stopped mattering once
+  synthesis moved off the GPU: `gemma4:12b-it-qat` is 100 % GPU at the server's default context. `keep_alive`
+  still does — Ollama unloads after five minutes, so the first sentence after a quiet spell pays 3.3 s to
+  reload, which is more than the rest of the turn (1.4–1.9 s). The cost was a second implementation of the
+  tool-call and audio plumbing for one setting, and that is the trade that was refused. Reopen only if the
+  reload pause turns out to be felt in real use.
 - [ ] **`AiSettings` has outgrown a flat record.** It gained a component in three consecutive chantiers and each
   time every construction site in the tests broke — seven of them this time. The nested records
   (`ChatSettings`, `PersonaSettings`, `WebSearchSettings`, `RealtimeSettings`) are the right idea; the top-level
