@@ -299,11 +299,19 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
   voice itself — and a synthesis failure during a session is reported **once** in the text channel the command
   came from, with the provider's message. Found while documenting how to set a TTS server up, which is the
   usual way this kind of gap surfaces.
-- [ ] **A text-to-speech server still has to exist** for `/speak` and `/converse` to be heard (Victor's side).
-  Kokoro-FastAPI is documented in the plugin README with the container command, the `/v1/audio/voices`
-  discovery route and the French voice name; it needs no code, since it is the same `/audio/speech` request.
-  Until one runs, the spoken half is covered by tests only — transcription, the chat turn, the memory tools,
-  web search and the mood reading are all measured against real servers.
+- [x] **The spoken half is measured against a real server too** (2026-10-03, at Victor's request): a
+  Kokoro-FastAPI container on CPU, with the exact request `OpenAiTextToSpeech` sends. **2.4-2.5x realtime** on a
+  Ryzen 7 4800HS with no GPU and no warm-up penalty - 0.83 s for a short sentence, 1.6 s for a typical answer,
+  5.0 s for a long one - answering 24 kHz mono 16-bit WAV with a 16-byte `fmt` chunk, which `PcmAudio` reads
+  as-is. So CPU synthesis is usable and the card stays with the LLM, as the README already guessed.
+  - **The French voice was verified by round trip**, which is the only check available from outside a voice
+    channel: three French sentences synthesised with `ff_siwis`, resampled to 16 kHz mono and transcribed by
+    the multimodal model on Victor's Ollama - **all three came back word for word**. That exercises both plugin
+    routes and the resampling between them. `ff_siwis` is graded B- against A for the best English voices,
+    which is the voice's own quality rather than a misconfiguration.
+  - Two behaviours worth not rediscovering: an unknown voice is refused with **HTTP 400 and the list of real
+    ones** rather than silently substituted, and `/v1/audio/voices` returns objects, not strings.
+  - One spoken turn on that hardware: ~0.45 s to transcribe, 0.5-3 s for the model, ~1.4 s to synthesise.
 - [ ] The audit checklist built from all these plugins lives in `.claude/skills/fluxcord-plugin-dev/SKILL.md` ("Audit checklist for a generated plugin"): language wrapper, config keys read vs declared, framework features reimplemented by hand, permission names, lifecycle ordering, dependency scopes, dead/lying code, untestable inner classes, missing test setup.
 - [ ] In `music-plugin` the untested mass is now `MusicPlayerMessage` alone, plus the network-facing parts of `AudioPlayerManager` (source clients) and the JDA voice glue in `MusicPlayer`.
 

@@ -102,6 +102,33 @@ Then `base_url: "http://<host>:8880/v1"`, `model: "kokoro"`, and a voice from th
 French one. The plugin needs no code for any of this: it is the same `/audio/speech` request either way, which
 is the whole point of the OpenAI shape.
 
+**Measured on CPU** (Ryzen 7 4800HS, 8 cores, no GPU), with the request this plugin sends:
+
+| What is said | Audio produced | Time to synthesise |
+| --- | --- | --- |
+| `Il est six heures et quart.` | 1.6 s | 0.83 s |
+| one typical spoken answer | 3.9 s | 1.6 s |
+| two sentences | 4.4 s | 1.8 s |
+| a long four-clause answer | 12.7 s | 5.0 s |
+
+Steady at **2.4 to 2.5× realtime** with no warm-up penalty after the first call, which is what makes CPU
+synthesis usable here: a one-sentence answer is spoken about a second and a half after the model finishes it.
+The answer comes back as 24 kHz mono 16-bit WAV with a 16-byte `fmt` chunk, which `PcmAudio` reads directly and
+resamples to what Discord takes.
+
+**The French voice really is French**, checked the only way possible from outside a voice channel — by sending
+Kokoro's output back through transcription. Three French sentences synthesised with `ff_siwis`, resampled to
+16 kHz mono and handed to a multimodal model: **all three came back word for word**, accents and apostrophes
+included. Note that `ff_siwis` is graded B− in the voice listing against A for the best English ones, which is
+the honest state of the French voice rather than a configuration problem.
+
+Two things that behave well and are worth knowing: a voice name the build does not have is refused with
+**HTTP 400 and the list of real ones**, not silently substituted — so a typo is loud. And `/v1/audio/voices`
+returns objects (`{"id": …, "name": …, "overall_grade": …}`), not bare strings, if you script against it.
+
+End to end on that hardware, one spoken turn costs roughly: 0.45 s to transcribe, 0.5 to 3 s for the model,
+1.4 s to synthesise.
+
 **When speech is not configured, the bot says so instead of going quiet.** `/converse start` refuses outright
 if there is no way to speak — pointing at OpenAI with no key, unless the chat model answers in audio itself —
 because promising to answer aloud and then falling silent is the one failure nobody can diagnose from a voice
