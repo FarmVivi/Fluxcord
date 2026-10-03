@@ -1,10 +1,6 @@
-permissions:
-  error:
-    denied: "Permission refusée : {0}"
-    not_found: "Permission introuvable : {0}"
-
 commands:
   titles:
+    success: "C'est fait"
     info: "Information"
     warning: "Avertissement"
     error: "Une erreur est survenue"

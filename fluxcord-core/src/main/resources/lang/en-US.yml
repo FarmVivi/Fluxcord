@@ -1,10 +1,6 @@
-permissions:
-  error:
-    denied: "Permission denied: {0}"
-    not_found: "Permission not found: {0}"
-
 commands:
   titles:
+    success: "Done"
     info: "Information"
     warning: "Warning"
     error: "An error occurred"

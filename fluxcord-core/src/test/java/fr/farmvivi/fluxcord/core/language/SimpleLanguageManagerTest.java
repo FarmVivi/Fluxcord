@@ -45,8 +45,8 @@ class SimpleLanguageManagerTest {
 
     @Test
     void nestedYamlIsFlattenedToDottedKeys() {
-        assertTrue(manager.getString("permissions.error.denied").startsWith("Permission denied"));
-        assertEquals("permissions", manager.getString("permissions"), "a section is not a string");
+        assertTrue(manager.getString("commands.messages.guild_only").startsWith("This command can only"));
+        assertEquals("commands", manager.getString("commands"), "a section is not a string");
     }
 
     // --- missing keys and namespaces ------------------------------------------------------------
@@ -136,7 +136,8 @@ class SimpleLanguageManagerTest {
     void argumentsUseMessageFormat() {
         assertEquals("This command is on cooldown. Please wait 3 second(s) before using it again.",
                 manager.getString("commands.messages.cooldown", 3));
-        assertEquals("Permission refusée : music.play", manager.getString(FR, "permissions.error.denied", "music.play"),
+        assertEquals("Erreur de permission : music.play",
+                manager.getString(FR, "commands.messages.permission_error", "music.play"),
                 "arguments go through the cascade too");
     }
 
