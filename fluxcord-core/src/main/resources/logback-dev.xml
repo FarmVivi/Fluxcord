@@ -31,6 +31,17 @@
 
     <!-- Specific logger configurations - DEBUG level for development -->
     <logger name="fr.farmvivi.fluxcord" level="DEBUG"/>
+
+    <!--
+      A plugin's own logger is named after its plugin id (PluginContextImpl), not after a package, so it
+      falls outside the rule above and lands on the root INFO level. The effect is that every debug line a
+      plugin writes about its own behaviour is unreachable in the one configuration meant for debugging:
+      an AI Audio session spent an evening looking like transcriptions that vanished without a trace, when
+      the traces were being written and dropped. One entry per plugin id, because there is no shared
+      prefix to match on.
+    -->
+    <logger name="ai-audio-plugin" level="DEBUG"/>
+    <logger name="music-plugin" level="DEBUG"/>
     <logger name="net.dv8tion.jda" level="INFO"/>
     <logger name="com.zaxxer.hikari" level="WARN"/>
     <logger name="org.mariadb" level="WARN"/>

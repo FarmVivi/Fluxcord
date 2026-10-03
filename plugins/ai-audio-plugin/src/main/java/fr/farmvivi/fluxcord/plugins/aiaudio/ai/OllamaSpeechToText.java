@@ -92,7 +92,11 @@ public class OllamaSpeechToText implements SpeechToText {
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
                 .build();
 
-        LOG.debug("Transcribing {} of audio with {} on {}", audio.duration(), endpoint.model(), endpoint);
+        // The vocabulary is logged with the rest because it is what the bot's own name travels in, and a
+        // name missing from it is a bot that cannot be woken - a failure that otherwise shows up only as
+        // a transcription where the name quietly is not.
+        LOG.debug("Transcribing {} of audio with {} on {}, expecting {}", audio.duration(), endpoint.model(),
+                endpoint, vocabulary);
         return readContent(AiHttp.send(http, request, "Transcription"));
     }
 
