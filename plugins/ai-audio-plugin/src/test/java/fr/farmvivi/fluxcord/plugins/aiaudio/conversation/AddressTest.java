@@ -98,4 +98,46 @@ class AddressTest {
         assertTrue(Address.addressed("salut Fluxcord Bot, ca va ?", List.of("Fluxcord Bot")));
         assertFalse(Address.addressed("salut Fluxcord, ca va ?", List.of("Fluxcord Bot")));
     }
+
+    /**
+     * MEASURED, 2026-10-03, from a real evening of conversation. A bot nicknamed "Poubelle" was written
+     * down by the transcriber as "pour belle", and the question that came with it was dropped without a
+     * word anywhere — so the person simply said the whole sentence again. These are the sentences as they
+     * were actually transcribed.
+     */
+    @Test
+    void aNameTheTranscriberSplitInTwoStillWakesIt() {
+        List<String> names = List.of("Poubelle", "Fluxcord");
+
+        assertTrue(Address.addressed("OK pour belle tu et de retour normalement", names),
+                "this exact sentence was lost, and the question in it with it");
+        assertTrue(Address.addressed("Poubelle, je suis de retour.", names));
+        assertTrue(Address.addressed("Ok poubelle est-ce que tu es toujours la", names));
+    }
+
+    /**
+     * The other half of the same rule, and the one that decides whether it is worth having: French is full
+     * of words that are nearly a short name, and a bot that answers them is worse than one that misses a
+     * question.
+     */
+    @Test
+    void ordinaryFrenchDoesNotWakeIt() {
+        List<String> names = List.of("Poubelle", "Fluxcord");
+
+        assertFalse(Address.addressed("quelle belle journee pour sortir", names));
+        assertFalse(Address.addressed("c'est une pou de belle taille", names));
+        assertFalse(Address.addressed("il fait beau aujourd'hui a Paris", names));
+        assertFalse(Address.addressed("on part a quelle heure demain", names));
+    }
+
+    /**
+     * Honest about the limit. "Quelle belle" for "Poubelle" is a different opening sound, not a spelling
+     * slip, and no budget that catches it leaves the rule above standing. The answer to that one is a name
+     * that sounds like nothing else, which is a choice for whoever names the bot.
+     */
+    @Test
+    void aNameHeardAsADifferentWordIsStillMissed() {
+        assertFalse(Address.addressed("Quelle belle, quel temps fait-il aujourd'hui a Paris.",
+                List.of("Poubelle")));
+    }
 }
