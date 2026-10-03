@@ -44,6 +44,15 @@ Invoke the matching reference skill first: `fluxcord-plugin-system`, `fluxcord-c
 Fix wrong statements above; add dated **Learnings** (what made a chantier slower/riskier than expected, useful test patterns); prune stale ones.
 
 ## Learnings
+- 2026-10-03 (`AiSettings`, a record that had outgrown itself): the cheap trick that makes a wide record stop
+  hurting is **`with*` methods plus a `defaults()`**, added in the same chantier as the grouping. Grouping alone
+  does not help the tests - they still name every group; what helps is letting a test say only what it cares
+  about. The three-step shape worked well and is worth copying for any record or interface widening: introduce
+  the new shape with the old accessors delegating (verify), migrate the call sites (verify), delete the
+  delegates (verify). For the migration itself, **split constructor arguments by balancing brackets and quotes
+  rather than with a regex** - several arguments were themselves multi-line constructor calls, and a regex over
+  that is how a refactor quietly corrupts a test. Evidence that nothing changed: the test count was identical on
+  both sides.
 - 2026-09-19: Initial version. Existing tests to copy patterns from: `AudioServiceImplTest` (Mockito on JDA `Guild`), `PluginConfigurationTest` (temp dirs), `FileDataStorageColdStartTest`.
 
 ## Known issues / open questions

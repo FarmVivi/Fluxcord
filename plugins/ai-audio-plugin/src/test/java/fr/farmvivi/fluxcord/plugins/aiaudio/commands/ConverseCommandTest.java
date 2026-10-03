@@ -102,24 +102,22 @@ class ConverseCommandTest {
     private AiSettings settingsWithNoVoice(ChatAudio audio) {
         AiEndpoint local = new AiEndpoint("http://localhost:11434/v1", "", "m", Duration.ofSeconds(5));
         AiEndpoint hosted = new AiEndpoint("https://api.openai.com/v1", "", "m", Duration.ofSeconds(5));
-        return new AiSettings(local, AiSettings.SpeechApi.OLLAMA, "fr-FR", hosted, "alloy", 100, 80, 1000,
-                Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 20, 20, 20,
-                AiSettings.PersonaSettings.defaults(),
-                new AiSettings.ChatSettings(local, true, "", 8, 120, 0.7, "none", "low", false, 3,
-                        audio, 600),
-                AiSettings.WebSearchSettings.disabled(),
-                AiSettings.RealtimeSettings.disabled());
+        return AiSettings.defaults()
+                .withTranscription(new AiSettings.TranscriptionSettings(local, AiSettings.SpeechApi.OLLAMA,
+                        "fr-FR", Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400)))
+                .withSpeech(new AiSettings.SpeechSettings(hosted, "alloy", 100, 80, 1000))
+                .withMemory(new AiSettings.MemorySettings(20, 20, 20))
+                .withChat(new AiSettings.ChatSettings(local, true, "", 8, 120, 0.7, "none", "low", false, 3, audio, 600));
     }
 
     private AiSettings settings(boolean enabled, String wakeWord, AiEndpoint chat) {
         AiEndpoint local = new AiEndpoint("http://localhost:11434/v1", "", "m", Duration.ofSeconds(5));
-        return new AiSettings(local, AiSettings.SpeechApi.OLLAMA, "fr-FR", local, "alloy", 100, 80, 1000,
-                Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 20, 20, 20,
-                AiSettings.PersonaSettings.defaults(),
-                new AiSettings.ChatSettings(chat, enabled, wakeWord, 8, 120, 0.7, "none", "low", false, 3,
-                        ChatAudio.off(), 600),
-                AiSettings.WebSearchSettings.disabled(),
-                AiSettings.RealtimeSettings.disabled());
+        return AiSettings.defaults()
+                .withTranscription(new AiSettings.TranscriptionSettings(local, AiSettings.SpeechApi.OLLAMA,
+                        "fr-FR", Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400)))
+                .withSpeech(new AiSettings.SpeechSettings(local, "alloy", 100, 80, 1000))
+                .withMemory(new AiSettings.MemorySettings(20, 20, 20))
+                .withChat(new AiSettings.ChatSettings(chat, enabled, wakeWord, 8, 120, 0.7, "none", "low", false, 3, ChatAudio.off(), 600));
     }
 
     /** OpenAI with no key: the misconfiguration users hit first. */
@@ -285,13 +283,9 @@ class ConverseCommandTest {
     void aConfiguredRealtimeSessionIsOpenedInsteadOfTheTurnBasedPath() {
         AiEndpoint local = new AiEndpoint("http://localhost:11434/v1", "", "m", Duration.ofSeconds(5));
         AiSettings base = settings(true, "", local);
-        when(plugin.getSettings()).thenReturn(new AiSettings(base.speechToText(), base.speechToTextApi(),
-                base.transcriptionLanguage(), base.textToSpeech(), base.voice(), base.volume(),
-                base.priority(), base.maxTextLength(), base.silence(), base.maxSegment(), base.minSegment(),
-                base.channelTurns(), base.serverTurns(), base.userTurns(), base.persona(), base.chat(),
-                base.webSearch(),
-                new AiSettings.RealtimeSettings(true, "wss://example.test/v1/realtime?model=m", "sk-x",
-                        "marin")));
+        when(plugin.getSettings()).thenReturn(base.withRealtime(
+                new AiSettings.RealtimeSettings(true, "wss://example.test/v1/realtime?model=m",
+                        "sk-x", "marin")));
         when(realtime.start(same(guild), any())).thenReturn(true);
 
         run("start");

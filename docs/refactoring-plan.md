@@ -293,11 +293,19 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
   reload, which is more than the rest of the turn (1.4–1.9 s). The cost was a second implementation of the
   tool-call and audio plumbing for one setting, and that is the trade that was refused. Reopen only if the
   reload pause turns out to be felt in real use.
-- [ ] **`AiSettings` has outgrown a flat record.** It gained a component in three consecutive chantiers and each
-  time every construction site in the tests broke — seven of them this time. The nested records
-  (`ChatSettings`, `PersonaSettings`, `WebSearchSettings`, `RealtimeSettings`) are the right idea; the top-level
-  record should be a handful of those rather than 17 positional components. A builder or a `with*` seam for the
-  tests would make this painless. Worth doing before the next capability is added.
+- [x] **`AiSettings` grouped into nested records** (2026-10-03). It had gained a component in three consecutive
+  chantiers and broken every construction site in the tests each time. **18 positional components -> 7**: three
+  new records (`TranscriptionSettings`, `SpeechSettings`, `MemorySettings`) beside the four that already
+  existed.
+  - The segmenter's invariant - an utterance must be allowed to outlast the silence that ends it - moved into
+    `TranscriptionSettings`, next to the two values it relates. It was already characterised by a test, which
+    is what made the move safe.
+  - **`with*` methods are the part that stops this recurring.** A test that needs a different chat model now
+    writes `AiSettings.defaults().withChat(...)` instead of restating seventeen unrelated values; one site in
+    `ConverseCommandTest` that copied every field to change one collapsed to a single `withRealtime`.
+  - Done in three verified steps as the protocol asks: nested records with the flat accessors delegating, then
+    45 call sites and 10 constructions migrated, then the 14 delegates deleted. No behaviour change, and the
+    test count is identical on both sides of the refactor (341), which is the evidence for that.
 - [ ] **A SearxNG instance is reachable only from the network it runs on.** The bot in the cluster and a local
   run do not see the same one, so `web_search.base_url` is per-deployment configuration, not a shared default.
   Worth a line in the deployment notes rather than in code.

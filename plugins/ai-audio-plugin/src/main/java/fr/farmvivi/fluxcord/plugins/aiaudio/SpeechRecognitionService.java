@@ -89,14 +89,14 @@ public class SpeechRecognitionService {
         AiSettings settings = plugin.getSettings();
         AtomicBoolean started = new AtomicBoolean();
         sessions.computeIfAbsent(guild.getId(), id -> {
-            SpeechSegmenter segmenter = new SpeechSegmenter(settings.silence(), settings.maxSegment(),
-                    settings.minSegment());
+            SpeechSegmenter segmenter = new SpeechSegmenter(settings.transcription().silence(), settings.transcription().maxSegment(),
+                    settings.transcription().minSegment());
             plugin.getContext().getAudioService()
                     .registerReceiveHandler(guild, plugin, new TranscriptionSession(segmenter, clock));
             ScheduledFuture<?> poller = scheduler.scheduleWithFixedDelay(
                     () -> drain(guild), POLL_INTERVAL_MS, POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
             logger.info("Transcribing guild {} in {} (silence {}, max {})",
-                    id, settings.transcriptionLanguage(), settings.silence(), settings.maxSegment());
+                    id, settings.transcription().language(), settings.transcription().silence(), settings.transcription().maxSegment());
             started.set(true);
             return new Session(output, segmenter, poller);
         });
@@ -147,7 +147,7 @@ public class SpeechRecognitionService {
     private void submit(Guild guild, Session session, SpeechSegmenter.Segment segment) {
         worker.execute(() -> {
             try {
-                String text = provider.transcribe(segment.audio(), plugin.getSettings().transcriptionLanguage());
+                String text = provider.transcribe(segment.audio(), plugin.getSettings().transcription().language());
                 if (text == null || text.isBlank()) {
                     return;
                 }

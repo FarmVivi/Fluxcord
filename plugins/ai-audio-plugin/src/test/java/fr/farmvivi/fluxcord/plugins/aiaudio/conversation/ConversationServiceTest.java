@@ -135,13 +135,13 @@ class ConversationServiceTest {
     private AiSettings settings(boolean enabled, String wakeWord, boolean memoryTools, int maxToolRounds,
                                 ChatAudio audio) {
         AiEndpoint local = new AiEndpoint("http://localhost:11434/v1", "", "m", Duration.ofSeconds(5));
-        return new AiSettings(local, AiSettings.SpeechApi.OLLAMA, "fr-FR", local, "alloy", 100, 80, 1000,
-                Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 20, 20, 20,
-                persona(false),
-                new AiSettings.ChatSettings(local, enabled, wakeWord, 8, 120, 0.7, "none", "low",
-                        memoryTools, maxToolRounds, audio, TOOL_TOKENS),
-                AiSettings.WebSearchSettings.disabled(),
-                AiSettings.RealtimeSettings.disabled());
+        return AiSettings.defaults()
+                .withTranscription(new AiSettings.TranscriptionSettings(local, AiSettings.SpeechApi.OLLAMA,
+                        "fr-FR", Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400)))
+                .withSpeech(new AiSettings.SpeechSettings(local, "alloy", 100, 80, 1000))
+                .withMemory(new AiSettings.MemorySettings(20, 20, 20))
+                .withPersona(persona(false))
+                .withChat(new AiSettings.ChatSettings(local, enabled, wakeWord, 8, 120, 0.7, "none", "low", memoryTools, maxToolRounds, audio, TOOL_TOKENS));
     }
 
     /**
@@ -159,13 +159,13 @@ class ConversationServiceTest {
     /** Settings whose mood is read by the model, at full weight so the assertion is exact. */
     private AiSettings settingsReadingTheMood() {
         AiEndpoint local = new AiEndpoint("http://localhost:11434/v1", "", "m", Duration.ofSeconds(5));
-        return new AiSettings(local, AiSettings.SpeechApi.OLLAMA, "fr-FR", local, "alloy", 100, 80, 1000,
-                Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400), 20, 20, 20,
-                persona(true),
-                new AiSettings.ChatSettings(local, true, "", 8, 120, 0.7, "none", "low", false, 3,
-                        ChatAudio.off(), TOOL_TOKENS),
-                AiSettings.WebSearchSettings.disabled(),
-                AiSettings.RealtimeSettings.disabled());
+        return AiSettings.defaults()
+                .withTranscription(new AiSettings.TranscriptionSettings(local, AiSettings.SpeechApi.OLLAMA,
+                        "fr-FR", Duration.ofSeconds(1), Duration.ofSeconds(20), Duration.ofMillis(400)))
+                .withSpeech(new AiSettings.SpeechSettings(local, "alloy", 100, 80, 1000))
+                .withMemory(new AiSettings.MemorySettings(20, 20, 20))
+                .withPersona(persona(true))
+                .withChat(new AiSettings.ChatSettings(local, true, "", 8, 120, 0.7, "none", "low", false, 3, ChatAudio.off(), TOOL_TOKENS));
     }
 
     /** A service whose model answers {@code reply} and records what it was asked. */

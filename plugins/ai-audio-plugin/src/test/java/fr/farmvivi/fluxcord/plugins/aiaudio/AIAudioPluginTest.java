@@ -210,18 +210,18 @@ class AIAudioPluginTest {
         plugin.onEnable();
         AiSettings settings = plugin.getSettings();
 
-        assertEquals("http://whisper.local:8000/v1", settings.speechToText().baseUrl());
-        assertEquals("faster-whisper-small", settings.speechToText().model());
-        assertEquals("fr-FR", settings.transcriptionLanguage());
-        assertEquals("http://kokoro.local:8880/v1", settings.textToSpeech().baseUrl());
-        assertEquals("kokoro", settings.textToSpeech().model());
-        assertEquals("af_heart", settings.voice());
-        assertEquals(70, settings.volume());
-        assertEquals(90, settings.priority());
-        assertEquals(Duration.ofSeconds(120), settings.textToSpeech().timeout());
-        assertEquals(300, settings.maxTextLength());
-        assertEquals(Duration.ofMillis(800), settings.silence());
-        assertEquals(0, settings.userTurns(), "a person's history can be turned off on its own");
+        assertEquals("http://whisper.local:8000/v1", settings.transcription().endpoint().baseUrl());
+        assertEquals("faster-whisper-small", settings.transcription().endpoint().model());
+        assertEquals("fr-FR", settings.transcription().language());
+        assertEquals("http://kokoro.local:8880/v1", settings.speech().endpoint().baseUrl());
+        assertEquals("kokoro", settings.speech().endpoint().model());
+        assertEquals("af_heart", settings.speech().voice());
+        assertEquals(70, settings.speech().volume());
+        assertEquals(90, settings.speech().priority());
+        assertEquals(Duration.ofSeconds(120), settings.speech().endpoint().timeout());
+        assertEquals(300, settings.speech().maxTextLength());
+        assertEquals(Duration.ofMillis(800), settings.transcription().silence());
+        assertEquals(0, settings.memory().userTurns(), "a person's history can be turned off on its own");
         assertFalse(settings.synthesisNeedsKey(), "a local server needs no key");
         assertFalse(settings.transcriptionNeedsKey());
     }
@@ -250,9 +250,9 @@ class AIAudioPluginTest {
         assertDoesNotThrow(plugin::onEnable);
         AiSettings settings = plugin.getSettings();
 
-        assertEquals(AudioService.MAX_VOLUME, settings.volume(), "clamped into range");
-        assertEquals(Duration.ofSeconds(30), settings.speechToText().timeout(), "back to the default");
-        assertTrue(settings.maxSegment().compareTo(settings.silence()) > 0,
+        assertEquals(AudioService.MAX_VOLUME, settings.speech().volume(), "clamped into range");
+        assertEquals(Duration.ofSeconds(30), settings.transcription().endpoint().timeout(), "back to the default");
+        assertTrue(settings.transcription().maxSegment().compareTo(settings.transcription().silence()) > 0,
                 "an utterance must be able to outlast the silence that ends it, or nothing is ever transcribed");
     }
 

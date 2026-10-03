@@ -87,10 +87,10 @@ public class AIAudioPlugin extends AbstractPlugin {
                 settings.persona().persona().tone(), settings.persona().persona().language().toLanguageTag(),
                 settings.persona().moodEnabled() ? "on" : "off");
         logger.info("AI Audio enabled: transcription {} via {} ({}), speech {} (voice {}), memory {}",
-                settings.speechToText().model(), settings.speechToTextApi(), settings.transcriptionLanguage(),
-                settings.textToSpeech().model(), settings.voice(),
-                memory.isDisabled() ? "off" : settings.channelTurns() + "/" + settings.serverTurns()
-                        + "/" + settings.userTurns() + " turns per channel/server/person");
+                settings.transcription().endpoint().model(), settings.transcription().api(), settings.transcription().language(),
+                settings.speech().endpoint().model(), settings.speech().voice(),
+                memory.isDisabled() ? "off" : settings.memory().channelTurns() + "/" + settings.memory().serverTurns()
+                        + "/" + settings.memory().userTurns() + " turns per channel/server/person");
     }
 
     @Override
@@ -128,11 +128,11 @@ public class AIAudioPlugin extends AbstractPlugin {
      */
     private void initializeServices() {
         http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
-        memory = new ConversationMemory(getStorage(), settings.channelTurns(), settings.serverTurns(),
-                settings.userTurns());
+        memory = new ConversationMemory(getStorage(), settings.memory().channelTurns(), settings.memory().serverTurns(),
+                settings.memory().userTurns());
         personaStore = new PersonaStore(getStorage(), settings.persona().persona());
         textToSpeech = new TextToSpeechService(this,
-                new OpenAiTextToSpeech(settings.textToSpeech(), http));
+                new OpenAiTextToSpeech(settings.speech().endpoint(), http));
         List<ToolSource> tools = webSearchTools();
         conversation = new ConversationService(this,
                 new OpenAiChatModel(settings.chat().endpoint(), http, settings.chat().temperature(),
@@ -180,9 +180,9 @@ public class AIAudioPlugin extends AbstractPlugin {
      *         Ollama's {@code /api/chat} when that is where the models live
      */
     private SpeechToText speechToText() {
-        return switch (settings.speechToTextApi()) {
-            case OPENAI -> new OpenAiSpeechToText(settings.speechToText(), http);
-            case OLLAMA -> new OllamaSpeechToText(settings.speechToText(), http);
+        return switch (settings.transcription().api()) {
+            case OPENAI -> new OpenAiSpeechToText(settings.transcription().endpoint(), http);
+            case OLLAMA -> new OllamaSpeechToText(settings.transcription().endpoint(), http);
         };
     }
 

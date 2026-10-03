@@ -57,7 +57,7 @@ public class TextToSpeechService {
      */
     public CompletableFuture<PcmAudio> speak(Guild guild, String text, String voice) {
         AiSettings settings = plugin.getSettings();
-        String chosenVoice = voice == null || voice.isBlank() ? settings.voice() : voice.trim();
+        String chosenVoice = voice == null || voice.isBlank() ? settings.speech().voice() : voice.trim();
         return CompletableFuture.supplyAsync(() -> {
             PcmAudio audio = provider.synthesize(text, chosenVoice).toDiscordFormat();
             handlerFor(guild, settings).enqueue(audio);
@@ -94,9 +94,9 @@ public class TextToSpeechService {
         return handlers.computeIfAbsent(guild.getId(), id -> {
             PcmSendHandler handler = new PcmSendHandler();
             plugin.getContext().getAudioService().registerSendHandler(
-                    guild, plugin, handler, settings.volume(), settings.priority());
+                    guild, plugin, handler, settings.speech().volume(), settings.speech().priority());
             logger.debug("Registered the speech send handler for guild {} (volume {}, priority {})",
-                    id, settings.volume(), settings.priority());
+                    id, settings.speech().volume(), settings.speech().priority());
             return handler;
         });
     }

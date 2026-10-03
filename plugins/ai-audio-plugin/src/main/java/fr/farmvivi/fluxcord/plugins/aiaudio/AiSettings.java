@@ -18,33 +18,16 @@ import java.util.Locale;
  * and speak through OpenAI, or the other way round — which is why each carries its own
  * {@link AiEndpoint} instead of sharing one base URL and key.
  *
- * @param speechToText          where to send audio for transcription
- * @param speechToTextApi       which HTTP shape that endpoint speaks
- * @param transcriptionLanguage BCP 47 tag of the expected speech, or {@code auto} to let the provider
- *                              detect it
- * @param textToSpeech          where to send text for synthesis
- * @param voice                 the provider's voice name used by {@code /speak} when none is given
- * @param volume                playback volume of the bot's own voice (0-100)
- * @param priority              audio priority of the bot's voice; above the pipeline's ducking
- *                              threshold it lowers the music while the bot speaks
- * @param maxTextLength         longest text {@code /speak} accepts, a guard against both Discord's
- *                              limits and a surprise bill
- * @param silence               how long a speaker must be quiet before their sentence is transcribed
- * @param maxSegment            longest utterance transcribed in one request, so someone talking without
- *                              pause is still transcribed
- * @param minSegment            utterances shorter than this are dropped rather than sent — a cough costs
- *                              a request otherwise
- * @param channelTurns          turns remembered per voice channel, 0 to remember none
- * @param serverTurns           turns remembered per server across its channels, 0 to remember none
- * @param userTurns             turns remembered per person across every server, 0 to remember none
- * @param persona               who the bot is, and how much a conversation moves its mood
- * @param chat                  the model that answers, and how it is asked
+ * @param transcription what the bot hears with, and how an utterance is cut out of a stream
+ * @param speech        what the bot speaks with
+ * @param memory        how much of a conversation is kept, at each scale
+ * @param persona       who the bot is, and how much a conversation moves its mood
+ * @param chat          the model that answers, and how it is asked
+ * @param webSearch     whether the model may look something up, and where
+ * @param realtime      whether a turn is a request or a full-duplex session
  */
-public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, String transcriptionLanguage,
-                         AiEndpoint textToSpeech, String voice, int volume, int priority,
-                         int maxTextLength, Duration silence, Duration maxSegment, Duration minSegment,
-                         int channelTurns, int serverTurns, int userTurns, PersonaSettings persona,
-                         ChatSettings chat, WebSearchSettings webSearch,
+public record AiSettings(TranscriptionSettings transcription, SpeechSettings speech, MemorySettings memory,
+                         PersonaSettings persona, ChatSettings chat, WebSearchSettings webSearch,
                          RealtimeSettings realtime) {
 
     private static final String DEFAULT_BASE_URL = "https://api.openai.com/v1";
@@ -62,14 +45,56 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
     private static final int DEFAULT_USER_TURNS = 100;
 
     /**
-     * Keeps the one invariant the segmenter depends on: an utterance has to be allowed to last longer
-     * than the silence that ends it, or nothing would ever be transcribed.
+     * What the bot hears with, and how a stream of audio is cut into utterances.
+     *
+     * @param endpoint   where to send audio for transcription
+     * @param api        which HTTP shape that endpoint speaks
+     * @param language   BCP 47 tag of the expected speech, or {@code auto} to let the provider detect it
+     * @param silence    how long a speaker must be quiet before their sentence is transcribed
+     * @param maxSegment longest utterance transcribed in one request, so someone talking without pause is
+     *                   still transcribed
+     * @param minSegment utterances shorter than this are dropped rather than sent - a cough costs a request
+     *                   otherwise
      */
-    public AiSettings {
-        if (maxSegment.compareTo(silence) <= 0) {
-            maxSegment = silence.multipliedBy(10);
+    public record TranscriptionSettings(AiEndpoint endpoint, SpeechApi api, String language,
+                                        Duration silence, Duration maxSegment, Duration minSegment) {
+
+        /**
+         * Keeps the one invariant the segmenter depends on: an utterance has to be allowed to last longer
+         * than the silence that ends it, or nothing would ever be transcribed.
+         */
+        public TranscriptionSettings {
+            if (maxSegment.compareTo(silence) <= 0) {
+                maxSegment = silence.multipliedBy(10);
+            }
         }
     }
+
+    /**
+     * What the bot speaks with.
+     *
+     * @param endpoint      where to send text for synthesis
+     * @param voice         the provider's voice name used by {@code /speak} when none is given
+     * @param volume        playback volume of the bot's own voice (0-100)
+     * @param priority      audio priority of the bot's voice; above the pipeline's ducking threshold it
+     *                      lowers the music while the bot speaks
+     * @param maxTextLength longest text {@code /speak} accepts, a guard against both Discord's limits and a
+     *                      surprise bill
+     */
+    public record SpeechSettings(AiEndpoint endpoint, String voice, int volume, int priority,
+                                 int maxTextLength) {
+    }
+
+    /**
+     * How much of a conversation is kept, at each of the three scales the memory reads.
+     *
+     * @param channelTurns turns remembered per voice channel, 0 to remember none
+     * @param serverTurns  turns remembered per server across its channels, 0 to remember none
+     * @param userTurns    turns remembered per person across every server, 0 to remember none
+     */
+    public record MemorySettings(int channelTurns, int serverTurns, int userTurns) {
+    }
+
 
     /**
      * Reads the configuration, falling back to the shipped defaults for anything missing or unusable.
@@ -101,27 +126,32 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
                 Duration.ofSeconds(timeout));
 
         return new AiSettings(
-                stt,
-                SpeechApi.of(config.getString("speech_to_text.api", SpeechApi.OPENAI.name()), logger),
-                nonBlank(config.getString("speech_to_text.language", "auto"), "auto"),
-                tts,
-                nonBlank(config.getString("text_to_speech.voice", DEFAULT_VOICE), DEFAULT_VOICE),
-                clamp(config.getInt("text_to_speech.volume", AudioService.DEFAULT_VOLUME),
-                        AudioService.MIN_VOLUME, AudioService.MAX_VOLUME, "text_to_speech.volume", logger),
-                clamp(config.getInt("text_to_speech.priority", AudioService.DEFAULT_PRIORITY_THRESHOLD),
-                        AudioService.MIN_PRIORITY, AudioService.MAX_PRIORITY, "text_to_speech.priority", logger),
-                positive(config.getInt("request.max_text_length", DEFAULT_MAX_TEXT_LENGTH),
-                        DEFAULT_MAX_TEXT_LENGTH, "request.max_text_length", logger),
-                Duration.ofMillis(positive(config.getInt("transcription.silence_ms", DEFAULT_SILENCE_MS),
-                        DEFAULT_SILENCE_MS, "transcription.silence_ms", logger)),
-                Duration.ofSeconds(positive(
-                        config.getInt("transcription.max_segment_seconds", DEFAULT_MAX_SEGMENT_SECONDS),
-                        DEFAULT_MAX_SEGMENT_SECONDS, "transcription.max_segment_seconds", logger)),
-                Duration.ofMillis(Math.max(0,
-                        config.getInt("transcription.min_segment_ms", DEFAULT_MIN_SEGMENT_MS))),
-                Math.max(0, config.getInt("memory.channel_turns", DEFAULT_CHANNEL_TURNS)),
-                Math.max(0, config.getInt("memory.server_turns", DEFAULT_SERVER_TURNS)),
-                Math.max(0, config.getInt("memory.user_turns", DEFAULT_USER_TURNS)),
+                new TranscriptionSettings(stt,
+                        SpeechApi.of(config.getString("speech_to_text.api", SpeechApi.OPENAI.name()), logger),
+                        nonBlank(config.getString("speech_to_text.language", "auto"), "auto"),
+                        Duration.ofMillis(positive(
+                                config.getInt("transcription.silence_ms", DEFAULT_SILENCE_MS),
+                                DEFAULT_SILENCE_MS, "transcription.silence_ms", logger)),
+                        Duration.ofSeconds(positive(
+                                config.getInt("transcription.max_segment_seconds", DEFAULT_MAX_SEGMENT_SECONDS),
+                                DEFAULT_MAX_SEGMENT_SECONDS, "transcription.max_segment_seconds", logger)),
+                        Duration.ofMillis(Math.max(0,
+                                config.getInt("transcription.min_segment_ms", DEFAULT_MIN_SEGMENT_MS)))),
+                new SpeechSettings(tts,
+                        nonBlank(config.getString("text_to_speech.voice", DEFAULT_VOICE), DEFAULT_VOICE),
+                        clamp(config.getInt("text_to_speech.volume", AudioService.DEFAULT_VOLUME),
+                                AudioService.MIN_VOLUME, AudioService.MAX_VOLUME, "text_to_speech.volume",
+                                logger),
+                        clamp(config.getInt("text_to_speech.priority",
+                                        AudioService.DEFAULT_PRIORITY_THRESHOLD),
+                                AudioService.MIN_PRIORITY, AudioService.MAX_PRIORITY,
+                                "text_to_speech.priority", logger),
+                        positive(config.getInt("request.max_text_length", DEFAULT_MAX_TEXT_LENGTH),
+                                DEFAULT_MAX_TEXT_LENGTH, "request.max_text_length", logger)),
+                new MemorySettings(
+                        Math.max(0, config.getInt("memory.channel_turns", DEFAULT_CHANNEL_TURNS)),
+                        Math.max(0, config.getInt("memory.server_turns", DEFAULT_SERVER_TURNS)),
+                        Math.max(0, config.getInt("memory.user_turns", DEFAULT_USER_TURNS))),
                 PersonaSettings.from(config),
                 ChatSettings.from(config, timeout),
                 WebSearchSettings.from(config, timeout),
@@ -132,25 +162,91 @@ public record AiSettings(AiEndpoint speechToText, SpeechApi speechToTextApi, Str
     public static AiSettings defaults() {
         Duration timeout = Duration.ofSeconds(DEFAULT_TIMEOUT_SECONDS);
         return new AiSettings(
-                new AiEndpoint(DEFAULT_BASE_URL, "", DEFAULT_TRANSCRIPTION_MODEL, timeout), SpeechApi.OPENAI, "auto",
-                new AiEndpoint(DEFAULT_BASE_URL, "", DEFAULT_SPEECH_MODEL, timeout), DEFAULT_VOICE,
-                AudioService.DEFAULT_VOLUME, AudioService.DEFAULT_PRIORITY_THRESHOLD,
-                DEFAULT_MAX_TEXT_LENGTH,
-                Duration.ofMillis(DEFAULT_SILENCE_MS), Duration.ofSeconds(DEFAULT_MAX_SEGMENT_SECONDS),
-                Duration.ofMillis(DEFAULT_MIN_SEGMENT_MS),
-                DEFAULT_CHANNEL_TURNS, DEFAULT_SERVER_TURNS, DEFAULT_USER_TURNS,
+                new TranscriptionSettings(
+                        new AiEndpoint(DEFAULT_BASE_URL, "", DEFAULT_TRANSCRIPTION_MODEL, timeout),
+                        SpeechApi.OPENAI, "auto",
+                        Duration.ofMillis(DEFAULT_SILENCE_MS),
+                        Duration.ofSeconds(DEFAULT_MAX_SEGMENT_SECONDS),
+                        Duration.ofMillis(DEFAULT_MIN_SEGMENT_MS)),
+                new SpeechSettings(
+                        new AiEndpoint(DEFAULT_BASE_URL, "", DEFAULT_SPEECH_MODEL, timeout), DEFAULT_VOICE,
+                        AudioService.DEFAULT_VOLUME, AudioService.DEFAULT_PRIORITY_THRESHOLD,
+                        DEFAULT_MAX_TEXT_LENGTH),
+                new MemorySettings(DEFAULT_CHANNEL_TURNS, DEFAULT_SERVER_TURNS, DEFAULT_USER_TURNS),
                 PersonaSettings.defaults(), ChatSettings.defaults(),
                 WebSearchSettings.disabled(), RealtimeSettings.disabled());
     }
 
+    /**
+     * The same settings with one group replaced.
+     *
+     * <p>These exist for the tests, and they earn their place: a test that needs a different chat model should
+     * say only that, not restate seventeen unrelated values. Every time this record gained a component, every
+     * positional construction in the test tree broke - which is how the grouping came to be done at all.
+     *
+     * @param transcription what to hear with instead
+     * @return a copy
+     */
+    public AiSettings withTranscription(TranscriptionSettings transcription) {
+        return new AiSettings(transcription, speech, memory, persona, chat, webSearch, realtime);
+    }
+
+    /**
+     * @param speech what to speak with instead
+     * @return a copy
+     */
+    public AiSettings withSpeech(SpeechSettings speech) {
+        return new AiSettings(transcription, speech, memory, persona, chat, webSearch, realtime);
+    }
+
+    /**
+     * @param memory how much to remember instead
+     * @return a copy
+     */
+    public AiSettings withMemory(MemorySettings memory) {
+        return new AiSettings(transcription, speech, memory, persona, chat, webSearch, realtime);
+    }
+
+    /**
+     * @param persona who to be instead
+     * @return a copy
+     */
+    public AiSettings withPersona(PersonaSettings persona) {
+        return new AiSettings(transcription, speech, memory, persona, chat, webSearch, realtime);
+    }
+
+    /**
+     * @param chat which model answers, and how it is asked
+     * @return a copy
+     */
+    public AiSettings withChat(ChatSettings chat) {
+        return new AiSettings(transcription, speech, memory, persona, chat, webSearch, realtime);
+    }
+
+    /**
+     * @param webSearch whether the model may look something up, and where
+     * @return a copy
+     */
+    public AiSettings withWebSearch(WebSearchSettings webSearch) {
+        return new AiSettings(transcription, speech, memory, persona, chat, webSearch, realtime);
+    }
+
+    /**
+     * @param realtime whether a turn is a request or a full-duplex session
+     * @return a copy
+     */
+    public AiSettings withRealtime(RealtimeSettings realtime) {
+        return new AiSettings(transcription, speech, memory, persona, chat, webSearch, realtime);
+    }
+
     /** @return true when the transcription endpoint is OpenAI's and no key was configured */
     public boolean transcriptionNeedsKey() {
-        return speechToTextApi == SpeechApi.OPENAI && needsKey(speechToText);
+        return transcription.api() == SpeechApi.OPENAI && needsKey(transcription.endpoint());
     }
 
     /** @return true when the synthesis endpoint is OpenAI's and no key was configured */
     public boolean synthesisNeedsKey() {
-        return needsKey(textToSpeech);
+        return needsKey(speech.endpoint());
     }
 
     /**

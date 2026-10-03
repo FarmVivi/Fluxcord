@@ -33,8 +33,8 @@ public class SpeakCommand extends AiAudioCommand {
             ctx.replyError(text(ctx, "errors.nothing_to_say"));
             return;
         }
-        if (spoken.length() > settings.maxTextLength()) {
-            ctx.replyError(text(ctx, "errors.text_too_long", settings.maxTextLength()));
+        if (spoken.length() > settings.speech().maxTextLength()) {
+            ctx.replyError(text(ctx, "errors.text_too_long", settings.speech().maxTextLength()));
             return;
         }
         if (settings.synthesisNeedsKey()) {
