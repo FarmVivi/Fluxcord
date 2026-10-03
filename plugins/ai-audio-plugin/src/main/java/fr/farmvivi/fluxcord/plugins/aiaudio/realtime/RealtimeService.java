@@ -36,6 +36,8 @@ public class RealtimeService {
     private final Logger logger;
     private final LongSupplier clock;
     private final Map<String, RealtimeConversation> conversations = new ConcurrentHashMap<>();
+    private final java.util.function.BiFunction<AiSettings.RealtimeSettings,
+            java.util.function.Consumer<RealtimeProtocol.Event>, RealtimeLink> links;
 
     public RealtimeService(AIAudioPlugin plugin, ConversationMemory memory,
                            java.util.List<ToolSource> toolSources) {
@@ -44,11 +46,26 @@ public class RealtimeService {
 
     RealtimeService(AIAudioPlugin plugin, ConversationMemory memory, java.util.List<ToolSource> toolSources,
                     LongSupplier clock) {
+        this(plugin, memory, toolSources, clock,
+                (settings, sink) -> RealtimeSession.open(plugin.getHttp(), settings.url(), settings.apiKey(),
+                        sink));
+    }
+
+    /**
+     * @param links how to open the connection, given the settings and where events should go; injected so a
+     *              test can drive the wiring - registering the handler, reporting a failure, releasing it all
+     *              again - without a socket, which is the only part of this that cannot be exercised
+     */
+    RealtimeService(AIAudioPlugin plugin, ConversationMemory memory, java.util.List<ToolSource> toolSources,
+                    LongSupplier clock,
+                    java.util.function.BiFunction<AiSettings.RealtimeSettings,
+                            java.util.function.Consumer<RealtimeProtocol.Event>, RealtimeLink> links) {
         this.plugin = plugin;
         this.memory = memory;
         this.toolSources = toolSources == null ? java.util.List.of() : java.util.List.copyOf(toolSources);
         this.logger = plugin.getLogger();
         this.clock = clock;
+        this.links = links;
     }
 
     /**
@@ -78,7 +95,7 @@ public class RealtimeService {
 
         String instructions = ConversationPrompt.systemMessageFor(snapshot, now);
         conversation.start(snapshot, instructions, realtime.voice(), botUserId(),
-                sink -> RealtimeSession.open(plugin.getHttp(), realtime.url(), realtime.apiKey(), sink));
+                sink -> links.apply(realtime, sink));
 
         conversations.put(guild.getId(), conversation);
         plugin.getContext().getAudioService().registerReceiveHandler(guild, plugin,

@@ -122,6 +122,45 @@ class ServicesTest {
     // Text to speech
 
     @Test
+    void audioThatIsAlreadySpokenIsQueuedWithoutSynthesisingAnything() {
+        // The speech-to-speech path: the chat model answered with a voice, so there is nothing to synthesise -
+        // but playback is identical, and must share the handler rather than open a second one.
+        tts = new TextToSpeechService(plugin, (text, voice) -> {
+            throw new AssertionError("nothing should have been synthesised");
+        });
+
+        PcmAudio queued = tts.play(guild, synthesised());
+
+        assertEquals(PcmAudio.DISCORD_SAMPLE_RATE, queued.sampleRate(), "converted for Discord");
+        assertEquals(PcmAudio.DISCORD_CHANNELS, queued.channels());
+        verify(audioService).registerSendHandler(same(guild), same(plugin), any(), anyInt(), anyInt());
+        assertTrue(tts.isSpeaking(guild));
+    }
+
+    @Test
+    void interruptingDropsWhatIsQueuedButKeepsTheVoice() {
+        // Different from stop(): that one deregisters, and the core then closes the voice connection once the
+        // guild's pipeline empties - so the bot could not speak again a moment later.
+        tts = new TextToSpeechService(plugin, (text, voice) -> synthesised());
+        tts.play(guild, synthesised());
+
+        assertTrue(tts.interrupt(guild), "something was playing");
+
+        assertFalse(tts.isSpeaking(guild));
+        verify(audioService, never()).deregisterSendHandler(any(), any());
+        assertFalse(tts.interrupt(guild), "nothing left to drop");
+    }
+
+    @Test
+    void interruptingAGuildTheBotNeverSpokeInIsHarmless() {
+        tts = new TextToSpeechService(plugin, (text, voice) -> synthesised());
+
+        assertFalse(tts.interrupt(guild));
+        verify(audioService, never()).registerSendHandler(any(), any(), any(), anyInt(), anyInt());
+    }
+
+
+    @Test
     void speakingRegistersTheSendHandlerWithTheConfiguredVolumeAndPriority() throws Exception {
         tts = new TextToSpeechService(plugin, (text, voice) -> synthesised());
 
