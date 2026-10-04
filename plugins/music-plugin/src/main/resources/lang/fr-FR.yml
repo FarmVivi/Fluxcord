@@ -9,6 +9,11 @@ music:
         now: "Jouer immédiatement, en sautant la piste actuelle"
     pause:
       description: "Mettre en pause ou reprendre la lecture"
+      option:
+        state: "Mettre en pause ou reprendre"
+      state:
+        pause: "Mettre en pause"
+        resume: "Reprendre"
     skip:
       description: "Passer la piste actuelle"
     stop:

@@ -9,6 +9,11 @@ music:
         now: "Play immediately, skipping current track"
     pause:
       description: "Pause or resume playback"
+      option:
+        state: "Pause or resume"
+      state:
+        pause: "Pause"
+        resume: "Resume"
     skip:
       description: "Skip the current track"
     stop:

@@ -195,8 +195,17 @@ public class MusicPlugin extends AbstractPlugin {
         musicCommand("pause", builder -> {
             builder
                     .permission(permissionKey(PERM_PLAY))
+                    // Optional, so the button and "/pause" on their own still toggle. Named, so a caller
+                    // that cannot see the state - the AI - can say which way it means.
+                    .stringOption(
+                            "state",
+                            text("music.command.pause.option.state"),
+                            false,
+                            OptionChoice.of(text("music.command.pause.state.pause"), PauseCommand.PAUSE),
+                            OptionChoice.of(text("music.command.pause.state.resume"), PauseCommand.RESUME)
+                    )
                     .executor((ctx, cmd) -> {
-                        new PauseCommand(this).execute(ctx);
+                        new PauseCommand(this).execute(ctx, ctx.getOption("state", (String) null));
                         return CommandResult.success();
                     });
         });
