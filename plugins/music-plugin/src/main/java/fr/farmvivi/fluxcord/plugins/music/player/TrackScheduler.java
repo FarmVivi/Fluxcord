@@ -34,7 +34,6 @@ public class TrackScheduler extends AudioEventAdapter {
     private final List<AudioTrack> queue;
 
     // Track history for loop queue mode
-    private final List<AudioTrack> playedTracks;
     // Random instance for shuffle mode
     private final Random random = new Random();
     // Playback modes
@@ -54,7 +53,6 @@ public class TrackScheduler extends AudioEventAdapter {
         this.musicPlayer = musicPlayer;
         this.player = player;
         this.queue = Collections.synchronizedList(new LinkedList<>());
-        this.playedTracks = Collections.synchronizedList(new ArrayList<>());
     }
 
     /**
@@ -127,10 +125,6 @@ public class TrackScheduler extends AudioEventAdapter {
         if (next != null) {
             player.startTrack(next, false);
             logger.debug("[{}] Started next track: {}", getGuildName(), next.getInfo().title);
-        } else if (loopQueueMode && hasPlayedTracks()) {
-            // Loop queue mode: restart from the beginning
-            logger.debug("[{}] Loop queue mode: restarting queue", getGuildName());
-            restartQueue();
         } else {
             logger.debug("[{}] No more tracks to play", getGuildName());
         }
@@ -190,8 +184,7 @@ public class TrackScheduler extends AudioEventAdapter {
      */
     public void clear() {
         queue.clear();
-        playedTracks.clear();
-        logger.debug("[{}] Queue and history cleared", getGuildName());
+        logger.debug("[{}] Queue cleared", getGuildName());
     }
 
     /**
@@ -259,7 +252,17 @@ public class TrackScheduler extends AudioEventAdapter {
                 player.startTrack(track.makeClone(), false);
                 logger.debug("[{}] Loop mode: replaying track", getGuildName());
             } else {
-                // Normal end: play next track
+                // A finished track goes back to the end of the queue when the queue is looping, exactly as
+                // a skipped one does. It used to go into a separate history instead, and the queue was
+                // refilled from that history only once it had drained completely - so from the outside the
+                // playlist lost a track every time one ended and then reappeared whole, which is not what
+                // looping a playlist looks like. Victor reported it as "on est en loop sur la playlist mais
+                // lorsqu'une musique termine elle est pas remise dedans", and he was describing exactly
+                // this.
+                if (loopQueueMode && endReason != AudioTrackEndReason.STOPPED) {
+                    addToQueueEnd(track.makeClone());
+                    logger.debug("[{}] Queue loop: the finished track goes back to the end", getGuildName());
+                }
                 nextTrack();
             }
         }
@@ -316,10 +319,9 @@ public class TrackScheduler extends AudioEventAdapter {
         }
 
         // Add to played tracks history for loop queue mode
-        if (loopQueueMode && !playedTracks.contains(track)) {
-            playedTracks.add(track.makeClone());
-            logger.debug("[{}] Added track to history for loop queue mode", getGuildName());
-        }
+        // Deliberately no history any more: a looping queue keeps its tracks in the queue, so there is
+        // nothing to remember separately. The old list also grew without bound, because it held clones and
+        // "contains" compared them against the original, which never matched.
 
         musicPlayer.refreshUi();
     }
@@ -363,10 +365,6 @@ public class TrackScheduler extends AudioEventAdapter {
      */
     public void setLoopQueueMode(boolean loopQueueMode) {
         this.loopQueueMode = loopQueueMode;
-        if (!loopQueueMode) {
-            // Clear history when disabling loop queue mode
-            playedTracks.clear();
-        }
         logger.debug("[{}] Loop queue mode set to: {}", getGuildName(), loopQueueMode);
     }
 
@@ -401,37 +399,5 @@ public class TrackScheduler extends AudioEventAdapter {
         return musicPlayer.getGuild().getName();
     }
 
-    /**
-     * Checks if any tracks have been played in this session.
-     * Used for loop queue mode to determine if we should restart.
-     *
-     * @return true if at least one track has been played
-     */
-    private boolean hasPlayedTracks() {
-        return !playedTracks.isEmpty();
-    }
 
-    /**
-     * Restarts the queue for loop queue mode.
-     * This method repopulates the queue with previously played tracks.
-     */
-    private void restartQueue() {
-        if (playedTracks.isEmpty()) {
-            logger.warn("[{}] No tracks in history to restart queue", getGuildName());
-            return;
-        }
-
-        // Clone all played tracks and add them back to the queue
-        for (AudioTrack track : playedTracks) {
-            queue.add(track.makeClone());
-        }
-
-        logger.info("[{}] Restarted queue with {} tracks", getGuildName(), playedTracks.size());
-
-        // Clear history to start fresh for the next cycle
-        playedTracks.clear();
-
-        // Start playing the first track
-        nextTrack();
-    }
 }

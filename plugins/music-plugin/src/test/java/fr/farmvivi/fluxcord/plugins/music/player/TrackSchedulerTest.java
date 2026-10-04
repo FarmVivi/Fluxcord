@@ -201,24 +201,35 @@ class TrackSchedulerTest {
     }
 
     @Test
-    void loopQueueModeRefillsTheQueueFromTheHistory() {
+    void aLoopingQueueKeepsEveryTrackThatFinishes() {
+        // Reported live: "on est en loop sur la playlist mais lorsqu'une musique termine elle est pas
+        // remise dedans". It used to go into a separate history and the queue was only refilled once it had
+        // drained completely, so from the outside the playlist lost a track each time one ended. A looping
+        // queue keeps its tracks in the queue, which is also what skipping does.
         scheduler.setLoopQueueMode(true);
         AudioTrack a = track("a");
         AudioTrack b = track("b");
+        // queue() starts playback when nothing is playing, so "a" is the playing track here.
         scheduler.queue(a);
         scheduler.queue(b);
 
-        // The history is fed by onTrackStart, which LavaPlayer fires for every started track.
-        scheduler.onTrackStart(player, a);
-        scheduler.nextTrack();
-        scheduler.onTrackStart(player, b);
-        assertEquals(0, scheduler.getQueueSize());
+        scheduler.onTrackEnd(player, a, AudioTrackEndReason.FINISHED);
 
-        scheduler.nextTrack(); // end of the queue: restart from the history
-
-        assertEquals(List.of("a", "b"),
+        assertEquals(List.of("b", "a"),
                 Stream.concat(Stream.of(player.getPlayingTrack()), scheduler.getQueue().stream())
-                        .map(t -> t.getInfo().title).toList());
+                        .map(t -> t.getInfo().title).toList(),
+                "the finished track is at the end, not gone");
+    }
+
+    @Test
+    void aFinishedTrackIsNotKeptWhenNothingIsLooping() {
+        AudioTrack a = track("a");
+        scheduler.queue(a);
+        scheduler.queue(track("b"));
+
+        scheduler.onTrackEnd(player, a, AudioTrackEndReason.FINISHED);
+
+        assertEquals(0, scheduler.getQueueSize(), "without a loop, a played track is done");
     }
 
     @Test
