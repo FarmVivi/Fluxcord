@@ -15,6 +15,8 @@ import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder;
 import net.dv8tion.jda.api.utils.messages.MessageEditBuilder;
+import net.dv8tion.jda.api.exceptions.ErrorResponseException;
+import net.dv8tion.jda.api.requests.ErrorResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,7 +33,19 @@ import java.util.concurrent.TimeUnit;
 public class MusicPlayerMessage {
     private static final Logger logger = LoggerFactory.getLogger(MusicPlayerMessage.class);
     private static final String BUTTON_PREFIX = "music:";
-    private static final int UPDATE_THROTTLE_MS = 500;
+    /**
+     * The shortest gap allowed between two edits of the player message.
+     *
+     * <p>MEASURED 2026-10-04: editing this message more often earns a steady stream of 429s, each answered
+     * by Discord with a {@code Retry-After} of five to six seconds - so that, and not 500 ms, is what the
+     * route actually allows. The old value let a burst (a model queueing several tracks, a track starting
+     * and ending) ask for two edits a second, which built a backlog that took minutes to drain and kept
+     * being refilled while it drained.
+     *
+     * <p>Comfortably under {@link #PROGRESS_UPDATE_INTERVAL_MS}, so the progress refresh is unaffected: this
+     * only collapses bursts.
+     */
+    private static final int MIN_EDIT_INTERVAL_MS = 5_000;
     private static final long PROGRESS_UPDATE_INTERVAL_MS = 10_000; // 10s
 
     private final MusicPlayer musicPlayer;
@@ -42,7 +56,7 @@ public class MusicPlayerMessage {
     private Long messageId;
     private Long channelId;
 
-    private ScheduledFuture<?> updateTask;
+    private volatile ScheduledFuture<?> updateTask;
     private ScheduledFuture<?> progressUpdateTask;
     private long lastUpdateTime = 0;
     private volatile boolean controlsDirty = false;
@@ -86,8 +100,13 @@ public class MusicPlayerMessage {
      * Effectue le rendu réel si nécessaire (debounced + throttle).
      */
     private void renderNow() {
+        // Cleared first, so a render this one suppresses can arm another. Before, the guard in
+        // scheduleDelayedUpdate looked at a task that was still running - never "done" - and quietly
+        // scheduled nothing, so an update the throttle turned away was simply lost and the message sat
+        // stale until the next unrelated event.
+        updateTask = null;
         long now = System.currentTimeMillis();
-        if (now - lastUpdateTime < UPDATE_THROTTLE_MS) {
+        if (now - lastUpdateTime < MIN_EDIT_INTERVAL_MS) {
             scheduleDelayedUpdate();
             return;
         }
@@ -120,41 +139,65 @@ public class MusicPlayerMessage {
 
         // Si on a déjà un message, vérifier s'il est encore le dernier du salon
         if (message != null) {
-            messageChannel.getHistory().retrievePast(1).queue(latest -> {
-                boolean isLast = !latest.isEmpty() && latest.get(0).getIdLong() == message.getIdLong();
-                if (isLast) {
-                    MessageEditBuilder editBuilder = new MessageEditBuilder()
-                            .setEmbeds(embed.build())
-                            .setComponents(actionRows);
-                    message.editMessage(editBuilder.build()).queue(
-                            m -> {
-                                message = m;
-                                controlsDirty = false;
-                            },
-                            e -> createNewMessage(embed, actionRows)
-                    );
-                } else {
-                    createNewMessage(embed, actionRows);
-                }
-            }, err -> {
-                // Fallback: tenter l'édition
-                MessageEditBuilder editBuilder = new MessageEditBuilder()
-                        .setEmbeds(embed.build())
-                        .setComponents(actionRows);
-                message.editMessage(editBuilder.build()).queue(
-                        m -> {
-                            message = m;
-                            controlsDirty = false;
-                        },
-                        e -> createNewMessage(embed, actionRows)
-                );
-            });
+            // The "am I still the last message?" check costs a request of its own, so it is only worth
+            // making when something actually changed. A progress tick changes a bar inside an embed nobody
+            // is scrolling past; paying double for every one of those is how a refresh ends up costing two
+            // requests instead of one.
+            if (!controlsDirty) {
+                edit(embed, actionRows);
+            } else {
+                messageChannel.getHistory().retrievePast(1).queue(latest -> {
+                    boolean isLast = !latest.isEmpty() && latest.get(0).getIdLong() == message.getIdLong();
+                    if (isLast) {
+                        edit(embed, actionRows);
+                    } else {
+                        createNewMessage(embed, actionRows);
+                    }
+                }, err -> edit(embed, actionRows));
+            }
         } else if (!awaitingMessageRestore) {
             createNewMessage(embed, actionRows);
         }
 
         // S'assurer que le rafraîchissement périodique fonctionne
         startProgressUpdates();
+    }
+
+    /**
+     * Edits the player message in place.
+     *
+     * <p><strong>A failed edit does not post a new message.</strong> It used to, and that is what turned
+     * being throttled into a loop: an edit rejected with 429 answered by sending a message and deleting the
+     * old one, so each failure produced <em>more</em> traffic than the edit it replaced - a POST, a DELETE
+     * and then another GET and PATCH on the next tick. The log showed ten rejections a minute for five
+     * minutes with no let-up. Reposting is right for exactly one failure, the message being gone; anything
+     * else is left alone, the controls stay marked dirty, and the next tick tries again.
+     */
+    private void edit(EmbedBuilder embed, List<MessageTopLevelComponent> actionRows) {
+        MessageEditBuilder editBuilder = new MessageEditBuilder()
+                .setEmbeds(embed.build())
+                .setComponents(actionRows);
+        message.editMessage(editBuilder.build()).queue(
+                m -> {
+                    message = m;
+                    controlsDirty = false;
+                },
+                failure -> {
+                    if (failure instanceof ErrorResponseException error
+                            && (error.getErrorResponse() == ErrorResponse.UNKNOWN_MESSAGE
+                            || error.getErrorResponse() == ErrorResponse.UNKNOWN_CHANNEL)) {
+                        logger.debug("Player message is gone in guild {}; posting a new one",
+                                musicPlayer.getGuild().getId());
+                        message = null;
+                        createNewMessage(embed, actionRows);
+                        return;
+                    }
+                    // Deliberately not retried here: the periodic refresh is the retry, and it comes with
+                    // the interval this route tolerates.
+                    logger.debug("Could not edit the player message in guild {}: {}",
+                            musicPlayer.getGuild().getId(), failure.getMessage());
+                }
+        );
     }
 
     /**
@@ -363,23 +406,28 @@ public class MusicPlayerMessage {
             saveMessage();
             startProgressUpdates();
             controlsDirty = false;
-        });
+        }, failure -> logger.debug("Could not post the player message in guild {}: {}",
+                musicPlayer.getGuild().getId(), failure.getMessage()));
     }
 
     /**
      * Schedules a delayed update to avoid spamming.
      */
-    private void scheduleDelayedUpdate() {
+    private synchronized void scheduleDelayedUpdate() {
         if (updateTask != null && !updateTask.isDone()) {
-            return;
+            return; // one is already queued; it will render whatever the state is by then
         }
 
         ScheduledExecutorService scheduler = musicPlayer.getPlugin().getScheduler();
         if (scheduler == null || scheduler.isShutdown()) {
             return; // plugin is disabling: no UI refresh for the final track-end events
         }
+        // Waits out whatever is left of the interval rather than a fixed delay, so a render that arrives
+        // just after an edit is not re-queued over and over at a rate the route rejects.
+        long waited = System.currentTimeMillis() - lastUpdateTime;
+        long delay = Math.max(0, MIN_EDIT_INTERVAL_MS - waited);
         try {
-            updateTask = scheduler.schedule(this::renderNow, UPDATE_THROTTLE_MS, TimeUnit.MILLISECONDS);
+            updateTask = scheduler.schedule(this::renderNow, delay, TimeUnit.MILLISECONDS);
         } catch (java.util.concurrent.RejectedExecutionException e) {
             // shut down between the check and the submit
         }
