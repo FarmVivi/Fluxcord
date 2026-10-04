@@ -78,7 +78,12 @@
 
         <!-- YouTube source pour LavaPlayer. 1.18.2 (2026-07) is broken by YouTube-side changes (issues #226 #236,
              fixed on master in August/September 2026 but unreleased, see #244). Pinned to a per-commit snapshot
-             of master (2026-09-17); switch back to a release as soon as 1.18.3 exists. -->
+             of master (2026-09-17); switch back to a release as soon as 1.18.3 exists.
+             CHECKED 2026-10-04: this commit IS still the tip of master, and 1.18.2 is still the newest release,
+             so there is nothing newer to move to. Playback failing with "Must find sig function from script" is
+             not a stale dependency: the cause is YouTube answering LOGIN_REQUIRED, and the cure is an OAuth
+             refresh token or a poToken plus - per upstream - a remote cipher server. See
+             providers.youtube.* in the plugin's config.yml. -->
         <dependency>
             <groupId>dev.lavalink.youtube</groupId>
             <artifactId>common</artifactId>

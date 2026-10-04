@@ -32,6 +32,46 @@ providers:
   youtube:
     # Enable YouTube support
     enabled: true
+
+    # Getting past "Sign in to confirm you're not a bot".
+    #
+    # YouTube answers an unauthenticated request from a flagged address with
+    # playabilityStatus LOGIN_REQUIRED and no stream formats at all. Every client is then tried in
+    # turn, the last of them needs the signature cipher, and the cipher is where it ends - so the
+    # error that surfaces ("Must find sig function from script") is the symptom and this is the
+    # cause. MEASURED 2026-10-04 by replaying the plugin's own ANDROID_VR player request from the
+    # workstation: HTTP 200, status LOGIN_REQUIRED, zero formats.
+    #
+    # Supply ONE of the two below - they do the same job and upstream says not to combine them.
+    oauth:
+      # A Google account's refresh token. Leaving this empty keeps OAuth off entirely; the source
+      # never starts the interactive flow on its own here, because a bot that waits for somebody to
+      # paste a code into a terminal does not come up unattended.
+      # Upstream warns this can get the account terminated, so use an account you can lose.
+      refresh_token: ""
+      # Set this to true ONCE, with refresh_token empty, to obtain that token: the library prints a URL
+      # and a code, you approve it, and it then prints the refresh token. Paste it above and set this
+      # back to false. It is a separate switch because the flow waits for a human, which is not
+      # something a bot starting unattended should ever do on its own.
+      start_flow: false
+    po_token:
+      # A "Proof of Origin Token" and the visitor data that goes with it, obtained by running
+      # https://github.com/iv-org/youtube-trusted-session-generator. Both are needed, and they only
+      # apply to the WEB and WEBEMBEDDED clients. They expire, so this is the option that has to be
+      # refreshed; OAuth does not.
+      token: ""
+      visitor_data: ""
+
+    # Signature deciphering, handed to a server instead of done here.
+    #
+    # Upstream's position (maintainer, 2026-08-25): "Signature cipher extraction is expected to
+    # fail. This is no longer managed within the source and you really ought to be using a remote
+    # cipher server." YouTube changes the player script faster than the regexes can follow - ours
+    # broke on script 8ab5c328. Run https://github.com/kikkia/yt-cipher and point this at it.
+    # Empty means deciphering stays local, with the failure rate that implies.
+    remote_cipher:
+      url: ""
+      password: ""
   
   # Spotify settings
   spotify:
