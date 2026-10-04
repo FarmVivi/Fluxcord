@@ -70,11 +70,27 @@ public class AudioPlayerManager {
                     // skipped for search and lookup and only considered for playback. Placed after
                     // ANDROID_VR deliberately: when the address is not flagged, ANDROID_VR serves the
                     // stream without signing anybody in, and that is the cheaper path to keep.
+                    // IOS before every client that deciphers signatures, and this is the whole fix for
+                    // "the bot skips tracks".
+                    //
+                    // MEASURED, 2026-10-04 over one afternoon: 76 streams played, 76 of them served by
+                    // IOS - not one by any other client. Meanwhile 17 tracks died on
+                    // "Must find sig function". Those two facts together say what was happening: WEB is
+                    // reached first, WEB is the client that runs the signature cipher, and when the cipher
+                    // throws, the exception aborts the whole resolution *before* IOS is ever asked. The
+                    // track that died was one the next client would have played. When WEB merely answered
+                    // with no usable format instead of throwing, the chain carried on to IOS and the same
+                    // track played - which is why it looked random, and why a retry worked about half the
+                    // time.
+                    //
+                    // IOS costs a transcode (it returns no Opus), but that cost is already being paid on
+                    // every single track that plays here. Putting it first changes what we pay for nothing
+                    // and stops reaching the cipher at all.
+                    new IosWithThumbnail(),
                     new Tv(),
                     new WebWithThumbnail(),
                     new WebEmbeddedWithThumbnail(),
                     new MWebWithThumbnail(),
-                    new IosWithThumbnail(),
                     new AndroidMusicWithThumbnail(),
                     new TvHtml5SimplyWithThumbnail()
             );
