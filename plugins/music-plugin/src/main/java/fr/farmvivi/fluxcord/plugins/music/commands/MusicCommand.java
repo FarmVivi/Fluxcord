@@ -42,7 +42,18 @@ public abstract class MusicCommand {
      * @return the player, or empty when the command was not sent from a guild
      */
     protected Optional<MusicPlayer> player(CommandContext ctx) {
-        return guild(ctx).map(guild -> plugin.getMusicManager().getPlayer(guild));
+        return guild(ctx).map(guild -> {
+            MusicPlayer player = plugin.getMusicManager().getPlayer(guild);
+            // Any command that came from a text channel anchors the player message there. It used to be
+            // only "/play", through preparePlayback - so once the anchor was lost, a "/pause" or a
+            // "/volume" from the channel never brought it back, the saved state kept no text channel, and
+            // after a restart the message was never updated again. An invocation with no channel (the
+            // console, or a command the AI runs) leaves whatever anchor is already set alone.
+            if (ctx.getChannel() != null) {
+                player.setMessageChannel(ctx.getChannel());
+            }
+            return player;
+        });
     }
 
     /**

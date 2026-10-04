@@ -464,6 +464,13 @@ public class MusicPlayer {
         }
         try {
             PlaybackState state = captureState();
+            logger.debug("[{}] Saving playback: track={}, position={} ms, queued={}, paused={},"
+                            + " voice={}, text channel={}",
+                    guild.getName(),
+                    state.getCurrentTrack() == null ? "none" : "yes",
+                    state.getCurrentPosition(), state.getQueue().size(), state.isPaused(),
+                    state.getVoiceChannelId() == null ? "none" : state.getVoiceChannelId(),
+                    state.getTextChannelId() == null ? "none" : state.getTextChannelId());
             ScopedStorage storage = plugin.getStorage().getGuildStorage(guild.getId());
             if (state.hasPlayback() && state.getVoiceChannelId() != null) {
                 storage.set(STATE_KEY, state.toMap());
@@ -558,6 +565,16 @@ public class MusicPlayer {
             playerMessage.refresh();
             logger.info("[{}] Restored playback ({} queued track(s))",
                     guild.getName(), restoredQueueSize);
+            // Spelled out, because every restore question today ("did it skip?", "why is the player
+            // message dead?", "did it resume where it was?") needed facts this line now carries.
+            logger.debug("[{}] Restore detail: track={}, position={} ms, paused={}, volume={},"
+                            + " voice={}, text channel={}, loop={}, loopQueue={}, shuffle={}",
+                    guild.getName(),
+                    current == null ? "none" : current.getInfo().title,
+                    current == null ? 0 : state.getCurrentPosition(),
+                    state.isPaused(), this.volume, voiceChannel.getId(),
+                    state.getTextChannelId() == null ? "none" : state.getTextChannelId(),
+                    state.isLoopMode(), state.isLoopQueueMode(), state.isShuffleMode());
         } catch (Exception e) {
             logger.warn("[{}] Failed to restore playback state", guild.getName(), e);
         } finally {

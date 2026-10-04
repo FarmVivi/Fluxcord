@@ -478,6 +478,8 @@ public class MusicPlayerMessage {
      * Sets the message channel for the player message.
      */
     public void setMessageChannel(MessageChannel channel) {
+        logger.debug("[{}] Player message anchored to channel {}",
+                musicPlayer.getGuild().getName(), channel.getId());
         this.messageChannel = channel;
         this.channelId = channel.getIdLong();
         refresh();
@@ -568,6 +570,8 @@ public class MusicPlayerMessage {
         Long storedMessageId = parseIdOrNull(guildStorage.get("player_messages.message_id", String.class).orElse(null));
         Long storedChannelId = parseIdOrNull(guildStorage.get("player_messages.channel_id", String.class).orElse(null));
 
+        logger.debug("[{}] Player message on disk: message={}, channel={}",
+                musicPlayer.getGuild().getName(), storedMessageId, storedChannelId);
         if (storedMessageId != null && storedChannelId != null) {
             this.messageId = storedMessageId;
             this.channelId = storedChannelId;
