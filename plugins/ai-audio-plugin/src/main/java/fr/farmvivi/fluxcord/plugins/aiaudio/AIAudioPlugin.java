@@ -300,8 +300,14 @@ public class AIAudioPlugin extends AbstractPlugin {
                 getCommands().getCommandService(),
                 guildId -> java.util.Optional.ofNullable(
                         getContext().getDiscordAPI().getJDA().getGuildById(guildId)),
-                turn -> java.util.Optional.ofNullable(conversation)
-                        .flatMap(service -> service.outputFor(turn.guildId())),
+                // Whichever path is actually answering. Asking only the turn-based service meant that a
+                // command run from a realtime session was handed no channel at all - and "play" then died
+                // on a null one, ten times over for a request for ten tracks, which is what made "add me
+                // ten titles" add nothing. Realtime first because when both exist it is the one talking.
+                turn -> java.util.Optional.ofNullable(realtime)
+                        .flatMap(service -> service.outputFor(turn.guildId()))
+                        .or(() -> java.util.Optional.ofNullable(conversation)
+                                .flatMap(service -> service.outputFor(turn.guildId()))),
                 settings.persona().persona().language()));
     }
 

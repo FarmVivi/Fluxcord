@@ -143,7 +143,14 @@ public class MusicManager {
 
         Guild guild = optGuild.get();
         MusicPlayer player = getPlayer(guild);
-        player.setMessageChannel(ctx.getChannel());
+        // Not every invocation has a text channel. The console has none, and neither does a command the AI
+        // runs from a voice conversation - and this used to dereference it, so the command died with a
+        // NullPointerException before a single note played. Keeping whatever channel was set before is the
+        // right answer: the player message belongs where somebody last asked for it, and an invocation with
+        // nowhere to write simply does not move it.
+        if (ctx.getChannel() != null) {
+            player.setMessageChannel(ctx.getChannel());
+        }
 
         AudioManager audioManager = guild.getAudioManager();
         if (!audioManager.isConnected()) {

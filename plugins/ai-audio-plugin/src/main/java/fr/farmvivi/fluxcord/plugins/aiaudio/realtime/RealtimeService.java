@@ -38,6 +38,14 @@ public class RealtimeService {
     private final LongSupplier clock;
     private final Map<String, RealtimeConversation> conversations = new ConcurrentHashMap<>();
     /**
+     * Where each guild's failures are reported, and the text channel a command run by the model keeps.
+     *
+     * <p>Kept here rather than only captured in a lambda because somebody else needs to read it: a tool that
+     * runs a Discord command has to be given a channel, and when this path is the one answering, this is
+     * where the only channel there is lives. Without it the model ran {@code play} with no channel at all.
+     */
+    private final Map<String, MessageChannel> outputs = new ConcurrentHashMap<>();
+    /**
      * Closes turns that silence has ended.
      *
      * <p>One scheduler for every guild, as in the transcription service: silence is an absence of packets
@@ -154,6 +162,9 @@ public class RealtimeService {
                 sink -> links.apply(realtime, sink), java.util.List.copyOf(vocabulary));
 
         conversations.put(guild.getId(), conversation);
+        if (output != null) {
+            outputs.put(guild.getId(), output);
+        }
         if (registerHandler) {
             handlers.add(guild.getId());
         }
@@ -253,6 +264,7 @@ public class RealtimeService {
      * @return false when none was open
      */
     public boolean stop(Guild guild) {
+        outputs.remove(guild.getId());
         RealtimeConversation conversation = conversations.remove(guild.getId());
         if (conversation == null) {
             return false;
@@ -318,6 +330,16 @@ public class RealtimeService {
     private String botUserId() {
         var jda = plugin.getContext().getDiscordAPI().getJDA();
         return jda == null || jda.getSelfUser() == null ? "bot" : jda.getSelfUser().getId();
+    }
+
+    /**
+     * Where a command the model runs should keep whatever text channel it keeps.
+     *
+     * @param guildId the guild
+     * @return the channel this session was opened from, or empty when it was opened without one
+     */
+    public java.util.Optional<MessageChannel> outputFor(String guildId) {
+        return java.util.Optional.ofNullable(outputs.get(guildId));
     }
 
     /** Closes every conversation. Safe to call twice. */
