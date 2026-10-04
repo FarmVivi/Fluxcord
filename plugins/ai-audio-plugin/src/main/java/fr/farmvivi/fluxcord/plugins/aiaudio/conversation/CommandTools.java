@@ -145,9 +145,17 @@ public class CommandTools implements ToolSource {
             return e.getMessage();
         }
 
-        AiCommandContext context = new AiCommandContext(command, member.get(),
-                outputs.apply(asker).orElse(null), locale, options);
-        return report(command, context, run(command, context));
+        MessageChannel output = outputs.apply(asker).orElse(null);
+        // The whole call, spelled out: what the model asked for, with which arguments, on whose behalf and
+        // with which text channel. Everything that went wrong with this path today was invisible from the
+        // log - a null channel, a toggle called twice, a command refused - and each cost a measurement to
+        // find that this line would have given away.
+        logger.debug("The model runs /{} {} as {} (channel {})", command.getName(), options,
+                member.get().getEffectiveName(), output == null ? "none" : output.getId());
+        AiCommandContext context = new AiCommandContext(command, member.get(), output, locale, options);
+        String outcome = report(command, context, run(command, context));
+        logger.debug("/{} answered: {}", command.getName(), oneLine(outcome));
+        return outcome;
     }
 
     /**

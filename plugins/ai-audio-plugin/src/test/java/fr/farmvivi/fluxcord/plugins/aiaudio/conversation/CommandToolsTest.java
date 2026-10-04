@@ -24,6 +24,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
@@ -361,7 +362,12 @@ class CommandToolsTest {
 
         run("{\"command\":\"play\",\"arguments\":\"daft punk\"}");
 
-        verifyNoInteractions(output);
+        // The property is that nothing is *posted*: a command answers the model, not the channel. Reading
+        // the channel's id to log which one a command was given is not posting, and forbidding every
+        // interaction forbade saying so in the log - which is exactly the detail that was missing when a
+        // command turned out to be running with no channel at all.
+        verify(output, never()).sendMessage(anyString());
+        verify(output, never()).sendMessageEmbeds(any(), any());
     }
 
     @Test
