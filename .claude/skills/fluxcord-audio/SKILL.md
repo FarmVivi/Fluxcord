@@ -35,6 +35,31 @@ paths:
 Verify what you used against the code, fix or delete wrong lines, add dated **Learnings**, prune resolved **Known issues**. Keep < 300 lines.
 
 ## Learnings
+- 2026-10-04 (YouTube): playback failing with `Must find sig function from script` is **not** a stale
+  dependency. lavaplayer 2.2.7 is current and the pinned `youtube-source` snapshot is the tip of master
+  (no 1.18.3 exists). Replay the plugin's own player request before believing the error: ours answered
+  HTTP 200, `playabilityStatus: LOGIN_REQUIRED`, zero formats - the first client is refused, every client
+  is tried, the last needs a signature, and the cipher is only where the chain ends. Cure: an identity
+  (`providers.youtube.oauth.refresh_token`, or `po_token` + `visitor_data`). **Only the `TV` client supports
+  OAuth** - the library warns "OAuth has been enabled without registering any OAuth-compatible clients" and
+  without it the token is obtained and used by nobody. With an identity, ~90 % plays and the stream comes
+  from `IOS`, which needs no signature at all.
+- 2026-10-04 (transient failures): about **one stream request in ten** still dies on the cipher, and the
+  same track plays on the next attempt - it is not a property of the track. `onTrackException` retries once
+  and then gives up. Two traps when touching that: a clone starts at position zero (carry the position
+  over), and clearing the retry budget in `onTrackStart` for the same track is an endless loop, because the
+  retry itself starts the track. Restarts are where this hurt most: resuming re-resolves the stream of
+  whatever was playing, so "the bot skips the music when it reconnects" is this, not the restore.
+- 2026-10-04 (`MusicPlayerMessage` rate limits): editing the player message more often than about once every
+  five to six seconds earns a steady stream of 429s on `PATCH /channels/{id}/messages/{id}`. Worse, the
+  failure path used to call `createNewMessage`, so being throttled *created* traffic (a POST and a DELETE in
+  place of an edit) and the backlog never drained. `MIN_EDIT_INTERVAL_MS` is 5 s; a failed edit reposts only
+  on `UNKNOWN_MESSAGE`; the "am I still the last message" lookup runs only when something changed.
+- 2026-10-04 (the player message goes dead): `renderNow` returns immediately when `messageChannel` is null,
+  and that channel is only set by a command that *has* one. A command run by the AI or the console has none,
+  so a session where nobody typed in a text channel saves no `textChannelId` and the message is never
+  updated again after a restart. `SessionPersistence` now falls back to the conversation's own channel.
+  If the player looks frozen, check the saved state for `textChannelId` before anything else.
 - 2026-10-03: The realtime path has two dialects (`OpenAiRealtime`, `GeminiRealtime`) behind the
   `RealtimeProtocol` interface, chosen by `conversation.realtime.api` and never guessed from the URL. Things
   to know before touching it: Google's input is **16 kHz** where OpenAI's is 24, its output rate is read from

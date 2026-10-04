@@ -871,10 +871,119 @@ shows Gemini sending **one `functionCall` per frame**, ten frames in one second.
 and still handles the batched shape the documentation describes; it was never this symptom's cause. A
 plausible mechanism is not a diagnosis, again.
 
-**OAuth is enough; the cipher server is not needed.** With a valid identity the clients that need no
+**CORRECTION, measured 13:30Z.** The sentence below overstated it, and the commit message carries the
+same overstatement. With OAuth active: 8 tracks added, 8 streams started, and **one** still failed with
+`Must find sig function` - "Mastodon - The Motherload", an official music video rather than the kind of
+upload the rest of the queue was. So the cipher is off the path for the common case, not for every track;
+roughly one in nine still reaches it and dies there. A `yt-cipher` server would close that last gap, and is
+worth revisiting rather than considered settled.
+
+**OAuth is enough for the common case; the cipher server is not needed for it.** With a valid identity the clients that need no
 signature are answered instead of refused, and the stream came from `IOS`. `remote_cipher` stays configured
 and empty. Victor's call to defer it was right.
 
 Still open, not blocking: one `Loading formats either failed to load or were skipped due to missing fields`
 on a track, followed by a successful fallback to another client - the SABR shape issue #240 describes. The
 fallback works, so it is left alone.
+
+### The bot's name, the tool narration, skip, and what the cipher failures really are (2026-10-04)
+
+Four things Victor reported in one live session.
+
+#### It thought it was called Fluxcord
+
+"son nom doit etre son pseudo discord et si il est rename sur un serveur son nom de serveur". The context
+already carried the Discord effective name, and the prompt already mentioned it - but the system message
+opened with `You are <persona.name()>`, a label from a configuration file, so that is the name the model
+believed.
+
+**The obvious fix was a prompt-injection hole, and a test caught it.** Putting the name into the system
+message means putting a *server nickname* there, and a nickname is chosen by a server owner - untrusted
+text in the one place untrusted text must never go. `ConversationPromptTest` pinned exactly that
+("a nickname cannot reach the operator's instructions") and failed, correctly. So the system message no
+longer claims a name of its own when a Discord name exists: it says the context below holds the name, and
+keeps the persona name as an alias (that one is configuration, so it is safe there). The name itself stays
+in the user message, as data. The bot's own turns in memory are attributed to the Discord name too.
+
+#### It narrated its own tool calls
+
+"il dit je vais regler le volume a 25% puis voila le volume est a 25%". Nothing in the code asks for the
+first sentence - on Google's dialect the request for an answer is the turn ending, and the frame sent after
+a tool result is empty - so the model volunteers it. A system-message rule now says: use the tool, then say
+what happened, once, in your own words rather than reading the tool's answer out (it is written for a
+screen, markdown and emoji included).
+
+**And the instrumentation that was missing:** nothing recorded what the bot said out loud, so "it answered
+twice" could not even be counted. `The bot said: ...` is logged per finished turn now. That absence cost
+real time twice in one day.
+
+#### Skip named the wrong track, and dropped it from a looping queue
+
+- `SkipCommand` reported only the track it left. Asked out loud to move to the next one, the bot read that
+  answer back and announced the skipped title as the one now playing - the only fact the question was about
+  was not in the answer. It now names both, and falls back to naming one when nothing follows.
+- `skip()` re-queued the current track under `loopMode` but not under `loopQueueMode`, where it relied on
+  the played-tracks history instead - so a skipped track only returned once the whole queue had drained.
+  Either loop now keeps it. (`next` already existed as an alias for `skip`.)
+
+#### The cipher failures are intermittent, not per-track
+
+Measured over one session with OAuth active: **9 cipher failures against 92 successful starts**, about one
+in ten. The failing titles are mostly official music videos - but "Daft Punk - Around The World" and
+"Robot Rock" appear in *both* lists, so it is not a property of the track. It is transient, and the same
+track plays on a later attempt.
+
+Two consequences worth acting on, neither done:
+- [ ] **A track that fails on the cipher is dropped, not retried.** `onTrackException` goes straight to
+  `nextTrack()`. Since the same track demonstrably works on a second attempt, one retry would recover most
+  of this ten percent. Needs a decision on how many attempts and whether to back off, which is why it is
+  written down rather than done.
+- [ ] `yt-cipher` would close the gap properly, and is the upstream recommendation. Deferred by Victor, and
+  that was right - but "about one track in ten" is the size of what deferring costs.
+
+### Three defects behind "it skips the music and the player is stale" (2026-10-04)
+
+Victor reported two symptoms. They were three defects, and two of them were mine, introduced the same
+afternoon.
+
+#### The restore works; the cipher kills the restored track
+
+`Started playing: The Weeknd - Blinding Lights` then, one second later, `Must find sig function` and the
+track is dropped. Resuming re-resolves the stream of whatever was playing, so the current track is the one
+most exposed to the ~10% transient cipher failure - "the bot skips the music when it reconnects" is that,
+not the restore, which the log shows doing its job.
+
+- [x] **One retry on a track exception**, then give up. Verified live twice on the same afternoon: once it
+  recovered the track, once it gave up cleanly after a second failure with no loop. The loop was a real
+  risk and nearly shipped: clearing the retry budget in `onTrackStart` for the same track would have handed
+  it straight back, because the retry itself starts the track. `TrackSchedulerTest` pins both.
+- [x] **The retry carries the position over.** A lavaplayer clone starts at zero, so the first version
+  resumed the right track from the beginning - Victor spotted it within a minute.
+
+#### The player message froze, and the cause was a chain of four
+
+Measured from the state on disk: `voiceChannelId` present, **`textChannelId` absent**. The chain:
+
+1. `/converse` starts listening with no output channel (deliberate, 2026-10-03: hearing is not publishing).
+2. So the realtime session has no output channel.
+3. So a command the model runs gets none either - and `MusicManager.preparePlayback` no longer stores one,
+   because the guard added that morning turned a `NullPointerException` into a **silent** loss.
+4. So the music state saves no text channel; on restart `messageChannel` is null, `renderNow` returns at
+   once, and the player message is never updated again. It sat forty-five minutes out of date.
+
+- [x] `SessionPersistence` falls back to the conversation's own channel - the one `/converse start` came
+  from - when nothing is being written down. Covered by a test.
+- Note: this does not revive an already-orphaned message. Running a music command from a text channel
+  re-anchors it.
+
+**The lesson, written down because it cost three separate bugs today:** replacing a crash with a guard is
+only half a fix. The crash was the signal; a guard that drops the value silently moves the failure
+somewhere nobody is looking. Both of this afternoon's regressions were exactly that shape.
+
+#### And the pattern behind the model's confident nonsense
+
+Three times today the model said something plainly wrong - "the queue is empty", "I am Fluxcord", ten tracks
+added as two - and three times the model was not the problem: it was what it had been handed. An embed whose
+fields were dropped, a context never sent, a tool result that was a stack trace. **A model given nothing
+does not answer "I do not know", it answers "there is nothing", with confidence.** When it is confidently
+wrong, read what it received before touching the prompt.
