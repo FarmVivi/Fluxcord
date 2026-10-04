@@ -37,6 +37,19 @@ public class SessionPersistence {
     private static final String VOICE_CHANNEL = "voiceChannelId";
     private static final String OUTPUT_CHANNEL = "outputChannelId";
     private static final String CONVERSING = "conversing";
+    /**
+     * Where {@code /transcribe} writes, which is <strong>not</strong> the same thing as
+     * {@link #OUTPUT_CHANNEL}.
+     *
+     * <p>Two facts, so two fields. One channel served both and that was the defect: {@code OUTPUT_CHANNEL}
+     * is where this guild's conversation lives - where a failure is reported, and the text channel a command
+     * the model runs keeps its player message in - while this one is where somebody asked for a transcript.
+     * Restoring the single stored channel into both turned listening back into publishing: Victor ran
+     * {@code /converse}, never {@code /transcribe}, and the bot started narrating the channel after a
+     * restart. They are also genuinely independent - {@code /transcribe} can be run in a different channel
+     * from {@code /converse start} - so a boolean would have been the same mistake in a smaller shape.
+     */
+    private static final String TRANSCRIPT_CHANNEL = "transcriptChannelId";
     private static final String SAVED_AT = "savedAtMs";
 
     private final AIAudioPlugin plugin;
@@ -88,7 +101,16 @@ public class SessionPersistence {
         state.put(VOICE_CHANNEL, voice.getId());
         // Stored as an id and resolved on the way back: a MessageChannel is a live JDA object that cannot
         // outlive the session it came from, and the channel may well have been deleted meanwhile.
-        state.put(OUTPUT_CHANNEL, plugin.getSpeechRecognition().outputFor(guild)
+        // Where the conversation lives. The transcriber knows it only when it is publishing, so the
+        // conversation is asked as well - otherwise the channel was lost entirely once "/converse" stopped
+        // publishing transcriptions, and a command the model ran afterwards had no channel to keep its
+        // player message in.
+        state.put(OUTPUT_CHANNEL, plugin.getConversation() == null
+                ? null
+                : plugin.getConversation().outputFor(guild.getId())
+                        .or(() -> plugin.getSpeechRecognition().outputFor(guild))
+                        .map(MessageChannel::getId).orElse(null));
+        state.put(TRANSCRIPT_CHANNEL, plugin.getSpeechRecognition().outputFor(guild)
                 .map(MessageChannel::getId).orElse(null));
         state.put(CONVERSING, plugin.getConversation() != null && plugin.getConversation().isActive(guild));
         state.put(SAVED_AT, (double) clock.getAsLong());
@@ -152,12 +174,19 @@ public class SessionPersistence {
         MessageChannel output = output(guild, state.get(OUTPUT_CHANNEL));
 
         guild.getAudioManager().openAudioConnection(voice);
-        plugin.getSpeechRecognition().start(guild, output);
+        // Its own channel, and null when nobody asked for a transcript: it then listens with nowhere to
+        // write, exactly as "/converse" starts it.
+        plugin.getSpeechRecognition().start(guild, output(guild, state.get(TRANSCRIPT_CHANNEL)));
         if (Boolean.TRUE.equals(state.get(CONVERSING)) && plugin.getConversation() != null) {
             plugin.getConversation().start(guild, output);
         }
         logger.info("Resumed listening in guild {} on {} ({})", guild.getId(), voice.getName(),
                 Boolean.TRUE.equals(state.get(CONVERSING)) ? "answering out loud" : "transcribing only");
+        logger.debug("Restored from: voice={}, conversation channel={}, transcript channel={},"
+                        + " conversing={}, saved {} ms ago",
+                voice.getId(), output == null ? "none" : output.getId(),
+                state.get(TRANSCRIPT_CHANNEL) == null ? "none" : state.get(TRANSCRIPT_CHANNEL),
+                state.get(CONVERSING), clock.getAsLong() - savedAt);
         return true;
     }
 

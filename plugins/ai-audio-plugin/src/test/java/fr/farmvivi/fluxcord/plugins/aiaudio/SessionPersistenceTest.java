@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -106,6 +107,50 @@ class SessionPersistenceTest {
         verify(audioManager).openAudioConnection(voice);
         verify(speech).start(any(), any());
         verify(conversation).start(any(), any());
+    }
+
+    @Test
+    void theConversationsChannelIsKeptWhenNothingIsBeingWrittenDown() {
+        // Since "/converse" stopped publishing transcriptions there is no transcription output to save, and
+        // asking only the transcriber meant the channel was lost on every restart. What followed was quiet
+        // and nasty: a command the model ran afterwards had no channel, so the music player's own message
+        // was never updated again - it simply froze in the channel, hours out of date.
+        var text = mock(net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel.class);
+        when(text.getId()).thenReturn("tc-1");
+        when(guild.getChannelById(
+                eq(net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel.class),
+                eq("tc-1"))).thenReturn(text);
+        when(speech.isActive(guild)).thenReturn(true);
+        when(speech.outputFor(guild)).thenReturn(java.util.Optional.empty());
+        when(conversation.outputFor(GUILD_ID)).thenReturn(java.util.Optional.of(text));
+        when(conversation.isActive(guild)).thenReturn(true);
+        when(audioManager.getConnectedChannel()).thenReturn(voice);
+
+        persistence.save(jda);
+        persistence.restore(jda, 3_600_000L);
+
+        verify(conversation).start(any(), eq(text));
+        // And listening does NOT become publishing. Victor ran "/converse", never "/transcribe", and
+        // restoring the one stored channel into both made the bot narrate the channel after a restart.
+        verify(speech).start(any(), eq((net.dv8tion.jda.api.entities.channel.middleman.MessageChannel) null));
+    }
+
+    @Test
+    void aTranscriptThatWasAskedForKeepsItsOwnChannel() {
+        var text = mock(net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel.class);
+        when(text.getId()).thenReturn("tc-2");
+        when(guild.getChannelById(
+                eq(net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel.class),
+                eq("tc-2"))).thenReturn(text);
+        when(speech.isActive(guild)).thenReturn(true);
+        when(speech.outputFor(guild)).thenReturn(java.util.Optional.of(text));
+        when(conversation.outputFor(GUILD_ID)).thenReturn(java.util.Optional.empty());
+        when(audioManager.getConnectedChannel()).thenReturn(voice);
+
+        persistence.save(jda);
+        persistence.restore(jda, 3_600_000L);
+
+        verify(speech).start(any(), eq(text));
     }
 
     /**
