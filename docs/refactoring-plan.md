@@ -583,3 +583,298 @@ the two that mattered most were only found by watching the bot answer a human be
   (a normal Kubernetes redeploy) is covered and an OOM kill is not — and the pod's memory limit is 768Mi.
   The music plugin has always had this property; the AI plugin now shares it. A periodic save would close
   the gap for both.
+
+### Decided: who is the bot being spoken to (2026-10-04)
+
+Revisited with fresh proposals on 2026-10-04, as Victor asked. **Decision: an engagement window decides the
+obvious cases, and the local classifier is asked only in the grey zone.**
+
+- Just after the bot was named, or just after it answered, the next utterance is addressed to it. No call,
+  no added latency - the common case costs nothing.
+- An utterance arriving late in the window is the grey zone: the free local model already running for
+  transcription is asked "is this for the bot?" with the recent turns as context, and its answer decides.
+- Outside the window, the name is still required - which is what keeps the paid session shut.
+
+The window is also what measures idleness: time since the last exchange *with the bot*, not since the last
+thing anybody said.
+
+**Thread-safety decision (same day): one event queue, one consumer thread.** Everything that arrives -
+audio, service events, and the classifier's verdict - is posted to a queue drained by a single thread. No
+locks, no shared mutable state, and the behaviour stays deterministic, which is what keeps the existing
+tests (which inject events in order) working as the specification. Rejected: `synchronized` on the public
+methods, because the classifier round trip would block audio for ~200ms under the lock; and per-field
+atomics, because every turn-taking decision reads several fields at once and would stay wrong.
+
+Why it is not built yet, and what has to come first:
+
+- [x] **`RealtimeConversation` is thread-safe** (2026-10-04). Every entry point - `start`, `hear`, `tick`,
+  `onEvent`, `ask`, `close` - posts its work to an injected `Executor` and the state belongs to that one
+  thread. `isOpen()` and `lastActivityMs()` are the only things read from outside, and they are single
+  volatile reads. A nested call (a failure closing the link, a tool result arriving mid-event) runs inline,
+  so the order a step observes is the order it was written for; `start` and `close` wait, because their
+  callers depend on the result being visible when they return. The tests pass `Runnable::run` and are
+  unchanged, which is what keeps them the specification rather than a timing experiment.
+  **Tools now run off the inbox** (`RealtimeInboxTest`): one queue would otherwise have put a web search of
+  several seconds in front of every audio frame captured while it ran - a regression the queue would have
+  introduced, not an existing one. Only posting the result goes back to the inbox, which is the exact shape
+  the classifier's answer will need.
+- [ ] **Then the window, and the classifier for the grey zone.** The predicate is synchronous today. With
+  the inbox in place the shape is available: ask on `workers`, post the verdict back to the inbox. What is
+  left to decide in code is what to do with a turn whose classification has not returned yet - on Gemini,
+  committing the audio *is* the request for an answer, so a deferred decision means a turn held open and an
+  input buffer that keeps growing. The window answers most of that by deciding without asking.
+
+The problem that prompted it, which stands whatever is chosen: in a channel where several people talk,
+"somebody said something" is both a bad reason to answer and a bad definition of activity. The session is
+kept alive by any conversation at all, and the bot joins conversations it was not part of. Idleness
+measured from the last exchange *with the bot* is the part that is unambiguous and belongs with whatever
+is decided.
+
+Already done and not in question: idleness no longer counts raw audio packets as activity (any room that
+is not silent used to keep a paid session open forever), and a transcript handed to a freshly woken
+session no longer gets acted on - a bot asked to clear the music queue an hour earlier cleared it again on
+waking, so the rule now lives in the system message rather than beside the transcript.
+
+## What is left, as of 2026-10-04 02:00
+
+Everything below is either untested in a real voice channel, or reported and not yet diagnosed. Nothing
+here is guesswork presented as a finding: where there is a hypothesis it says so, and says what would
+confirm it.
+
+### Built, tests green, waiting to be tried in a real voice channel
+
+Not committed yet, deliberately: the suite passes but a person has not heard them work.
+
+- `/converse start` opens the hosted session immediately instead of waiting for the wake word. Running the
+  command is itself being addressed.
+- A bot that no longer announces itself into a silent room. A turn opens on any packet at all - a chair, a
+  keyboard - and was being answered, hence "yes, I'm here, how can I help?" out of nowhere.
+- Idleness counted from the last thing actually said, not from the last audio packet.
+- A transcript handed to a freshly woken session is no longer acted on (see the queue being cleared twice).
+- `MessageStyle` in the api: a failure outside a command gets the red box a command error gets.
+- Ephemeral commands: everything but `/play` answers only the caller.
+- The music pauses while a priority source talks, instead of playing on unheard.
+- A wake word the transcriber split in two still wakes the bot.
+
+### Reported by the maintainer, not diagnosed
+
+- [ ] **"Add me 10 tracks" adds two.** Reported 2026-10-04. The turn-based path caps a tool round at
+  `max_tool_tokens: 600` (`max_reply_tokens` is 220), which could truncate a list of calls - but the
+  realtime path, which is what was being used, has **no token cap of ours at all**: nothing in
+  `GeminiRealtime` sets one. So the cap is probably not the explanation, and the first thing to check is
+  elsewhere: `onEvent` handles `ToolCalled` one call at a time, and if a single Gemini frame carries
+  several function calls, whether `parse`/`parseAll` surfaces all of them or only the first decides this
+  outright. That is a twenty-minute check against `RealtimeProtocolTest`, and it should be done before
+  anything is tuned. The tool loop itself does chain (a tool result is followed by another
+  `createResponse`), so the model is able to ask for more in a second round.
+
+  **Found, 2026-10-04: we were dropping them, and the documentation says so.** Victor's reading was right
+  in substance - the calls were being lost - but the cause was on our side, not an API cap.
+
+  Google sends one `toolCall` frame carrying `functionCalls[]`, a list. The published contract is that the
+  client answers it "with a list of FunctionResponse objects": one `toolResponse` carrying every result.
+  Our parser flattened the list into one `ToolCalled` event per call, and each was answered with its own
+  `toolResponse` frame. The service treats the first reply as the end of the tool phase, speaks, and the
+  remaining calls are never acted on - "add me ten tracks" adding two.
+
+  Fixed: the batch boundary is preserved (`Event.ToolCalled` carries a list), every call of a batch runs
+  before anything is sent back, and `RealtimeProtocol.toolResults(List<ToolOutcome>)` returns the frames a
+  dialect needs - one for Google, one per call for OpenAI, which has no batched form. Pinned by
+  `GeminiRealtimeTest` (one frame however many results; the batch stays one event) and
+  `RealtimeConversationTest.everyCallOfABatchIsRunBeforeTheAnswerIsAskedToContinue`.
+
+  **But that is the realtime path, and the live log says Victor's music was added by the turn-based one.**
+  Measured on the 2026-10-03 log: three `run_a_discord_command` calls back to back inside one round, with no
+  model request between them, so `ConversationService.converse` does execute every call an answer carries.
+  What can still cut the list short there is the budget on the answer *carrying* the calls - and
+  `finish_reason` was being parsed past in silence, so nothing said whether the model chose to stop or was
+  stopped. `OpenAiChatModel` now warns on `finish_reason: "length"` and says how many calls survived.
+  With `max_tool_tokens: 600`, a long list of calls is a plausible place to run out; the warning is what
+  will say so instead of us guessing. **Not yet seen live** - the line to grep is "ran out of tokens while
+  asking for tools".
+
+  Still unverified, and only observable against the real service:
+  - whether Google caps how many function calls one `toolCall` may contain. Nothing in the documentation
+    says it does. If the count seen live is suspiciously round, that is where to look.
+  - whether an output-token limit applies by default to the hosted session. `GeminiRealtime` sets none, and
+    `maxOutputTokens` is supported in `generationConfig` if one is ever wanted. `max_tool_tokens: 600` and
+    `max_reply_tokens: 220` apply only to the turn-based path, never here.
+  - the fix itself. It is green in tests and has not been heard working: the debug line "The model asked
+    for N tool call(s) in one frame" is what to grep for when a long request is next tried live.
+- [ ] **Gemini closes a working session**, twice with different codes: `1007 The audio content type
+  (CONTENT_TYPE_AUDIO) is not supported for this model configuration` and `1011 Internal error occurred`,
+  both after a dozen successful exchanges on identical settings. No explanation. Needs the next occurrence
+  with the debug logging that is now reachable.
+- [ ] **The wake word is sometimes lost although the vocabulary is correct.** Measured: the log shows
+  `expecting [Fluxcord, Poubelle]`, and replaying the same audio with the same hint recovers the name 3/3
+  at temperature 0 - yet live it was dropped. A general chat model doing ASR is the suspect; a dedicated
+  model is the structural answer.
+- [ ] **YouTube playback breaks intermittently** (`Must find sig function`): the bundled `youtube-source`
+  is behind a YouTube change. A dependency bump, not our code.
+- [ ] **The model cannot choose to remember anything.** Three recall tools, no write tool, so a preference
+  stated once is only ever re-read from the raw transcript. `remember_fact` / `forget_fact` over the
+  plugin's storage, with the same scopes as the recalls, is the natural addition.
+
+### Known and deliberately not fixed
+
+- Music is dropped rather than faded when a PCM source speaks over it, so `audio.fade-duration-ms` and
+  `audio.ducking-level` are inert for music. Opus cannot be attenuated without decoding it.
+- Both plugins persist their state in `onDisable` only: a SIGTERM is covered, an OOM kill is not.
+- Local runs: never run `mvn package` while the dev bot is running. The JVM loads classes lazily from the
+  shaded jar, so rewriting it underneath a live process makes every not-yet-loaded class disappear -
+  observed as `ClassNotFoundException: gnu.trove...$ValueView` in JDA's audio websocket, followed by a
+  shutdown that could no longer complete because its own path needed classes too.
+
+### The music player message rate-limits Discord (2026-10-04, measured, not yet fixed)
+
+Victor noticed it live: "ça rate limit de fou sur le message de musique". Measured in the log, not guessed:
+a sustained **ten 429s per minute for five minutes** on `PATCH /channels/{id}/messages/{id}`, each with
+`Retry-After` of 5-6 s, i.e. one rejection every six seconds without pause. The clean shutdown then reported
+`Waiting for 5 requests to finish` and five `RejectedExecutionException` failure consumers - a backlog of
+edits that never drained.
+
+What was ruled out by measuring rather than reasoning: a cascade of failing YouTube tracks each triggering a
+refresh. There was exactly **one** `Track exception` in the whole window, so that is not it.
+
+What `MusicPlayerMessage` actually does, and the two things that stand out:
+
+- **`UPDATE_THROTTLE_MS = 500`.** The debounce Victor remembered is there and it does coalesce - but 500 ms
+  is roughly ten times smaller than what this route tolerates: the observed budget is about one edit every
+  five to six seconds. Any burst (a model queueing several tracks, track starts and ends) therefore builds a
+  backlog that takes minutes to drain, and the periodic refresh keeps feeding it while it drains.
+- **Every refresh costs two REST calls, not one.** `renderNow` does
+  `messageChannel.getHistory().retrievePast(1)` to find out whether the player message is still the last one,
+  *then* edits. So the cost of staying up to date is doubled, for a check that could be kept from the
+  channel's own message events.
+- **The failure path posts a new message.** The `editMessage` failure consumer calls `createNewMessage`, so
+  an edit that fails because we are being throttled answers by creating *more* traffic, and a new message.
+
+**Established, and fixed** (2026-10-04, Victor: "voit pour optimiser et corriger"). The reason the rate
+never let up is that being throttled *created traffic*: the `editMessage` failure consumer called
+`createNewMessage`, which posts a message and deletes the old one. So an edit rejected with 429 was answered
+with a POST and a DELETE, and the next tick then paid a GET and a PATCH on the new message - more requests
+than the edit it replaced, indefinitely. Three changes:
+
+- [x] **A failed edit no longer reposts.** Reposting is correct for exactly one failure, the message being
+  gone (`UNKNOWN_MESSAGE`/`UNKNOWN_CHANNEL`); anything else is logged, the controls stay marked dirty, and
+  the next periodic refresh is the retry. The silent `sendMessage` failure path got a log line too.
+- [x] **`MIN_EDIT_INTERVAL_MS = 5_000`** replaces the 500 ms throttle, because five to six seconds is what
+  the route was measured to allow. It sits under the 10 s progress refresh, so only bursts are collapsed.
+  The delay is now computed from what is left of the interval instead of being a fixed 500 ms, so a render
+  arriving just after an edit waits rather than re-queueing at a rejected rate.
+- [x] **A suppressed render is no longer lost.** `scheduleDelayedUpdate` guarded on
+  `updateTask.isDone()`, which is false *while the task is running* - so a render the throttle turned away
+  scheduled nothing at all and the message sat stale until some unrelated event. `updateTask` is cleared at
+  the start of `renderNow` and the method is synchronised.
+- [x] **The history lookup only runs when something changed.** `retrievePast(1)` answers "is the player
+  still the last message", which a progress tick does not need; it was doubling the cost of every refresh.
+
+Not verified live yet. What to watch: `Encountered 429 on route PATCH` should become rare instead of
+constant, and the player message must still move to the bottom of the channel when people talk over it.
+
+
+### YouTube playback: the version was never the problem (2026-10-04)
+
+Asked to check whether the library was stale. It is not:
+
+- `dev.arbjerg:lavaplayer` **2.2.7** is the newest release.
+- `dev.lavalink.youtube` is pinned to snapshot `2be8e54` (2026-09-17), and **that commit is still the tip of
+  master**; 1.18.2 is still the newest release and 1.18.3 does not exist (issue #244). There is nothing
+  newer to move to.
+
+The error in the log, `Must find sig function from script /s/player/8ab5c328/...`, is a symptom. **Measured**
+by replaying the plugin's own ANDROID_VR player request from the workstation: HTTP 200, `playabilityStatus:
+LOGIN_REQUIRED`, reason "Sign in to confirm you're not a bot", and **zero** stream formats. So the first
+client is refused outright, every client is tried in turn, the last one needs a signature, and the cipher is
+simply where the chain ends. Upstream issue #226/#240 is the same thing, and the maintainer's position
+(2026-08-25) is blunt: "Signature cipher extraction is expected to fail. This is no longer managed within the
+source and you really ought to be using a remote cipher server."
+
+Done here - the plumbing, which is all that belongs in this repo:
+
+- [x] `providers.youtube.oauth.refresh_token`, `providers.youtube.po_token.{token,visitor_data}` and
+  `providers.youtube.remote_cipher.{url,password}` are read and wired to `useOauth2`,
+  `Web.setPoTokenAndVisitorData` and `YoutubeSourceOptions.setRemoteCipher`. All three exist in the pinned
+  snapshot (checked with `javap`). Empty means off, and the absence of any identity is now a startup warning
+  that names the consequence instead of leaving the cipher error to be misread.
+- [x] The OAuth flow is never started interactively: it prints a code and waits for somebody to open a URL,
+  which an unattended bot cannot do. A refresh token is required for that path.
+
+**Needs Victor, because it is credentials and services, not code** (and the private notes say to describe
+infra rather than implement it):
+
+1. *One* of: a Google account refresh token (upstream warns the account can be terminated - use one that is
+   expendable), or a poToken + visitor_data from `iv-org/youtube-trusted-session-generator`. The poToken
+   expires and only covers the WEB clients; OAuth does not expire and covers all of them.
+2. Optionally but per upstream's recommendation, a `kikkia/yt-cipher` server (a small Deno service) reachable
+   from the bot, plus its password. In the cluster that is a new deployment and a new egress rule.
+
+Until one of those exists, YouTube playback stays broken and no dependency bump will change that.
+
+#### Decided 2026-10-04: OAuth, and the generator is dead
+
+Victor asked for `iv-org/youtube-trusted-session-generator` to be set up. **It is deprecated by its own
+authors** - the README's first heading is "TOOL IS DEPRECATED", because "YouTube have changed how the
+identity tokens (po_token and visitor_data) are handled. This tool does not work with this new method."
+
+Its README names a successor, and Victor asked whether it applies: **Invidious companion does replace it,
+but not for us.** It handles identity tokens *internally* and exposes playback instead - its endpoints
+(`/companion/youtubei/v1/player`, `/companion/api/manifest/dash/id/`, `/companion/latest_version`) return
+videoplayback URLs already decrypted. There is nothing to feed `Web.setPoTokenAndVisitorData` with. It is a
+genuine third option, though, and the most complete one: a source manager that asks companion for a stream
+URL and hands it to lavaplayer's HTTP source would settle identity, the cipher *and* SABR in one move,
+because companion deals with all three. It costs a hosted Deno service and real code. Worth revisiting if
+OAuth disappoints.
+
+Also ruled out: PR #229 ("Add remote poToken support") is **open**, based on `feat/sabr-support`, not master
+- using it means leaving master for a work branch and running a JavaScript server as well.
+
+So: **OAuth** (Victor's choice, 2026-10-04), with the cipher left alone until measured again - with a valid
+identity, the clients that need no signature answer, and the cipher should stop being on the path at all.
+
+- [x] `providers.youtube.oauth.start_flow` runs the one-time device flow (prints a URL and a code, then the
+  refresh token). Behind its own switch because the flow waits for a human, which a bot starting unattended
+  must never do on its own.
+- [x] **The `TV` client is registered.** This was nearly missed: the library warned "OAuth has been enabled
+  without registering any OAuth-compatible clients", and the upstream table shows exactly one client with
+  OAuth support - `TV`. Everything we had listed says "OAuth: No", so the refresh token would have been
+  obtained and then used by nobody. `TV` carries no metadata at all, so it never loads a track; it is placed
+  after `ANDROID_VR` on purpose, so an address that is not flagged still streams without signing anybody in.
+
+### VALIDATED LIVE, 2026-10-04 13:18Z: "add me ten tracks" adds ten
+
+One request for ten Phonk tracks, measured in the log:
+
+| | |
+|---|---|
+| tool calls the model made | 10 |
+| tracks added to the queue | 7 |
+| not findable on YouTube | 2 (one call was the web search) |
+| `Error executing command play` | **0** |
+| `Track exception` | **0** |
+| `Must find sig function` | **0** |
+| `Encountered 429` | **0** |
+
+Playback really started: `Starting track with URL from client IOS`, then the HTTP stream.
+
+**What the cause actually was.** Not an API limit on tool calls, which is where this started. The model
+asks for ten, all ten run - and every one of them used to die on
+`Cannot invoke "MessageChannel.getIdLong()" because "channel" is null`, because `CommandTools` asked only
+the turn-based `ConversationService` for an output channel and the realtime path was the one answering.
+Whether anything got added depended on which path happened to be alive, which is why Victor saw two added
+rather than none. The three fixes: `RealtimeService.outputFor`, a resolver that asks whichever path answers,
+and `MusicManager` no longer dereferencing a channel that was never there (which also fixes the console).
+
+**My earlier diagnosis was wrong and is recorded as such.** The `toolCall` batching fix was built from the
+published contract - "the client should respond with a list of FunctionResponse objects" - but the live log
+shows Gemini sending **one `functionCall` per frame**, ten frames in one second. The fix is still correct
+and still handles the batched shape the documentation describes; it was never this symptom's cause. A
+plausible mechanism is not a diagnosis, again.
+
+**OAuth is enough; the cipher server is not needed.** With a valid identity the clients that need no
+signature are answered instead of refused, and the stream came from `IOS`. `remote_cipher` stays configured
+and empty. Victor's call to defer it was right.
+
+Still open, not blocking: one `Loading formats either failed to load or were skipped due to missing fields`
+on a track, followed by a successful fallback to another client - the SABR shape issue #240 describes. The
+fallback works, so it is left alone.
