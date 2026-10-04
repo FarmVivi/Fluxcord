@@ -128,14 +128,36 @@ class AiCommandContextTest {
     }
 
     @Test
+    void anEmbedsFieldsAreWhatItHasToSay() {
+        // MEASURED live, 2026-10-04: asked what was in the queue, the bot answered that it was empty -
+        // twice, then suggested the question was a misunderstanding - while the embed it had been handed
+        // carried "Pistes a venir (3)". Only the title and description were read, and the queue, the
+        // now-playing and the playlist commands say everything they have to say in fields.
+        AiCommandContext context = context(Map.of());
+
+        context.replyEmbed(new net.dv8tion.jda.api.EmbedBuilder()
+                .setTitle("File d'attente")
+                .addField("Pistes a venir (3)", "Daft Punk, The Weeknd, Kordhell", false)
+                .addField("Duree totale", "11:42", true));
+
+        String captured = context.replies().get(0);
+        assertTrue(captured.contains("File d'attente"), captured);
+        assertTrue(captured.contains("Daft Punk, The Weeknd, Kordhell"), captured);
+        assertTrue(captured.contains("11:42"), captured);
+    }
+
+    @Test
     void aReplyTooLongToSpeakIsCutRatherThanRead() {
         AiCommandContext context = context(Map.of());
 
         context.reply("x".repeat(AiCommandContext.MAX_REPLY_LENGTH + 50));
 
         String captured = context.replies().get(0);
-        assertEquals(AiCommandContext.MAX_REPLY_LENGTH + 3, captured.length());
-        assertTrue(captured.endsWith("..."));
+        assertTrue(captured.startsWith("x".repeat(AiCommandContext.MAX_REPLY_LENGTH)),
+                "everything up to the limit is kept");
+        // Says it was cut, rather than trailing off: a model handed a silently truncated list reports it
+        // as the whole list.
+        assertTrue(captured.contains("there is more"), captured);
     }
 
     @Test

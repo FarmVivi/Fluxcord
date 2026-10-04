@@ -239,12 +239,24 @@ public class AiCommandContext implements CommandContext {
             return;
         }
         String trimmed = message.strip();
+        // Says it was cut, rather than trailing off. A model handed a silently truncated list reports it
+        // as the whole list, which is the same class of mistake as being handed nothing and reporting
+        // emptiness with confidence.
         replies.add(trimmed.length() > MAX_REPLY_LENGTH
-                ? trimmed.substring(0, MAX_REPLY_LENGTH) + "..."
+                ? trimmed.substring(0, MAX_REPLY_LENGTH) + " (cut short; there is more)"
                 : trimmed);
     }
 
-    /** An embed as a sentence: its title and its description, which is all a voice can carry. */
+    /**
+     * An embed as a sentence: its title, its description, and <strong>its fields</strong>.
+     *
+     * <p>The fields are the whole point, and leaving them out was a real failure. MEASURED live,
+     * 2026-10-04: asked what was in the queue, the bot answered "elle est vide" - twice, and then suggested
+     * Victor had misunderstood - while the log shows the embed it had just been handed carried
+     * "Pistes a venir (3)". The queue, now-playing and playlist commands put everything they have to say in
+     * fields; title and description alone leave an informative command saying nothing at all, and a model
+     * handed nothing does not answer "I do not know", it answers "there is nothing".
+     */
     private static String flatten(EmbedBuilder embed) {
         if (embed == null) {
             return "";
@@ -262,6 +274,18 @@ public class AiCommandContext implements CommandContext {
                 out.append(" — ");
             }
             out.append(built.getDescription());
+        }
+        for (var field : built.getFields()) {
+            if (field.getValue() == null || field.getValue().isBlank()) {
+                continue;
+            }
+            if (!out.isEmpty()) {
+                out.append(" — ");
+            }
+            if (field.getName() != null && !field.getName().isBlank()) {
+                out.append(field.getName()).append(": ");
+            }
+            out.append(field.getValue());
         }
         return out.toString();
     }
