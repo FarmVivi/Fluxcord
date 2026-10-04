@@ -20,7 +20,10 @@ public class SkipCommand extends MusicCommand {
         }
         Guild guild = player.getGuild();
 
-        if (player.getPlayingTrack() == null) {
+        // Read once, and used for both the guard and the title: asking twice invited the two answers to
+        // disagree, and the second one is the only place a null would have been a NullPointerException.
+        var leaving = player.getPlayingTrack();
+        if (leaving == null) {
             ctx.replyError(text(ctx, "music.error.nothing_playing"));
             return;
         }
@@ -35,9 +38,15 @@ public class SkipCommand extends MusicCommand {
             return;
         }
 
-        String skippedTitle = player.getPlayingTrack().getInfo().title;
+        String skippedTitle = leaving.getInfo().title;
         player.skipTrack();
 
-        ctx.replySuccess(text(ctx, "music.skipped", skippedTitle));
+        // Naming what is playing now, and not only what was dropped. Asked out loud to move to the next
+        // track, the bot used to read this answer back and announce the title it had just skipped as the
+        // one now playing - the answer simply did not contain the only fact the question was about.
+        var nowPlaying = player.getPlayingTrack();
+        ctx.replySuccess(nowPlaying == null
+                ? text(ctx, "music.skipped", skippedTitle)
+                : text(ctx, "music.skipped_now_playing", skippedTitle, nowPlaying.getInfo().title));
     }
 }

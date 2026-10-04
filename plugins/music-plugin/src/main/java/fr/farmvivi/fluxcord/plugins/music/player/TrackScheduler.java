@@ -40,6 +40,8 @@ public class TrackScheduler extends AudioEventAdapter {
     // Playback modes
     private boolean loopMode = false;
     private boolean loopQueueMode = false;
+    /** The last track given a second chance, so one retry never becomes an endless one. */
+    private String lastRetried;
     private boolean shuffleMode = false;
 
     /**
@@ -147,10 +149,14 @@ public class TrackScheduler extends AudioEventAdapter {
         if (current != null) {
             logger.debug("[{}] Skipping track: {}", getGuildName(), current.getInfo().title);
 
-            if (loopMode) {
-                // In loop mode, add the current track to the end of the queue
+            if (loopMode || loopQueueMode) {
+                // Either loop keeps the track: skipping is "not this one now", not "never again". With the
+                // queue loop on, relying on the played-tracks history instead meant a skipped track only
+                // came back once the whole queue had drained, which is not what looping a playlist looks
+                // like to somebody listening.
                 addToQueueEnd(current.makeClone());
-                logger.debug("[{}] Loop mode active: added track back to queue", getGuildName());
+                logger.debug("[{}] A loop is active: added the skipped track back to the queue",
+                        getGuildName());
             }
         }
 
@@ -263,9 +269,37 @@ public class TrackScheduler extends AudioEventAdapter {
 
     @Override
     public void onTrackException(AudioPlayer player, AudioTrack track, FriendlyException exception) {
-        logger.error("[{}] Track exception for {}: {}", getGuildName(), track.getInfo().title, exception.getMessage());
+        logger.error("[{}] Track exception for {}: {}", getGuildName(), track.getInfo().title,
+                exception.getMessage());
 
-        // Skip to next track on exception
+        // Tried again once before giving up on it.
+        //
+        // MEASURED, 2026-10-04: about one stream request in ten dies on YouTube's signature cipher, and the
+        // same track plays on the next attempt - so the failure is transient and dropping the track threw
+        // away something that worked. It showed up worst on a restart: resuming a session re-resolves the
+        // stream of whatever was playing, so the current track is the one most exposed, and "the bot skips
+        // the music when it reconnects" is this, not the restore. Victor reported it twice.
+        //
+        // Once, not repeatedly: a track that is genuinely gone would otherwise loop forever, and the second
+        // attempt is a fresh request that either works or says the same thing again.
+        String identifier = track.getInfo().identifier;
+        if (identifier != null && !identifier.equals(lastRetried)) {
+            lastRetried = identifier;
+            logger.info("[{}] Trying {} once more from {} ms in; that failure is usually transient",
+                    getGuildName(), track.getInfo().title, track.getPosition());
+            AudioTrack again = track.makeClone();
+            // A clone starts at zero, so the position has to be carried over: without this the retry
+            // restarted the song from the beginning, which Victor spotted immediately - the right track,
+            // the wrong place in it.
+            long position = track.getPosition();
+            if (position > 0 && again.isSeekable()) {
+                again.setPosition(position);
+            }
+            player.startTrack(again, false);
+            musicPlayer.refreshUi();
+            return;
+        }
+        logger.warn("[{}] Giving up on {} after a second failure", getGuildName(), track.getInfo().title);
         nextTrack();
         musicPlayer.refreshUi();
     }
@@ -273,6 +307,13 @@ public class TrackScheduler extends AudioEventAdapter {
     @Override
     public void onTrackStart(AudioPlayer player, AudioTrack track) {
         logger.info("[{}] Started playing: {}", getGuildName(), track.getInfo().title);
+
+        // Freed only when a DIFFERENT track starts. Clearing it here for the same one would have been an
+        // endless loop: the retry itself starts the track, so the budget would be handed back before the
+        // second failure could ever use it up.
+        if (lastRetried != null && !lastRetried.equals(track.getInfo().identifier)) {
+            lastRetried = null;
+        }
 
         // Add to played tracks history for loop queue mode
         if (loopQueueMode && !playedTracks.contains(track)) {

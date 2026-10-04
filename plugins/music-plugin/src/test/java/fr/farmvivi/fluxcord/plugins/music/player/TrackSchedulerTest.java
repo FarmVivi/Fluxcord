@@ -169,15 +169,35 @@ class TrackSchedulerTest {
     }
 
     @Test
-    void aTrackExceptionSkipsToTheNextTrack() {
+    void aFailingTrackIsTriedOnceMoreBeforeBeingGivenUp() {
+        // MEASURED, 2026-10-04: about one stream request in ten dies on YouTube's signature cipher and the
+        // same track plays on the next attempt. It showed worst on a restart, where resuming re-resolves
+        // the stream of whatever was playing - "the bot skips the music when it reconnects" was this.
         AudioTrack a = track("a");
         scheduler.queue(a);
         scheduler.queue(track("b"));
 
-        scheduler.onTrackException(player, a,
-                new FriendlyException("boom", FriendlyException.Severity.COMMON, null));
+        scheduler.onTrackException(player, a, boom());
 
-        assertEquals("b", playingTitle());
+        assertEquals("a", playingTitle(), "the same track, a second time");
+    }
+
+    @Test
+    void aSecondFailureMovesOnInsteadOfLoopingForever() {
+        AudioTrack a = track("a");
+        scheduler.queue(a);
+        scheduler.queue(track("b"));
+
+        scheduler.onTrackException(player, a, boom());
+        // The retry started the track, which is what nearly handed the budget straight back.
+        scheduler.onTrackStart(player, player.getPlayingTrack());
+        scheduler.onTrackException(player, player.getPlayingTrack(), boom());
+
+        assertEquals("b", playingTitle(), "one retry, not an endless one");
+    }
+
+    private static FriendlyException boom() {
+        return new FriendlyException("boom", FriendlyException.Severity.COMMON, null);
     }
 
     @Test

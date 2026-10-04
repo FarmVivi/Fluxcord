@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.plugins.music.commands;
 
+import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -88,13 +89,31 @@ class PlaybackCommandsTest extends MusicCommandTestBase {
     @Nested
     class Skip {
         @Test
-        void skipsAndNamesTheTrackItLeft() {
-            playing("Never Gonna", 1000);
+        void skipsAndNamesBothTheTrackItLeftAndTheOneNowPlaying() {
+            // The defect this pins: the answer named only the track that was dropped, so a bot asked out
+            // loud to move to the next track read it back and announced the title it had just skipped as
+            // the one now playing. The only fact the question was about was missing from the answer.
+            AudioTrack left = track("Never Gonna", 1000);
+            AudioTrack next = track("Giving You Up", 2000);
+            // doReturn, because the helper has already stubbed this method and re-entering when() on it
+            // counts as an invocation rather than a stubbing.
+            doReturn(left, next).when(player).getPlayingTrack();
 
             new SkipCommand(plugin).execute(ctx);
 
             verify(player).skipTrack();
-            assertEquals("music.skipped", lastSuccess());
+            assertEquals("music.skipped_now_playing", lastSuccess());
+        }
+
+        @Test
+        void namesOnlyWhatItLeftWhenNothingFollows() {
+            AudioTrack left = track("Never Gonna", 1000);
+            doReturn(left, null).when(player).getPlayingTrack();
+
+            new SkipCommand(plugin).execute(ctx);
+
+            assertEquals("music.skipped", lastSuccess(),
+                    "promising a track that is not playing is worse than saying less");
         }
 
         @Test

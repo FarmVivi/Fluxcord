@@ -89,6 +89,7 @@ music:
   paused: "⏸️ Playback paused"
   resumed: "▶️ Playback resumed"
   skipped: "⏭️ Skipped: **{0}**"
+  skipped_now_playing: "⏭️ Skipped: **{0}** — now playing: **{1}**"
   stopped: "⏹️ Playback stopped"
   seeked: "⏩ Seeked to **{0}**"
   

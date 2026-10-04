@@ -89,6 +89,7 @@ music:
   paused: "⏸️ Lecture mise en pause"
   resumed: "▶️ Lecture reprise"
   skipped: "⏭️ Piste passée : **{0}**"
+  skipped_now_playing: "⏭️ Piste passée : **{0}** — en cours : **{1}**"
   stopped: "⏹️ Lecture arrêtée"
   seeked: "⏩ Déplacement à **{0}**"
   
