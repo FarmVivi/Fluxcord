@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 ################ Build ################
 # Build stage for the full multi-module project
-FROM --platform=linux/amd64 maven:3.9.16-eclipse-temurin-25-alpine AS build
+FROM --platform=linux/amd64 maven:3.9-eclipse-temurin-26-alpine AS build
 
 WORKDIR /workspace
 

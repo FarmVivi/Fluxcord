@@ -2,7 +2,7 @@
 ################ Build ################
 # Build stage for the full multi-module project
 # Using eclipse-temurin-25 (Debian) which has good multi-platform support
-FROM maven:3.9.16-eclipse-temurin-25 AS build
+FROM maven:3.9-eclipse-temurin-26 AS build
 
 WORKDIR /workspace
 
