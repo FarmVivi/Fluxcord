@@ -987,3 +987,35 @@ added as two - and three times the model was not the problem: it was what it had
 fields were dropped, a context never sent, a tool result that was a stack trace. **A model given nothing
 does not answer "I do not know", it answers "there is nothing", with confidence.** When it is confidently
 wrong, read what it received before touching the prompt.
+
+### What is sitting in the working tree, uncommitted (as of 2026-10-04, still there 2026-10-30)
+
+Thirteen commits went onto `develop` that day and were **not pushed**. What follows was deliberately left
+out of them, because Victor's standing rule is to commit only what he has heard working, and he had not
+pronounced on these. It is all on disk, it all builds, and the full suite was green (524 tests).
+
+**The engagement window and the classifier** - the decision he took on 2026-10-04, built and deployed:
+`AddressedToUs` / `ModelAddressedToUs` (new), the three-way decision in `RealtimeConversation`
+(`aimOf`/`askWhetherAddressed`), `conversation.realtime.follow_up_seconds` in `AiSettings`, and
+`RealtimeAddressingTest`. It ran live for over an hour without error and judged one hard case correctly
+("skip ou pas ou tu es nul ?" -> yes). Two tuning facts were measured: the window has to be counted from
+when somebody *starts* talking, not from when the transcription lands (speaking time, the silence window
+and the Ollama round trip together put an obvious follow-up outside a 12 s window twice), and a declined
+sentence must be remembered or a held-open turn is re-judged several times a second.
+
+**The event queue** (`RealtimeConversation`'s inbox, `RealtimeInboxTest`) - the prerequisite he approved.
+Tools run off it, so a slow web search no longer holds back audio.
+
+**The tool-call batch** (`RealtimeProtocol.toolResults`, both dialects, their tests). Correct per Google's
+published contract, and *not* the cause of "ten tracks added as two" - the live log shows one
+`functionCall` per frame. Kept because the batched shape is what the documentation describes.
+
+**Smaller, all unvalidated:** `finish_reason` reporting in `OpenAiChatModel`; the stale-transcript rule in
+`ConversationPrompt`; the bot's Discord name as its identity (validated live - it answers to its Discord
+name - but entangled in the same files as the window, so it would need a hunk-level split to go alone);
+and the batch from 2026-10-03 evening (`/converse start` engaging immediately, the `MessageStyle` move from
+core to api, the idle-clock fix).
+
+**State of the branch, 2026-10-30:** `develop` is 13 ahead and 16 behind `github/develop`. The 16 are
+dependabot bumps and their merges, touching only `pom.xml` and `.github/workflows` - no overlap with any of
+the above, so rebasing before pushing should be mechanical.
