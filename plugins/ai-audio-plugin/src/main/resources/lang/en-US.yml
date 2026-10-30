@@ -81,6 +81,7 @@ errors:
   cannot_speak: "I have an answer but no voice: speech synthesis is not working ({0}). Check text_to_speech in my configuration."
   no_permission: "You are not allowed to do that."
   already_transcribing: "I am already transcribing this server."
+  channel_not_writable: "I cannot write in this channel, so there is nowhere to put the transcript. Run this where you can see me post."
   not_transcribing: "I was not transcribing anything."
   persona_usage: "Say which field and which value: /persona set field:tone value:familier"
   persona_unknown_field: "There is no persona field called {0}."

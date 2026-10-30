@@ -4,6 +4,7 @@ import fr.farmvivi.fluxcord.api.command.CommandContext;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AIAudioPlugin;
 import fr.farmvivi.fluxcord.plugins.aiaudio.realtime.RealtimeException;
 import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 
 import java.util.Optional;
 
@@ -88,7 +89,13 @@ public class ConverseCommand extends AiAudioCommand {
         // run while this is already listening.
         boolean startedListening = plugin.getSpeechRecognition().start(guild, null);
 
-        if (!plugin.getConversation().start(guild, ctx.getChannel())) {
+        // Where the conversation writes, when it writes - and null when there is nowhere. Unlike
+        // "/transcribe", this command is not a request for text: the bot answers out loud, and a channel it
+        // cannot post in costs it a transcript, not its voice. So it degrades instead of refusing. What it
+        // must not do is keep a detached snapshot and discover that minutes later.
+        MessageChannel output = ctx.getAttachedChannel().orElse(null);
+
+        if (!plugin.getConversation().start(guild, output)) {
             ctx.replyError(text(ctx, "errors.already_conversing"));
             return;
         }
@@ -111,7 +118,7 @@ public class ConverseCommand extends AiAudioCommand {
      */
     private void startRealtime(CommandContext ctx, Guild guild) {
         try {
-            if (!plugin.getRealtime().start(guild, ctx.getChannel())) {
+            if (!plugin.getRealtime().start(guild, ctx.getAttachedChannel().orElse(null))) {
                 ctx.replyError(text(ctx, "errors.already_conversing"));
                 return;
             }

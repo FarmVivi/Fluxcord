@@ -97,7 +97,19 @@ class AiAudioCommandsTest {
         when(ctx.getUser()).thenReturn(user);
         when(ctx.getLocale()).thenReturn(Locale.FRANCE);
         when(ctx.getOriginalEvent()).thenReturn(event);
-        when(ctx.getChannel()).thenReturn(mock(MessageChannel.class));
+        answersChannel(mock(MessageChannel.class));
+    }
+
+    /**
+     * Where the command was called, and where it may still write afterwards.
+     *
+     * <p>Both, together: {@code ctx} is a mock, so {@code getAttachedChannel()} does not run the interface's
+     * default implementation and answers an empty Optional until it is told otherwise. A command that reads
+     * only one of the two then behaves as if the bot could not post anywhere.
+     */
+    private void answersChannel(MessageChannel channel) {
+        when(ctx.getChannel()).thenReturn(channel);
+        when(ctx.getAttachedChannel()).thenReturn(Optional.ofNullable(channel));
     }
 
     /** Settings pointing at a self-hosted server, so no key is required. */
@@ -246,13 +258,29 @@ class AiAudioCommandsTest {
     void startingTranscriptionJoinsTheChannelAndPostsWhereItWasCalled() {
         inVoiceChannel("General");
         MessageChannel output = mock(MessageChannel.class);
-        when(ctx.getChannel()).thenReturn(output);
+        answersChannel(output);
         when(stt.start(same(guild), same(output))).thenReturn(true);
 
         new TranscribeCommand(plugin).execute(ctx, TranscribeCommand.START);
 
         verify(audioManager).openAudioConnection(any());
         verify(ctx).replySuccess("messages.transcription_started");
+    }
+
+    @Test
+    void transcribingWhereTheBotCannotWriteIsRefusedInsteadOfStartedBlind() {
+        // A channel the bot has no view of arrives as a detached snapshot since Discord's channel
+        // obfuscation. It is enough to answer this command and nothing else: the first transcript line
+        // would throw, minutes later, on the transcriber's thread. "/transcribe" exists to write, so there
+        // is nothing to degrade to - it says so now.
+        inVoiceChannel("General");
+        answersChannel(null);
+
+        new TranscribeCommand(plugin).execute(ctx, TranscribeCommand.START);
+
+        verify(ctx).replyError("errors.channel_not_writable");
+        verify(stt, never()).start(any(), any());
+        verify(audioManager, never()).openAudioConnection(any());
     }
 
     @Test

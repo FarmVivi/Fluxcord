@@ -1019,3 +1019,74 @@ core to api, the idle-clock fix).
 **State of the branch, 2026-10-30:** `develop` is 13 ahead and 16 behind `github/develop`. The 16 are
 dependabot bumps and their merges, touching only `pom.xml` and `.github/workflows` - no overlap with any of
 the above, so rebasing before pushing should be mechanical.
+
+## 2026-10-30 — the dependency round, and the one bump that was a deadline
+
+Victor asked for the dependency upgrades and pointed at his open dependabot PRs. The branch was rebased
+onto `github/develop` first (the 16 remote commits were dependabot bumps touching only `pom.xml` and the
+workflows, so it was mechanical) and the 14 local commits pushed.
+
+Two habits paid for themselves. **Dependabot's target is not always the latest**: it asked for AWS SDK
+2.57.3 and for mariadb 4.0.0, while 2.57.7 existed and logback 1.6.6 had no PR at all; `mvn
+versions:display-property-updates` is one call and settles it. **And reading the changelog is not a
+formality**: of nine candidate bumps, three were decisions rather than chores, and one was a deadline
+nobody had noticed.
+
+| | |
+| --- | --- |
+| Taken as chores | gson 2.15.0, logback 1.6.6, AWS SDK 2.57.7, surefire 3.6.1, docker/login-action 4.7.0 |
+| Taken as decisions | JDA 6.7.0 (below), mariadb-java-client 4.0.0 (TLS by default; `sslMode` now documented in `config.yml` and `docs/configuration.md`) |
+| Deliberately not taken | slf4j 2.1.0-alpha1 (an alpha); the temurin 25 -> 26 base images (PRs 862/863) — Victor's call, and nothing here can prove JDAVE still loads its natives on 26 |
+
+Also noticed and left alone, so it does not get lost: the root pom compiles with `<source>`/`<target>`
+rather than `<release>`, so a JDK newer than 25 doing the build could link against newer APIs without
+anybody noticing. Worth fixing the day the base images move.
+
+### JDA 6.7.0: a channel you can answer but cannot write to
+
+JDA 6.7.0 implements Discord's **channel obfuscation, mandatory from 2026-11-16**. It compiles and the
+whole suite passes untouched, which is exactly what made it worth reading rather than trusting: the change
+is in behaviour, not in signatures. An interaction in a channel the bot cannot see now carries a
+*detached* snapshot of that channel. The snapshot has the id and the name and answers the interaction
+perfectly well; `checkCanSendMessage()` on it calls `checkCanAccess()` -> `checkAttached()`, which throws
+`ObfuscatedChannelException`.
+
+So the failure would not have happened while a command was running, with somebody watching. It would have
+happened minutes later, on a scheduler thread, inside whatever had kept the channel: the music player
+editing its message at the next track change, a conversation writing down what it heard. The same shape as
+the afternoon of 2026-10-04 — a failure moved somewhere nobody is looking.
+
+The fix is one distinction, in `CommandContext`, as a `default` method next to `getMember()`:
+`getChannel()` is what the invocation carried, and **`getAttachedChannel()` is what may still be written to
+after the command returns**. Detached is not the same as unreachable, so it trades a snapshot for the real
+channel in the guild's cache when there is one, and is empty only when there is genuinely nowhere to write.
+Three call sites kept a channel past their own return, and each one now says what it wants:
+
+- `MusicCommand.player` anchors the player message only to a channel that will still work.
+- `/transcribe` **refuses**, with `errors.channel_not_writable`: writing is the whole command, so there is
+  nothing to degrade to. Refusing now also moved the check in front of `ensureConnected` — the bot was
+  joining a voice channel for a command it was about to turn down.
+- `/converse` **degrades**: it answers out loud, and a channel it cannot post in costs it a transcript,
+  not its voice. It keeps the voice and writes nowhere.
+
+Verified: full reactor green, 1384 tests, 9 of them new (`CommandContextChannelTest`, the anchoring pair in
+`PlaybackCommandsTest`, the refusal in `AiAudioCommandsTest`). The five places that actually send a message
+were audited; the two restore paths already resolve their channel from the guild's cache, so they are
+attached by construction.
+
+Two things this turned up on the way:
+
+- **A mocked `CommandContext` does not run the interface's default methods.** Mockito answered
+  `Optional.empty()` for `getAttachedChannel()`, so the commands behaved as if the bot could post nowhere
+  and two tests failed for the right reason. Any test mocking the context has to stub both accessors
+  together; `AiAudioCommandsTest.answersChannel` does it in one place.
+- **`RealtimeInboxTest.aToolThatBlocksDoesNotHoldBackTheAudioBehindIt` was racy** and failed here about one
+  run in ten. A tool result travels worker -> inbox -> socket, and the test released the tool then drained
+  the inbox once, which only waits for what was already queued. It now waits on the condition.
+
+### Still open for Victor
+
+- The **temurin 26** images (PRs 862/863): his call, needs an image build to validate.
+- The uncommitted block of 2026-10-04 above is still uncommitted, still green, still waiting on his word.
+- Unrelated to the bumps: a channel restored from saved state is attached but could be *obfuscated*, which
+  fails as a permission error instead. Pre-existing, out of scope, noted here rather than fixed quietly.

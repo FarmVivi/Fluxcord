@@ -1,6 +1,7 @@
 package fr.farmvivi.fluxcord.plugins.music.commands;
 
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
+import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -25,6 +26,36 @@ class PlaybackCommandsTest extends MusicCommandTestBase {
 
         assertEquals("music.error.guild_only", lastError());
         verify(musicManager, never()).getPlayer(any());
+    }
+
+    @Nested
+    class WhereThePlayerMessageGoes {
+        @Test
+        void aCommandFromATextChannelAnchorsThePlayerMessageThere() {
+            MessageChannel channel = mock(MessageChannel.class);
+            when(ctx.getAttachedChannel()).thenReturn(Optional.of(channel));
+            playing("a", 1000);
+
+            new PauseCommand(plugin).execute(ctx);
+
+            verify(player).setMessageChannel(channel);
+        }
+
+        @Test
+        void aChannelThePlayerCouldNotWriteToIsNotAnchoredAtAll() {
+            // The anchor is written to for as long as the player lives, so it has to be a channel that
+            // still works after the command returns. Since Discord's channel obfuscation an interaction
+            // can carry a snapshot of a channel the bot has no view of: anchoring to it leaves a player
+            // that looks fine and then dies on a scheduler thread at the next track change, with an
+            // exception nobody is watching. Better to keep whatever anchor was already there.
+            when(ctx.getAttachedChannel()).thenReturn(Optional.empty());
+            playing("a", 1000);
+
+            new PauseCommand(plugin).execute(ctx);
+
+            verify(player, never()).setMessageChannel(any());
+            assertEquals("music.paused", lastSuccess(), "and the command itself still works");
+        }
     }
 
     @Nested

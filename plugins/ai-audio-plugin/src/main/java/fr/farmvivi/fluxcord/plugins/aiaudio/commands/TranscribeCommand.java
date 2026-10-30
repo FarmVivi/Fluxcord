@@ -3,6 +3,7 @@ package fr.farmvivi.fluxcord.plugins.aiaudio.commands;
 import fr.farmvivi.fluxcord.api.command.CommandContext;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AIAudioPlugin;
 import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 
 import java.util.Optional;
 
@@ -47,6 +48,15 @@ public class TranscribeCommand extends AiAudioCommand {
             ctx.replyError(text(ctx, "errors.api_key_missing"));
             return;
         }
+        // This command is a request to write, so a channel that cannot be written to is a reason to refuse
+        // now rather than to start transcribing into nothing. Since channel obfuscation an interaction can
+        // carry a snapshot of a channel the bot has no view of; it answers this reply and would throw on
+        // the first transcript line, minutes later, on the transcriber's thread.
+        Optional<MessageChannel> output = ctx.getAttachedChannel();
+        if (output.isEmpty()) {
+            ctx.replyError(text(ctx, "errors.channel_not_writable"));
+            return;
+        }
         if (!ensureConnected(ctx, guild)) {
             return;
         }
@@ -58,11 +68,11 @@ public class TranscribeCommand extends AiAudioCommand {
                 ctx.replyError(text(ctx, "errors.already_transcribing"));
                 return;
             }
-            plugin.getSpeechRecognition().setOutput(guild, ctx.getChannel());
+            plugin.getSpeechRecognition().setOutput(guild, output.get());
             ctx.replySuccess(text(ctx, "messages.transcription_started"));
             return;
         }
-        if (!plugin.getSpeechRecognition().start(guild, ctx.getChannel())) {
+        if (!plugin.getSpeechRecognition().start(guild, output.get())) {
             ctx.replyError(text(ctx, "errors.already_transcribing"));
             return;
         }

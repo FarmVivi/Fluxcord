@@ -1,20 +1,12 @@
 package fr.farmvivi.fluxcord.api.command;
 
-import fr.farmvivi.fluxcord.api.command.option.CommandOption;
-import net.dv8tion.jda.api.EmbedBuilder;
-import net.dv8tion.jda.api.JDA;
-import net.dv8tion.jda.api.components.MessageTopLevelComponent;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.User;
-import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
-import net.dv8tion.jda.api.events.Event;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import org.junit.jupiter.api.Test;
 
-import java.util.Collection;
-import java.util.Locale;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -37,7 +29,7 @@ class CommandContextMemberTest {
         SlashCommandInteractionEvent event = mock(SlashCommandInteractionEvent.class);
         when(event.getMember()).thenReturn(member);
 
-        assertEquals(Optional.of(member), new Fixture(event, null, null).getMember());
+        assertEquals(Optional.of(member), new StubCommandContext(event, null, null, null).getMember());
     }
 
     @Test
@@ -46,7 +38,7 @@ class CommandContextMemberTest {
         MessageReceivedEvent event = mock(MessageReceivedEvent.class);
         when(event.getMember()).thenReturn(member);
 
-        assertEquals(Optional.of(member), new Fixture(event, null, null).getMember());
+        assertEquals(Optional.of(member), new StubCommandContext(event, null, null, null).getMember());
     }
 
     @Test
@@ -59,7 +51,7 @@ class CommandContextMemberTest {
         Guild guild = mock(Guild.class);
         when(guild.getMemberById("u1")).thenReturn(member);
 
-        assertEquals(Optional.of(member), new Fixture(null, user, guild).getMember());
+        assertEquals(Optional.of(member), new StubCommandContext(null, user, guild, null).getMember());
     }
 
     @Test
@@ -69,13 +61,13 @@ class CommandContextMemberTest {
         Guild guild = mock(Guild.class);
         when(guild.getMemberById("u2")).thenReturn(null);
 
-        assertTrue(new Fixture(null, user, guild).getMember().isEmpty());
+        assertTrue(new StubCommandContext(null, user, guild, null).getMember().isEmpty());
     }
 
     @Test
     void aConsoleInvocationHasNobodyToResolve() {
         // getUser() == null is what the core reads as "console"; there is no member behind it.
-        assertTrue(new Fixture(null, null, mock(Guild.class)).getMember().isEmpty());
+        assertTrue(new StubCommandContext(null, null, mock(Guild.class), null).getMember().isEmpty());
     }
 
     @Test
@@ -83,124 +75,7 @@ class CommandContextMemberTest {
         User user = mock(User.class);
         when(user.getId()).thenReturn("u3");
 
-        assertTrue(new Fixture(null, user, null).getMember().isEmpty());
+        assertTrue(new StubCommandContext(null, user, null, null).getMember().isEmpty());
     }
 
-    /** The smallest context that exercises the default method: three fields, everything else refused. */
-    private record Fixture(Event event, User user, Guild guild) implements CommandContext {
-
-        @Override
-        public Event getOriginalEvent() {
-            return event;
-        }
-
-        @Override
-        public User getUser() {
-            return user;
-        }
-
-        @Override
-        public Optional<Guild> getGuild() {
-            return Optional.ofNullable(guild);
-        }
-
-        @Override
-        public Command getCommand() {
-            return null;
-        }
-
-        @Override
-        public MessageChannel getChannel() {
-            return null;
-        }
-
-        @Override
-        public Locale getLocale() {
-            return Locale.ROOT;
-        }
-
-        @Override
-        public <T> Optional<T> getOption(String name) {
-            return Optional.empty();
-        }
-
-        @Override
-        public <T> T getOption(String name, T defaultValue) {
-            return defaultValue;
-        }
-
-        @Override
-        public <T> T getRequiredOption(String name) {
-            throw new IllegalArgumentException(name);
-        }
-
-        @Override
-        public <T> Optional<CommandOption<T>> getOptionDefinition(String name) {
-            return Optional.empty();
-        }
-
-        @Override
-        public boolean hasOption(String name) {
-            return false;
-        }
-
-        @Override
-        public void reply(String message) {
-        }
-
-        @Override
-        public void reply(String message, Collection<MessageTopLevelComponent> components) {
-        }
-
-        @Override
-        public void replyEmbed(EmbedBuilder embed) {
-        }
-
-        @Override
-        public void replyEmbed(EmbedBuilder embed, Collection<MessageTopLevelComponent> components) {
-        }
-
-        @Override
-        public void replySuccess(String message) {
-        }
-
-        @Override
-        public void replyInfo(String message) {
-        }
-
-        @Override
-        public void replyWarning(String message) {
-        }
-
-        @Override
-        public void replyError(String message) {
-        }
-
-        @Override
-        public void deferReply() {
-        }
-
-        @Override
-        public void deferReply(boolean ephemeral) {
-        }
-
-        @Override
-        public boolean isDeferred() {
-            return false;
-        }
-
-        @Override
-        public boolean isEphemeral() {
-            return false;
-        }
-
-        @Override
-        public void setEphemeral(boolean ephemeral) {
-        }
-
-        @Override
-        public JDA getJDA() {
-            return null;
-        }
-    }
 }

@@ -7,6 +7,7 @@ import net.dv8tion.jda.api.components.MessageTopLevelComponent;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.User;
+import net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.events.Event;
 import net.dv8tion.jda.api.events.interaction.GenericInteractionCreateEvent;
@@ -84,9 +85,49 @@ public interface CommandContext {
     /**
      * Gets the channel where the command was executed.
      *
+     * <p>For an interaction this may be a snapshot of the channel rather than the channel itself — see
+     * {@link #getAttachedChannel()} before keeping it to write to later.
+     *
      * @return the channel
      */
     MessageChannel getChannel();
+
+    /**
+     * The same channel, but only when it is one the bot can still write to after this command has returned.
+     *
+     * <p>{@link #getChannel()} is whatever the invocation carried, and since Discord's channel obfuscation
+     * (mandatory from 2026-11-16) an interaction in a channel the bot cannot see carries a
+     * {@linkplain net.dv8tion.jda.api.entities.detached.IDetachableEntity detached} snapshot instead. A
+     * snapshot knows the channel's id and name and is enough to answer the interaction, but it is not
+     * connected to anything: {@code sendMessage} and {@code editMessage} on it throw
+     * {@link net.dv8tion.jda.api.exceptions.ObfuscatedChannelException ObfuscatedChannelException}. The
+     * failure therefore does not happen while the command runs — it happens minutes later, on a scheduler
+     * thread, in whatever kept the channel: the music player editing its message, a conversation writing
+     * down what it heard.
+     *
+     * <p>So: use {@link #getChannel()} to answer the caller, and this to decide where later messages go.
+     * Detached is not always hopeless — a channel can be detached for other reasons while the bot is
+     * perfectly able to post in it, and then the guild's own cache holds the real one, which is what this
+     * returns. It is empty only when there is genuinely nowhere to write, and a command whose whole purpose
+     * is to write there should say so to the caller rather than fail quietly later.
+     *
+     * <p>Never a REST call, like {@link #getMember()}: a command may run on a thread that cannot wait.
+     *
+     * @return the channel to keep, or empty when nothing can be written to it
+     */
+    default Optional<MessageChannel> getAttachedChannel() {
+        MessageChannel channel = getChannel();
+        if (channel == null) {
+            return Optional.empty();
+        }
+        if (!channel.isDetached()) {
+            return Optional.of(channel);
+        }
+        return getGuild()
+                .map(guild -> guild.getChannelById(GuildMessageChannel.class, channel.getIdLong()))
+                .filter(cached -> !cached.isObfuscated())
+                .map(MessageChannel.class::cast);
+    }
 
     /**
      * Gets the locale of the user or guild.

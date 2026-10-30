@@ -81,6 +81,7 @@ errors:
   cannot_speak: "J''ai une réponse mais pas de voix : la synthèse vocale ne répond pas ({0}). Vérifie text_to_speech dans ma configuration."
   no_permission: "Tu n'as pas le droit de faire ça."
   already_transcribing: "Je transcris déjà ce serveur."
+  channel_not_writable: "Je ne peux pas écrire dans ce salon, la transcription n'a nulle part où aller. Lance la commande là où tu me vois publier."
   not_transcribing: "Je ne transcrivais rien."
   persona_usage: "Précise le champ et la valeur : /persona set field:tone value:familier"
   persona_unknown_field: "Il n''existe pas de champ de personnalité nommé {0}."

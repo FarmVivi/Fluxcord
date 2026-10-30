@@ -49,9 +49,12 @@ public abstract class MusicCommand {
             // "/volume" from the channel never brought it back, the saved state kept no text channel, and
             // after a restart the message was never updated again. An invocation with no channel (the
             // console, or a command the AI runs) leaves whatever anchor is already set alone.
-            if (ctx.getChannel() != null) {
-                player.setMessageChannel(ctx.getChannel());
-            }
+            //
+            // getAttachedChannel rather than getChannel: the anchor is written to for as long as the
+            // player lives, which is exactly the thing a detached interaction snapshot cannot do. Anchor
+            // to one and the player keeps working until the next track change, then dies on a scheduler
+            // thread with an ObfuscatedChannelException nobody is reading.
+            ctx.getAttachedChannel().ifPresent(player::setMessageChannel);
             return player;
         });
     }
