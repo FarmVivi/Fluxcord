@@ -100,6 +100,31 @@ Supported database drivers (the SQL dialect is auto-detected from the JDBC URL):
 
 Both drivers are bundled; no extra dependency is required.
 
+### TLS on MySQL / MariaDB URLs
+
+Both prefixes above are served by the MariaDB driver, and since its 4.x line that driver requires
+TLS by default: `sslMode` defaults to `verify-full`, so the server certificate **and** its hostname
+are checked. A database reachable only over plaintext, or one presenting a self-signed certificate,
+now fails to connect with a handshake error rather than silently falling back. Say what you want in
+the URL:
+
+| `sslMode` | What it does |
+| --- | --- |
+| `verify-full` | The default: TLS, certificate and hostname verified. |
+| `verify-ca` | TLS, certificate verified, hostname not. |
+| `trust` | TLS, nothing verified — encrypted but not authenticated. |
+| `allow` | TLS when the server announces it, plaintext otherwise. |
+| `disable` | No TLS. Reasonable for `localhost` or a trusted private network, nowhere else. |
+
+For example, a local database without TLS:
+
+```yaml
+url: "jdbc:mysql://localhost:3306/fluxcord?sslMode=disable"
+```
+
+If you are upgrading from a Fluxcord built against the 3.x driver and your database has no TLS, this
+is the one line you need to add; nothing else about the connection changed.
+
 Optional file-storage keys:
 
 - `data.storage.file.folder` (default: `data`)

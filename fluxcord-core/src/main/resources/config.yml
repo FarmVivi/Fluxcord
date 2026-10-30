@@ -40,6 +40,15 @@ data:
       # Supported drivers: MySQL/MariaDB and PostgreSQL. The dialect is detected from the URL prefix.
       #   MySQL/MariaDB: jdbc:mysql://localhost:3306/fluxcord  or  jdbc:mariadb://localhost:3306/fluxcord
       #   PostgreSQL:    jdbc:postgresql://localhost:5432/fluxcord
+      #
+      # The MariaDB driver (4.x) requires TLS by default and verifies the server certificate and
+      # hostname, which is what you want across a network. A database without TLS, or one with a
+      # self-signed certificate, is refused with a handshake error unless the URL says so:
+      #   ...?sslMode=disable       no TLS at all - only for localhost or a trusted private network
+      #   ...?sslMode=trust         TLS, certificate not verified
+      #   ...?sslMode=allow         TLS when the server offers it, plaintext otherwise
+      #   ...?sslMode=verify-full   the default
+      # This applies to jdbc:mysql:// too: that prefix is served by the same MariaDB driver here.
       url: "jdbc:mysql://localhost:3306/fluxcord"
       username: username
       password: password
