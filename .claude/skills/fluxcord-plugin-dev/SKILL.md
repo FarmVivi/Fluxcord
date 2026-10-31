@@ -53,6 +53,8 @@ Verify what you used against the code, fix or delete wrong lines, add dated **Le
 
 ## Learnings
 - 2026-09-19: Initial audit.
+- 2026-10-31: **A plugin that keeps state must not save it only in `onDisable`.** That covers a graceful stop - SIGTERM, a normal Kubernetes redeploy - and nothing else; an OOM kill runs no shutdown hook and the pod has a memory limit. The pattern to copy is `MusicPlayer`: `saveState()` on every meaningful change **plus** a periodic autosave while there is something to save (the timer exists for values that drift with no event to hang a save on, like a playback position). `AIAudioPlugin` autosaves on the wake gate's existing scheduler rather than starting another - prefer reusing a plugin's tick thread.
+- 2026-10-31: **Two traps when making such a save frequent.** (1) Make it quiet first: with a shared database, a save that always writes is a write per guild per tick forever, and `remove()` on a key that is not there is also a write - keep what was last written and skip an unchanged scope. (2) **If the restore path has a TTL, a quiet save will eventually break it**: the stored timestamp ages in place, and a session alive longer than the TTL is discarded on the next restart - the original bug, reintroduced by the fix for it, visible only after an hour. Refresh an unchanged state once it is halfway to expiring.
 
 ## Audit checklist for a generated plugin (2026-09-22)
 
