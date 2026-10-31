@@ -65,7 +65,7 @@ Audit date: 2026-09-19. State of the code base then: ~28 k lines of Java in the 
 - `docs/` describe intended behaviour; after each chantier update the relevant page.
 
 ### Found in the field
-- [~] **M1 — YouTube playback.** `youtube-source 1.18.2` (latest release, 2026-07) is broken by YouTube-side changes (issues #226 #236 #240; IOS client version, TV client, cipher). Fixed on master but unreleased (#244). 2026-09-20: pinned the per-commit snapshot `2be8e542…-SNAPSHOT` (2026-09-17) from `maven.lavalink.dev/snapshots` — playback works again through the fallback clients, but the first attempt still logs `Must find sig function` for player `4fd832e7` (noisy, not fatal). **Switch back to a release as soon as 1.18.3 exists**; consider `remote poToken` (PR #229) if "Sign in to confirm" comes back.
+- [~] **M1 — YouTube playback.** `youtube-source 1.18.2` (latest release, 2026-07) is broken by YouTube-side changes (issues #226 #236 #240; IOS client version, TV client, cipher). Fixed on master but unreleased (#244). 2026-09-20: pinned the per-commit snapshot `2be8e542…-SNAPSHOT` (2026-09-17) from `maven.lavalink.dev/snapshots` — playback works again through the fallback clients, but the first attempt still logs `Must find sig function` for player `4fd832e7` (noisy, not fatal). **Switch back to a release as soon as 1.18.3 exists**; consider `remote poToken` (PR #229) if "Sign in to confirm" comes back. Checked 2026-10-31: still no 1.18.3 (1.18.2, 2026-07-27, is the latest release), and `2be8e542…` is both still resolvable from the snapshot repository (HTTP 200, not just a local cache hit) and the most recent per-commit build published - so there is nothing newer to move to. Re-check periodically: a per-commit snapshot disappearing would break a clean CI build, not ours.
 
 ## Decisions log
 
@@ -550,9 +550,10 @@ the two that mattered most were only found by watching the bot answer a human be
   is the structural answer. Renaming the bot to a common French word visibly improved it, which is the same
   finding from the other end: an English name a French transcriber cannot spell is a bot that never wakes,
   and the failure is completely silent.
-- [ ] **YouTube playback breaks intermittently**: `Must find sig function from script: …/base.js`. The
-  bundled `youtube-source` is behind a YouTube change. Sometimes the iOS client fallback saves the track,
-  sometimes it does not. A dependency bump, not our code.
+- [x] **YouTube playback breaks intermittently**: `Must find sig function from script: …/base.js`.
+  CLOSED 2026-10-04 (`3bf57ac6`). "A dependency bump, not our code" was the wrong conclusion, and
+  "sometimes the iOS fallback saves the track" was the clue: the chain aborts on the first client
+  that throws, and `WEB` ran before `IOS`. See the closed entry further down for the measurements.
 - [ ] **The model cannot choose to remember anything.** It can *read* its memory (three recall tools) and
   everything said is stored automatically, but there is no tool to note a durable fact — so a preference
   stated once is only ever re-read from the raw transcript. A `remember_fact` / `forget_fact` pair over the
@@ -658,7 +659,11 @@ Not committed yet, deliberately: the suite passes but a person has not heard the
 
 ### Reported by the maintainer, not diagnosed
 
-- [ ] **"Add me 10 tracks" adds two.** Reported 2026-10-04. The turn-based path caps a tool round at
+- [x] **"Add me 10 tracks" adds two.** CLOSED 2026-10-04 (`c61f615a`), and the diagnosis below is
+  wrong: measured live, Gemini sent ten frames of one call each, so no batching was involved. The
+  cause was a NullPointerException on a null `MessageChannel`. See "VALIDATED LIVE" further down.
+  Kept as written because being confidently wrong in public is the useful part.
+- [ ] ~~Reported 2026-10-04.~~ The turn-based path caps a tool round at
   `max_tool_tokens: 600` (`max_reply_tokens` is 220), which could truncate a list of calls - but the
   realtime path, which is what was being used, has **no token cap of ours at all**: nothing in
   `GeminiRealtime` sets one. So the cap is probably not the explanation, and the first thing to check is
@@ -709,8 +714,12 @@ Not committed yet, deliberately: the suite passes but a person has not heard the
   `expecting [Fluxcord, Poubelle]`, and replaying the same audio with the same hint recovers the name 3/3
   at temperature 0 - yet live it was dropped. A general chat model doing ASR is the suspect; a dedicated
   model is the structural answer.
-- [ ] **YouTube playback breaks intermittently** (`Must find sig function`): the bundled `youtube-source`
-  is behind a YouTube change. A dependency bump, not our code.
+- [x] **YouTube playback breaks intermittently** (`Must find sig function`). CLOSED 2026-10-04
+  (`3bf57ac6`) - and it was never a dependency bump. The client chain aborts on the first client that
+  throws, and `WEB` (which runs the signature cipher) ran before `IOS`, so a cipher failure killed
+  tracks the next client would have played. Measured by counting which client served each stream:
+  76/76 by IOS against 17 cipher deaths. Reordering `IosWithThumbnail` first took cipher failures to
+  zero.
 - [ ] **The model cannot choose to remember anything.** Three recall tools, no write tool, so a preference
   stated once is only ever re-read from the raw transcript. `remember_fact` / `forget_fact` over the
   plugin's storage, with the same scopes as the recalls, is the natural addition.
@@ -725,7 +734,7 @@ Not committed yet, deliberately: the suite passes but a person has not heard the
   observed as `ClassNotFoundException: gnu.trove...$ValueView` in JDA's audio websocket, followed by a
   shutdown that could no longer complete because its own path needed classes too.
 
-### The music player message rate-limits Discord (2026-10-04, measured, not yet fixed)
+### The music player message rate-limits Discord (2026-10-04, measured - FIXED the same day)
 
 Victor noticed it live: "ça rate limit de fou sur le message de musique". Measured in the log, not guessed:
 a sustained **ten 429s per minute for five minutes** on `PATCH /channels/{id}/messages/{id}`, each with
@@ -934,12 +943,15 @@ in ten. The failing titles are mostly official music videos - but "Daft Punk - A
 track plays on a later attempt.
 
 Two consequences worth acting on, neither done:
-- [ ] **A track that fails on the cipher is dropped, not retried.** `onTrackException` goes straight to
-  `nextTrack()`. Since the same track demonstrably works on a second attempt, one retry would recover most
-  of this ten percent. Needs a decision on how many attempts and whether to back off, which is why it is
-  written down rather than done.
-- [ ] `yt-cipher` would close the gap properly, and is the upstream recommendation. Deferred by Victor, and
-  that was right - but "about one track in ten" is the size of what deferring costs.
+- [x] **A track that fails on the cipher is dropped, not retried.** DONE 2026-10-04: `TrackScheduler`
+  retries once, carrying the position over (a clone starts at zero - Victor spotted that within a
+  minute), and `lastRetried` is cleared in `onTrackStart` only when a *different* track starts.
+  Clearing it for the same track hands the budget back before the second failure and loops forever;
+  `aSecondFailureMovesOnInsteadOfLoopingForever` pins that.
+- [ ] `yt-cipher` would close the gap properly, and is the upstream recommendation. Deferred by Victor,
+  and that was right - and since the client reorder the cost of deferring is no longer "one track in
+  ten" but zero observed failures. It remains the only clean answer to local cipher decoding, so it
+  stays here; it is no longer urgent.
 
 ### Three defects behind "it skips the music and the player is stale" (2026-10-04)
 
@@ -1090,3 +1102,43 @@ Two things this turned up on the way:
 - The uncommitted block of 2026-10-04 above is still uncommitted, still green, still waiting on his word.
 - Unrelated to the bumps: a channel restored from saved state is attached but could be *obfuscated*, which
   fails as a permission error instead. Pre-existing, out of scope, noted here rather than fixed quietly.
+
+## 2026-10-31 — closing what was already closed, and one dead step
+
+A short pass with no code in it, because the plan had become the problem. Of the items still marked open,
+five had been fixed by the fourteen commits of 2026-10-04 and one carried an instruction from 2026-09-20
+that nobody had gone back to answer. A plan that lists solved defects as open is worse than a short plan:
+the next session either redoes the work or stops trusting the file.
+
+Closed, each pointing at the commit that did it: the cipher retry in `TrackScheduler`, "add me ten tracks"
+(with the wrong diagnosis kept visible, because that is the useful part), both copies of the `Must find sig
+function` item, and the rate-limit heading that still read "not yet fixed". `yt-cipher` stays open but its
+price changed: deferring it used to cost about one track in ten and now costs zero observed failures.
+
+**M1 answered.** There is still no `youtube-source` 1.18.3 — 1.18.2 (2026-07-27) remains the latest release
+— so the per-commit pin stays. Two things worth having checked rather than assumed: `2be8e542…` is still
+served by the snapshot repository (HTTP 200, so the local build was not merely a `~/.m2` cache hit), and it
+is the most recent per-commit build published, so there is nothing newer to move to either. The standing
+risk is unchanged and worth re-checking now and then: a per-commit snapshot that gets cleaned up breaks a
+clean CI build long before it breaks a developer's.
+
+**Removed the dead `Deploy` step** from `.github/workflows/docker-image-ci.yml` (hygiene item, decided
+2026-09-20). It fired only on a `refs/tags/v*` push, and there is no v3 release, so it had never run; the
+v2 VPS it posted to is gone and deployments are handled outside this repository. Nothing else references
+`DEPLOY_WEBHOOK_URL` — the repository secret can be deleted, which is Victor's to do. All eight workflows
+still parse.
+
+### Next, and it needs a decision
+
+**Persistence still only survives a graceful stop** (the item above). Both plugins save in `onDisable`, so
+a SIGTERM — a normal Kubernetes redeploy — is covered and an OOM kill is not, and the pod's memory limit
+leaves that possible. Two shapes, and they are not equivalent:
+
+- **Periodic save.** A scheduler per plugin, an interval in config. Blunt, obvious, bounded loss, and it
+  writes when nothing has changed.
+- **Save on change.** Each plugin calls `save()` when something meaningful happens. Closer to the root
+  cause, and on the FILE backend the storage layer's own per-scope debounce already coalesces the writes
+  for free — but the DB backend has no such debounce, so a chatty state would mean a write per change.
+
+Worth asking before building, because the second is the better design only if the write volume is actually
+small, and that is a question about what the music player saves and how often.

@@ -83,9 +83,3 @@ jobs:
           rm -rf /tmp/.buildx-cache
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache
 
-      # Déploiement de l'image Docker (optionnel)
-      - name: Deploy
-        if: ${{ startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push' }}
-        uses: joelwmale/webhook-action@v2.4.2
-        with:
-          url: ${{ secrets.DEPLOY_WEBHOOK_URL }}
