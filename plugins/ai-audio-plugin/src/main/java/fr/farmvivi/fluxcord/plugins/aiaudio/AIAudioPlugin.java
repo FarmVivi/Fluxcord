@@ -60,6 +60,8 @@ public class AIAudioPlugin extends AbstractPlugin {
     private SessionPersistence sessions;
     private boolean persistenceEnabled = true;
     private long persistenceTtlMillis = 3_600_000L;
+    /** How often the listening state is written down while the bot runs; see {@link #onPostEnable()}. */
+    private long persistenceSaveIntervalSeconds = 30L;
     private PersonaStore personaStore;
     private ConversationService conversation;
     private RealtimeService realtime;
@@ -96,6 +98,8 @@ public class AIAudioPlugin extends AbstractPlugin {
         persistenceEnabled = getConfiguration().getBoolean("conversation.persistence.enabled", true);
         int ttlSeconds = getConfiguration().getInt("conversation.persistence.ttl_seconds", 3600);
         persistenceTtlMillis = ttlSeconds <= 0 ? 0L : ttlSeconds * 1000L;
+        persistenceSaveIntervalSeconds =
+                getConfiguration().getInt("conversation.persistence.save_interval_seconds", 30);
         sessions = new SessionPersistence(this, getStorage(), logger, System::currentTimeMillis);
 
         if (settings.synthesisNeedsKey() || settings.transcriptionNeedsKey()) {
@@ -125,6 +129,31 @@ public class AIAudioPlugin extends AbstractPlugin {
             return;
         }
         sessions.restore(getContext().getDiscordAPI().getJDA(), persistenceTtlMillis);
+
+        // And from here on, keep writing it down. onDisable covers a graceful stop - a SIGTERM, a normal
+        // Kubernetes redeploy - and nothing else: an OOM kill runs no shutdown hook, and the pod has a
+        // memory limit. Until this existed, the bot came back from one having forgotten it was listening,
+        // which is the failure nobody notices in a channel that happens to be quiet. The music plugin has
+        // autosaved for the same reason since the beginning.
+        //
+        // Cheap because the save is quiet: it writes only when a guild's state actually changed, or when
+        // its timestamp is halfway to the TTL. Riding the gate's thread rather than starting another, since
+        // both are the same kind of work - a tick that is not latency-sensitive.
+        if (persistenceSaveIntervalSeconds > 0) {
+            gateTicker.scheduleWithFixedDelay(this::saveSessions, persistenceSaveIntervalSeconds,
+                    persistenceSaveIntervalSeconds, java.util.concurrent.TimeUnit.SECONDS);
+        }
+    }
+
+    /** The periodic save, guarded so that one failure does not kill the scheduled task. */
+    private void saveSessions() {
+        try {
+            sessions.save(getContext().getDiscordAPI().getJDA(), persistenceTtlMillis);
+        } catch (RuntimeException e) {
+            // scheduleWithFixedDelay cancels the task on a thrown exception, silently, and then nothing is
+            // ever saved again - the one failure mode worse than not having the autosave at all.
+            logger.debug("Periodic listening-state save failed", e);
+        }
     }
 
     @Override
@@ -132,7 +161,7 @@ public class AIAudioPlugin extends AbstractPlugin {
         // Before anything is torn down: the state is read from the live services, and shutdown() empties
         // them. The music plugin saves at the same point and for the same reason.
         if (sessions != null && persistenceEnabled) {
-            sessions.save(getContext().getDiscordAPI().getJDA());
+            sessions.save(getContext().getDiscordAPI().getJDA(), persistenceTtlMillis);
         }
         if (wakeGate != null) {
             wakeGate.shutdown();

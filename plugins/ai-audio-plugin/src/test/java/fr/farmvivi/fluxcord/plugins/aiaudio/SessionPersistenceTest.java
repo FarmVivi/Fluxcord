@@ -18,7 +18,9 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
@@ -38,6 +40,8 @@ import static org.mockito.Mockito.when;
 class SessionPersistenceTest {
 
     private static final long NOW = 1_000_000L;
+    /** The time-to-live every test here applies, so the refresh threshold is half of it. */
+    private static final long TTL = 3_600_000L;
     private static final String GUILD_ID = "g1";
     private static final String VOICE_ID = "v1";
     private static final String TEXT_ID = "t1";
@@ -101,8 +105,8 @@ class SessionPersistenceTest {
         when(conversation.isActive(guild)).thenReturn(true);
         when(audioManager.getConnectedChannel()).thenReturn(voice);
 
-        persistence.save(jda);
-        persistence.restore(jda, 3_600_000L);
+        persistence.save(jda, TTL);
+        persistence.restore(jda, TTL);
 
         verify(audioManager).openAudioConnection(voice);
         verify(speech).start(any(), any());
@@ -126,8 +130,8 @@ class SessionPersistenceTest {
         when(conversation.isActive(guild)).thenReturn(true);
         when(audioManager.getConnectedChannel()).thenReturn(voice);
 
-        persistence.save(jda);
-        persistence.restore(jda, 3_600_000L);
+        persistence.save(jda, TTL);
+        persistence.restore(jda, TTL);
 
         verify(conversation).start(any(), eq(text));
         // And listening does NOT become publishing. Victor ran "/converse", never "/transcribe", and
@@ -147,8 +151,8 @@ class SessionPersistenceTest {
         when(conversation.outputFor(GUILD_ID)).thenReturn(java.util.Optional.empty());
         when(audioManager.getConnectedChannel()).thenReturn(voice);
 
-        persistence.save(jda);
-        persistence.restore(jda, 3_600_000L);
+        persistence.save(jda, TTL);
+        persistence.restore(jda, TTL);
 
         verify(speech).start(any(), eq(text));
     }
@@ -162,10 +166,10 @@ class SessionPersistenceTest {
         when(speech.isActive(guild)).thenReturn(true);
         when(speech.outputFor(guild)).thenReturn(java.util.Optional.empty());
         when(audioManager.getConnectedChannel()).thenReturn(voice);
-        persistence.save(jda);
+        persistence.save(jda, TTL);
 
         when(speech.isActive(guild)).thenReturn(false);
-        persistence.save(jda);
+        persistence.save(jda, TTL);
 
         assertTrue(storage.getGuildStorage(GUILD_ID).get(SessionPersistence.STATE_KEY, java.util.Map.class)
                 .isEmpty(), "the state of a guild that stopped listening is cleared, not kept");
@@ -177,10 +181,10 @@ class SessionPersistenceTest {
         when(speech.isActive(guild)).thenReturn(true);
         when(speech.outputFor(guild)).thenReturn(java.util.Optional.empty());
         when(audioManager.getConnectedChannel()).thenReturn(voice);
-        persistence.save(jda);
+        persistence.save(jda, TTL);
 
         clock.addAndGet(7_200_000L);
-        persistence.restore(jda, 3_600_000L);
+        persistence.restore(jda, TTL);
 
         verify(audioManager, never()).openAudioConnection(any());
         assertTrue(storage.getGuildStorage(GUILD_ID).get(SessionPersistence.STATE_KEY, java.util.Map.class)
@@ -193,7 +197,7 @@ class SessionPersistenceTest {
         when(speech.isActive(guild)).thenReturn(true);
         when(speech.outputFor(guild)).thenReturn(java.util.Optional.empty());
         when(audioManager.getConnectedChannel()).thenReturn(voice);
-        persistence.save(jda);
+        persistence.save(jda, TTL);
 
         Member bot = mock(Member.class);
         User botUser = mock(User.class);
@@ -202,7 +206,7 @@ class SessionPersistenceTest {
         List<Member> onlyTheBot = List.of(bot);
         when(voice.getMembers()).thenReturn(onlyTheBot);
 
-        persistence.restore(jda, 3_600_000L);
+        persistence.restore(jda, TTL);
 
         verify(audioManager, never()).openAudioConnection(any());
         verify(speech, never()).start(any(), any());
@@ -213,10 +217,90 @@ class SessionPersistenceTest {
     void aGuildThatWasNotListeningIsNotResumed() {
         when(speech.isActive(guild)).thenReturn(false);
 
-        persistence.save(jda);
-        persistence.restore(jda, 3_600_000L);
+        persistence.save(jda, TTL);
+        persistence.restore(jda, TTL);
 
         verify(audioManager, never()).openAudioConnection(any());
         assertFalse(storage.getGuildStorage(GUILD_ID).exists(SessionPersistence.STATE_KEY));
+    }
+
+    // The periodic save: onDisable alone only covers a graceful stop, and an OOM kill is not one.
+
+    @Test
+    void savingAgainWithNothingChangedRewritesNothing() {
+        // Called every few seconds by the plugin, so a save that always writes would be a write per tick
+        // per guild, on a shared database, forever. Observable without counting writes: the stored
+        // timestamp is what a rewrite would change.
+        listening();
+        persistence.save(jda, TTL);
+        long first = savedAt();
+
+        clock.addAndGet(30_000L);
+        persistence.save(jda, TTL);
+
+        assertEquals(first, savedAt(), "an unchanged state is left exactly as it was");
+    }
+
+    @Test
+    void aChangeIsWrittenAtOnce() {
+        listening();
+        persistence.save(jda, TTL);
+        long first = savedAt();
+
+        clock.addAndGet(30_000L);
+        when(conversation.isActive(guild)).thenReturn(true);
+        persistence.save(jda, TTL);
+
+        assertNotEquals(first, savedAt(), "the state changed, so it is written");
+        assertEquals(Boolean.TRUE, stored().get("conversing"));
+    }
+
+    @Test
+    void aSessionListeningQuietlyLongerThanTheTtlStillComesBack() {
+        // The trap in not rewriting an unchanged state: its timestamp ages, and restore drops anything
+        // older than the TTL. Somebody listening in a quiet channel for two hours would have come back
+        // from a crash to nothing - a regression introduced by the optimisation, not by the original bug.
+        // So an unchanged state is refreshed once it is halfway to expiring.
+        listening();
+        persistence.save(jda, TTL);
+
+        for (int minute = 0; minute < 120; minute++) {
+            clock.addAndGet(60_000L);
+            persistence.save(jda, TTL);
+        }
+        persistence.restore(jda, TTL);
+
+        verify(audioManager).openAudioConnection(voice);
+        verify(speech).start(any(), any());
+    }
+
+    @Test
+    void withNoTtlThereIsNothingToKeepFresh() {
+        listening();
+        persistence.save(jda, 0L);
+        long first = savedAt();
+
+        clock.addAndGet(10 * 3_600_000L);
+        persistence.save(jda, 0L);
+
+        assertEquals(first, savedAt(), "nothing expires, so only a change is worth a write");
+    }
+
+    /** The common arrangement: this guild is listening in the voice channel, not conversing. */
+    private void listening() {
+        when(speech.isActive(guild)).thenReturn(true);
+        when(speech.outputFor(guild)).thenReturn(java.util.Optional.empty());
+        when(audioManager.getConnectedChannel()).thenReturn(voice);
+    }
+
+    @SuppressWarnings("unchecked")
+    private java.util.Map<String, Object> stored() {
+        return (java.util.Map<String, Object>) storage.getGuildStorage(GUILD_ID)
+                .get(SessionPersistence.STATE_KEY, java.util.Map.class).orElseThrow();
+    }
+
+    private long savedAt() {
+        Object value = stored().get("savedAtMs");
+        return value instanceof Number number ? number.longValue() : -1L;
     }
 }

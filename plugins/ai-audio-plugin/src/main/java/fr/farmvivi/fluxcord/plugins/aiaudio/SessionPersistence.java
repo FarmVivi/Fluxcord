@@ -9,7 +9,9 @@ import org.slf4j.Logger;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 
 /**
@@ -52,6 +54,14 @@ public class SessionPersistence {
     private static final String TRANSCRIPT_CHANNEL = "transcriptChannelId";
     private static final String SAVED_AT = "savedAtMs";
 
+    /**
+     * The last state written for each guild, without its timestamp: what a repeated save would rewrite.
+     *
+     * <p>Exists so that saving can be called often - see the periodic save - without turning into a write
+     * per tick. A guild absent from here has nothing stored.
+     */
+    private final Map<String, Map<String, Object>> written = new ConcurrentHashMap<>();
+
     private final AIAudioPlugin plugin;
     private final PluginDataStorageAdapter storage;
     private final Logger logger;
@@ -72,30 +82,68 @@ public class SessionPersistence {
      * left alone: somebody who ran {@code /converse stop} before the restart meant it, and a stale entry
      * would bring the bot back into a channel it was dismissed from.
      *
-     * @param jda the connected JDA, or null when the bot never got that far
+     * <p>Safe to call repeatedly, and that is the point: it is called on the way down <em>and</em> on a
+     * timer, because {@code onDisable} alone only covers a graceful stop. A SIGTERM - a normal Kubernetes
+     * redeploy - runs it; an OOM kill does not, and the pod has a memory limit. The music plugin has
+     * autosaved for exactly this reason since the beginning.
+     *
+     * <p>Repeated calls stay quiet: a guild whose state is unchanged is not rewritten. The one thing that
+     * must not go stale is {@link #SAVED_AT}, because {@code restore} drops state older than the TTL - a
+     * session listening quietly for longer than the TTL would otherwise be thrown away on the next restart,
+     * which is why an unchanged state is still refreshed once it is halfway to expiring.
+     *
+     * @param jda   the connected JDA, or null when the bot never got that far
+     * @param ttlMs the time-to-live {@code restore} will apply; zero or less means no limit, and then only
+     *              a change is worth a write
      */
-    public void save(JDA jda) {
+    public synchronized void save(JDA jda, long ttlMs) {
         if (jda == null || plugin.getSpeechRecognition() == null) {
             return;
         }
-        int kept = 0;
+        int listening = 0;
+        int changes = 0;
         for (Guild guild : jda.getGuilds()) {
-            if (write(guild)) {
-                kept++;
+            Outcome outcome = write(guild, ttlMs);
+            if (outcome != Outcome.NOT_LISTENING) {
+                listening++;
+            }
+            if (outcome == Outcome.WROTE || outcome == Outcome.CLEARED) {
+                changes++;
             }
         }
+        if (changes == 0) {
+            logger.debug("Listening state unchanged in {} guild(s), nothing written", listening);
+            return;
+        }
         storage.saveAll();
-        logger.info("Saved listening state for {} guild(s)", kept);
+        logger.info("Saved listening state for {} guild(s)", listening);
     }
 
-    /** @return true when this guild was listening and its state was written */
-    private boolean write(Guild guild) {
+    /** What a single guild's save turned out to be. */
+    private enum Outcome {
+        /** Listening, and the stored state already said so. */
+        UNCHANGED,
+        /** Listening, and the state was written. */
+        WROTE,
+        /** Not listening, and a stale entry was removed. */
+        CLEARED,
+        /** Not listening, and there was nothing stored. */
+        NOT_LISTENING
+    }
+
+    private Outcome write(Guild guild, long ttlMs) {
         var guildStorage = storage.getGuildStorage(guild.getId());
         AudioChannel voice = guild.getAudioManager().getConnectedChannel();
         boolean listening = plugin.getSpeechRecognition().isActive(guild);
         if (!listening || voice == null) {
+            // Only when something was stored: somebody who ran "/converse stop" meant it, and a stale entry
+            // would bring the bot back into a channel it was dismissed from. Removing a key that is not
+            // there is still a write on both backends, so it is worth not doing every tick.
+            if (written.remove(guild.getId()) == null) {
+                return Outcome.NOT_LISTENING;
+            }
             guildStorage.remove(STATE_KEY);
-            return false;
+            return Outcome.CLEARED;
         }
         Map<String, Object> state = new LinkedHashMap<>();
         state.put(VOICE_CHANNEL, voice.getId());
@@ -113,9 +161,40 @@ public class SessionPersistence {
         state.put(TRANSCRIPT_CHANNEL, plugin.getSpeechRecognition().outputFor(guild)
                 .map(MessageChannel::getId).orElse(null));
         state.put(CONVERSING, plugin.getConversation() != null && plugin.getConversation().isActive(guild));
-        state.put(SAVED_AT, (double) clock.getAsLong());
-        guildStorage.set(STATE_KEY, state);
-        return true;
+
+        long now = clock.getAsLong();
+        Map<String, Object> last = written.get(guild.getId());
+        if (Objects.equals(last, state) && !worthRefreshing(guildStorage, ttlMs, now)) {
+            return Outcome.UNCHANGED;
+        }
+        written.put(guild.getId(), state);
+
+        // The timestamp is deliberately not part of what is compared: it changes every time, so comparing it
+        // would make every save a write and defeat the whole point.
+        Map<String, Object> stored = new LinkedHashMap<>(state);
+        stored.put(SAVED_AT, (double) now);
+        guildStorage.set(STATE_KEY, stored);
+        return Outcome.WROTE;
+    }
+
+    /**
+     * Whether an otherwise unchanged state should be rewritten anyway, to keep its timestamp honest.
+     *
+     * <p>Halfway to the TTL, so a session that is still live is never within a save interval of being
+     * discarded by {@code restore}. With no TTL there is nothing to keep fresh.
+     */
+    private boolean worthRefreshing(fr.farmvivi.fluxcord.api.storage.ScopedStorage guildStorage,
+                                    long ttlMs, long now) {
+        if (ttlMs <= 0) {
+            return false;
+        }
+        Optional<Map> raw = guildStorage.get(STATE_KEY, Map.class);
+        if (raw.isEmpty()) {
+            return true;
+        }
+        Object savedAt = raw.get().get(SAVED_AT);
+        long age = now - (savedAt instanceof Number number ? number.longValue() : 0L);
+        return age >= ttlMs / 2;
     }
 
     /**

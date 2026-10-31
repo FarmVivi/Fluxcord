@@ -580,10 +580,11 @@ the two that mattered most were only found by watching the bot answer a human be
     allocated in it when the track starts, so this is not a flag flip. The two candidates are restarting the
     track at its position (audible) or decoding Opus to PCM inside the handler when ducking is on
     (lavaplayer ships an Opus decoder). Needs its own chantier, not a tail-end change.
-- [ ] **Persistence only survives a graceful stop.** `onDisable` is where both plugins save, so a SIGTERM
-  (a normal Kubernetes redeploy) is covered and an OOM kill is not — and the pod's memory limit is 768Mi.
-  The music plugin has always had this property; the AI plugin now shares it. A periodic save would close
-  the gap for both.
+- [x] **Persistence only survives a graceful stop.** DONE 2026-10-31, and the item was half wrong: the
+  music plugin does *not* have this property and never did. `MusicPlayer` has always had both
+  `ensureStateAutosave()` (periodic, while something is playing) and a `saveState()` on every meaningful
+  change. Only the AI plugin saved in `onDisable` alone, so only it lost its state to an OOM kill. It now
+  autosaves on the same thread as the wake gate. Written up below.
 
 ### Decided: who is the bot being spoken to (2026-10-04)
 
@@ -1128,17 +1129,30 @@ v2 VPS it posted to is gone and deployments are handled outside this repository.
 `DEPLOY_WEBHOOK_URL` — the repository secret can be deleted, which is Victor's to do. All eight workflows
 still parse.
 
-### Next, and it needs a decision
+### The AI plugin now writes down what it is listening to (2026-10-31)
 
-**Persistence still only survives a graceful stop** (the item above). Both plugins save in `onDisable`, so
-a SIGTERM — a normal Kubernetes redeploy — is covered and an OOM kill is not, and the pod's memory limit
-leaves that possible. Two shapes, and they are not equivalent:
+The decision this was going to need turned out not to exist, because the pattern was already in the
+repository. The open item said both plugins saved in `onDisable`; `MusicPlayer` in fact has *two* saves and
+always has - `saveState()` on every meaningful change, and `ensureStateAutosave()` on a timer while
+something is playing. So only the AI plugin was exposed, and the question "periodic or on-change?" was
+already answered by the plugin next door: both, for different reasons. The timer is there because a
+playback position drifts with no event to hang a save on.
 
-- **Periodic save.** A scheduler per plugin, an interval in config. Blunt, obvious, bounded loss, and it
-  writes when nothing has changed.
-- **Save on change.** Each plugin calls `save()` when something meaningful happens. Closer to the root
-  cause, and on the FILE backend the storage layer's own per-scope debounce already coalesces the writes
-  for free — but the DB backend has no such debounce, so a chatty state would mean a write per change.
+The AI plugin's state has no equivalent of a drifting position - five fields per guild, changed only by
+`/converse` and `/transcribe` - so it gets the timer alone, riding the wake gate's existing thread rather
+than starting another. `conversation.persistence.save_interval_seconds`, default 30, zero to switch it off.
 
-Worth asking before building, because the second is the better design only if the write volume is actually
-small, and that is a question about what the music player saves and how often.
+**The save had to become quiet before it could become frequent.** Called every thirty seconds, the old
+`save` would have been a write per guild per tick on a database shared by seven bots, forever - and
+`remove()` on a guild that is not listening is also a write. So `SessionPersistence` now remembers what it
+last wrote and skips a guild whose state is unchanged.
+
+**And that optimisation introduced a regression, which is the part worth remembering.** `restore` drops any
+state older than the TTL. Stop rewriting an unchanged state and its timestamp ages in place, so somebody
+listening in a quiet channel for longer than the hour-long TTL would come back from a crash to nothing -
+the original bug, reintroduced by the fix for it, in a form that only shows up after an hour. An unchanged
+state is therefore still refreshed once it is halfway to expiring: rare (a couple of writes an hour) and
+never within a save interval of being discarded. `aSessionListeningQuietlyLongerThanTheTtlStillComesBack`
+runs two simulated hours and pins it.
+
+Verified: full reactor green, 1388 tests, 4 new.

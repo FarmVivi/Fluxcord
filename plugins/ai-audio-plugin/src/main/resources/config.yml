@@ -174,6 +174,12 @@ conversation:
     # How old a saved state may be and still be acted on. Rejoining a voice channel somebody left hours ago
     # is not resuming, it is haunting. Zero means no limit.
     ttl_seconds: 3600
+    # How often the listening state is written down while the bot is running. Stopping cleanly saves it
+    # anyway, so this is for the stops that are not clean - an OOM kill or a lost node runs no shutdown
+    # hook, and the bot would come back having forgotten it was listening. Nothing is written when nothing
+    # changed, so a short interval is cheap. Zero switches the periodic save off and leaves only the save
+    # on shutdown.
+    save_interval_seconds: 30
 
   # The budget for a round that offers tools, which has to be much larger than max_reply_tokens above.
   # Measured: with 120, Gemma 4 E4B spent exactly 120 completion tokens thinking and came back with no tool
