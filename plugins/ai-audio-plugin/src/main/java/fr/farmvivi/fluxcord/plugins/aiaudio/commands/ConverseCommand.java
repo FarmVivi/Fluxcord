@@ -102,6 +102,15 @@ public class ConverseCommand extends AiAudioCommand {
         if (startedListening) {
             plugin.getConversation().ownListening(guild);
         }
+        // Running this command is itself being addressed, so the hosted session opens now rather than
+        // waiting to hear the name. The gate exists to avoid paying to overhear a channel nobody spoke to;
+        // somebody who just typed "/converse start" has spoken to it, and making them then say the name out
+        // loud before anything answers is a second request for something they already asked for.
+        if (plugin.getSettings().realtime().isUsable() && plugin.getWakeGate() != null
+                && plugin.getWakeGate().engage(guild, output, null)) {
+            ctx.replySuccess(text(ctx, "messages.converse_started_realtime"));
+            return;
+        }
         String wakeWord = plugin.getSettings().chat().wakeWord();
         ctx.replySuccess(wakeWord.isEmpty()
                 ? text(ctx, "messages.converse_started")

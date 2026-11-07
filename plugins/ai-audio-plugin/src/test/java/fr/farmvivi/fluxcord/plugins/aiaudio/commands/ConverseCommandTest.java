@@ -5,6 +5,7 @@ import fr.farmvivi.fluxcord.api.language.PluginLanguageAdapter;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AIAudioPlugin;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AiSettings;
 import fr.farmvivi.fluxcord.plugins.aiaudio.TextToSpeechService;
+import fr.farmvivi.fluxcord.plugins.aiaudio.conversation.WakeGate;
 import fr.farmvivi.fluxcord.plugins.aiaudio.realtime.RealtimeService;
 import fr.farmvivi.fluxcord.plugins.aiaudio.SpeechRecognitionService;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.AiEndpoint;
@@ -312,6 +313,32 @@ class ConverseCommandTest {
         verify(realtime).start(same(guild), any());
         verify(conversation, never()).start(any(), any());
         verify(plugin, never()).getSpeechRecognition();
+        ctxVerifier().replySuccess("messages.converse_started_realtime");
+    }
+
+    /**
+     * Running the command is itself being addressed. The gate exists so that nobody pays to overhear a
+     * channel that never spoke to the bot — not so that somebody who just typed "/converse start" has to
+     * then say its name out loud before anything happens.
+     */
+    @Test
+    void startingAConversationOpensTheHostedSessionWithoutWaitingForTheName() {
+        AiEndpoint local = new AiEndpoint("http://localhost:11434/v1", "", "m", Duration.ofSeconds(5));
+        AiSettings base = settings(true, "", local);
+        when(plugin.getSettings()).thenReturn(base.withRealtime(
+                new AiSettings.RealtimeSettings(true, AiSettings.RealtimeApi.GEMINI,
+                        "wss://example.test/v1/realtime", "sk-x", "Puck", "m", false,
+                        Duration.ofMillis(1200), true, Duration.ofSeconds(30),
+                        Duration.ofSeconds(12))));
+        WakeGate gate = mock(WakeGate.class);
+        when(plugin.getWakeGate()).thenReturn(gate);
+        when(gate.engage(same(guild), any(), isNull())).thenReturn(true);
+        when(speech.start(same(guild), isNull())).thenReturn(true);
+        when(conversation.start(same(guild), any())).thenReturn(true);
+
+        run("start");
+
+        verify(gate).engage(same(guild), any(), isNull());
         ctxVerifier().replySuccess("messages.converse_started_realtime");
     }
 
