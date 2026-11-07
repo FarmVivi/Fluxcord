@@ -302,6 +302,17 @@ conversation:
     # conversation moving on stops costing, long enough that a follow-up needs no name again.
     engage_window_seconds: 30
 
+    # Inside an open session, how long after the last exchange a sentence still counts as part of it -
+    # answered with no name in it and without asking anybody. Shorter than engage_window_seconds on
+    # purpose: that one decides how long we keep paying to listen, this one decides how long "the next
+    # thing said" is obviously still ours. Between the two is the grey zone, and that is the only place
+    # the local classifier is asked, so a longer value buys fewer questions and more interruptions.
+    #
+    # Measured: twelve seconds was too short. "tu m'as menti, fais la commande", said thirteen seconds
+    # after the bot had answered, fell outside by one second and the classifier then got it wrong - an
+    # obvious follow-up missed twice over. Twenty sits comfortably inside the thirty-second window.
+    follow_up_seconds: 20
+
 # Letting the model look something up on the web, as a tool call, so it can answer what it does not know
 # instead of answering last year's facts confidently.
 #

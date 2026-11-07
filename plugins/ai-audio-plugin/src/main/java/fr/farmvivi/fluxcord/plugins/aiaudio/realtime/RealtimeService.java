@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio.realtime;
 
+import fr.farmvivi.fluxcord.api.message.MessageStyle;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AIAudioPlugin;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AiSettings;
 import fr.farmvivi.fluxcord.plugins.aiaudio.SpeechRecognitionService;
@@ -57,6 +58,25 @@ public class RealtimeService {
                 thread.setDaemon(true);
                 return thread;
             });
+    /**
+     * The one thread that owns every conversation's turn-taking state.
+     *
+     * <p>Three threads used to mutate it at once - the audio thread, the ticker and the websocket - with no
+     * lock between them. They all post their work here instead. One thread for every guild is enough: the
+     * work is reading a frame and writing to a socket, and anything that waits on a network goes to
+     * {@link #workers}.
+     */
+    private final java.util.concurrent.Executor inbox;
+    /** Where the tools run, so a web search never holds back the audio queued behind it. */
+    private final java.util.concurrent.Executor workers;
+    /** Only the executors this service created itself, so {@link #shutdown()} closes no borrowed one. */
+    private final java.util.List<java.util.concurrent.ExecutorService> owned;
+    /**
+     * Who decides the grey-zone sentences - the ones with no name in them, arriving after the follow-up
+     * window, in a session that is still open. Injected so a test is never one network call away from a
+     * verdict it did not ask for.
+     */
+    private final fr.farmvivi.fluxcord.plugins.aiaudio.conversation.AddressedToUs addressedToUs;
     private final java.util.function.BiFunction<AiSettings.RealtimeSettings,
             java.util.function.Consumer<RealtimeProtocol.Event>, RealtimeLink> links;
 
@@ -69,7 +89,44 @@ public class RealtimeService {
                     LongSupplier clock) {
         this(plugin, memory, toolSources, clock,
                 (settings, sink) -> RealtimeSession.open(plugin.getHttp(), dialect(settings),
-                        settings.url(), settings.apiKey(), sink));
+                        settings.url(), settings.apiKey(), sink),
+                thread("ai-audio-realtime-inbox"), tools());
+    }
+
+    private RealtimeService(AIAudioPlugin plugin, ConversationMemory memory,
+                            java.util.List<ToolSource> toolSources, LongSupplier clock,
+                            java.util.function.BiFunction<AiSettings.RealtimeSettings,
+                                    java.util.function.Consumer<RealtimeProtocol.Event>, RealtimeLink> links,
+                            java.util.concurrent.ExecutorService inbox,
+                            java.util.concurrent.ExecutorService workers) {
+        this(plugin, memory, toolSources, clock, links, inbox, workers,
+                java.util.List.of(inbox, workers),
+                // The free local model, on the pool that already takes anything waiting on a network. Asked
+                // about sentences the bot might otherwise answer, which in a busy channel is most of them -
+                // paying a hosted model to decide whether to pay a hosted model is the wrong shape.
+                new fr.farmvivi.fluxcord.plugins.aiaudio.conversation.ModelAddressedToUs(
+                        plugin.getLogger(),
+                        new fr.farmvivi.fluxcord.plugins.aiaudio.ai.OpenAiChatModel(
+                                plugin.getSettings().chat().endpoint(), plugin.getHttp(),
+                                plugin.getSettings().chat().temperature(),
+                                plugin.getSettings().chat().reasoningEffort()),
+                        workers));
+    }
+
+    private static java.util.concurrent.ExecutorService thread(String name) {
+        return java.util.concurrent.Executors.newSingleThreadExecutor(daemon(name));
+    }
+
+    private static java.util.concurrent.ExecutorService tools() {
+        return java.util.concurrent.Executors.newCachedThreadPool(daemon("ai-audio-realtime-tools"));
+    }
+
+    private static java.util.concurrent.ThreadFactory daemon(String name) {
+        return runnable -> {
+            Thread thread = new Thread(runnable, name);
+            thread.setDaemon(true);
+            return thread;
+        };
     }
 
     /**
@@ -81,6 +138,23 @@ public class RealtimeService {
                     LongSupplier clock,
                     java.util.function.BiFunction<AiSettings.RealtimeSettings,
                             java.util.function.Consumer<RealtimeProtocol.Event>, RealtimeLink> links) {
+        // Inline: a test drives the threads itself, and asserting on what a background thread sent is how a
+        // suite starts sleeping for a tenth of a second to see if something happened yet.
+        this(plugin, memory, toolSources, clock, links, Runnable::run, Runnable::run, java.util.List.of(),
+                fr.farmvivi.fluxcord.plugins.aiaudio.conversation.AddressedToUs.never());
+    }
+
+    private RealtimeService(AIAudioPlugin plugin, ConversationMemory memory,
+                            java.util.List<ToolSource> toolSources, LongSupplier clock,
+                            java.util.function.BiFunction<AiSettings.RealtimeSettings,
+                                    java.util.function.Consumer<RealtimeProtocol.Event>, RealtimeLink> links,
+                            java.util.concurrent.Executor inbox, java.util.concurrent.Executor workers,
+                            java.util.List<java.util.concurrent.ExecutorService> owned,
+                            fr.farmvivi.fluxcord.plugins.aiaudio.conversation.AddressedToUs addressedToUs) {
+        this.addressedToUs = addressedToUs;
+        this.inbox = inbox;
+        this.workers = workers;
+        this.owned = owned;
         this.plugin = plugin;
         this.memory = memory;
         this.toolSources = toolSources == null ? java.util.List.of() : java.util.List.copyOf(toolSources);
@@ -150,8 +224,16 @@ public class RealtimeService {
                 // bot you summon anew for each question. Without it the session is simply open, nobody
                 // having vouched for anything, and the name is the only thing separating a question from a
                 // conversation between other people.
-                realtime.wakeLocally() ? spoken -> true
-                        : spoken -> settings.chat().isAddressedToUs(spoken, names));
+                // Not "always true": a turn opens on any packet at all, and JDA delivers packets for a
+                // cough, a keyboard or a chair. Answering one of those makes the bot announce itself into
+                // a room that said nothing - "yes, I'm here, how can I help?" - which is how a wake word
+                // used to be the thing accidentally preventing it. What is required now is that something
+                // was actually heard, not that the bot was named.
+                // The name, in both cases. It used to be "anything at all" once the gate had opened a
+                // session, which made the bot a participant in every conversation held in front of it. What
+                // the name does not settle, the follow-up window and then the classifier do.
+                spoken -> settings.chat().isAddressedToUs(spoken, names),
+                inbox, workers, addressedToUs, realtime.followUp().toMillis());
 
         String instructions = ConversationPrompt.systemMessageFor(snapshot, now);
         // The bot's own names go in the vocabulary, because they are what wakes it: a name the transcriber
@@ -289,7 +371,11 @@ public class RealtimeService {
             return;
         }
         try {
-            output.sendMessage(plugin.getLanguage().getString("errors.realtime_failed", message)).queue();
+            // The red box a command error gets. This is a failure, and a failure written as prose in a
+            // chat window reads as something the bot is saying rather than as something that went wrong.
+            output.sendMessageEmbeds(MessageStyle.ERROR.embed(
+                    plugin.getLanguage().getLanguageManager(),
+                    plugin.getLanguage().getString("errors.realtime_failed", message))).queue();
         } catch (RuntimeException e) {
             logger.warn("Could not report a realtime failure: {}", e.getMessage());
         }
@@ -346,5 +432,8 @@ public class RealtimeService {
     public void shutdown() {
         conversations.values().forEach(RealtimeConversation::close);
         conversations.clear();
+        // After the conversations, never before: closing one is work posted to the inbox, and a shut-down
+        // executor would silently drop it, leaving the sockets open.
+        owned.forEach(java.util.concurrent.ExecutorService::shutdown);
     }
 }

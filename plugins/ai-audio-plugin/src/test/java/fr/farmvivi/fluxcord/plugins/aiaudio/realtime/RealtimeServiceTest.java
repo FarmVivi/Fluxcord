@@ -22,6 +22,9 @@ import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.entities.channel.unions.AudioChannelUnion;
 import net.dv8tion.jda.api.managers.AudioManager;
 import org.junit.jupiter.api.BeforeEach;
+import fr.farmvivi.fluxcord.api.message.MessageStyle;
+import net.dv8tion.jda.api.entities.MessageEmbed;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
@@ -203,7 +206,12 @@ class RealtimeServiceTest {
 
         lastSink().accept(new RealtimeProtocol.Event.Failure("quota gone"));
 
-        verify(output).sendMessage("the live conversation failed");
+        // In the red box a command error gets, not as a line of prose: a failure written as prose in a
+        // chat window reads as something the bot is saying rather than as something that went wrong.
+        ArgumentCaptor<MessageEmbed> embed = ArgumentCaptor.forClass(MessageEmbed.class);
+        verify(output).sendMessageEmbeds(embed.capture());
+        assertEquals("the live conversation failed", embed.getValue().getDescription());
+        assertEquals(MessageStyle.ERROR.getColor().getColor(), embed.getValue().getColor());
     }
 
     @Test

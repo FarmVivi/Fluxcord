@@ -183,16 +183,32 @@ public interface RealtimeProtocol {
     String userAsked(String text);
 
     /**
-     * What a tool answered.
+     * What the tools answered, for a whole batch of calls at once.
      *
      * <p>Takes the whole call rather than its id because the two services disagree about what identifies a
      * result: OpenAI matches on the call id, Google wants the function's name as well.
      *
+     * <p><strong>Why a batch, and why a list of frames back.</strong> Google asks for several functions in
+     * one {@code toolCall} and its documented contract is that the client answers "with a list of
+     * FunctionResponse objects" — one {@code toolResponse} carrying all of them. Answering one at a time
+     * made it treat the first reply as the end of the tool phase and speak, which is how "add me ten
+     * tracks" turned into two tracks added. OpenAI is the opposite: each result is its own
+     * {@code conversation.item.create}. So a dialect is handed the whole batch and says how many frames it
+     * takes — one for Google, one per call for OpenAI — instead of the caller guessing.
+     *
+     * @param outcomes what the model asked for and what each tool found, in the order they were called
+     * @return the frames to send, in order; empty when there is nothing to answer
+     */
+    List<String> toolResults(List<ToolOutcome> outcomes);
+
+    /**
+     * One finished tool call: what was asked, and what came back.
+     *
      * @param call   what the model asked for
      * @param output what the tool found, as text
-     * @return the frame to send
      */
-    String toolResult(ChatModel.ToolCall call, String output);
+    record ToolOutcome(ChatModel.ToolCall call, String output) {
+    }
 
     /**
      * @param apiKey the configured key
@@ -267,8 +283,14 @@ public interface RealtimeProtocol {
         record SpeechStopped() implements Event {
         }
 
-        /** The model wants something looked up before it answers. */
-        record ToolCalled(ChatModel.ToolCall call) implements Event {
+        /**
+         * The model wants something looked up before it answers.
+         *
+         * <p>A list rather than one call, because Google asks for several at once and the batch boundary is
+         * what decides how they are answered — see {@link RealtimeProtocol#toolResults(List)}. A dialect
+         * that only ever asks for one hands over a list of one.
+         */
+        record ToolCalled(List<ChatModel.ToolCall> calls) implements Event {
         }
 
         /** The answer is finished. */

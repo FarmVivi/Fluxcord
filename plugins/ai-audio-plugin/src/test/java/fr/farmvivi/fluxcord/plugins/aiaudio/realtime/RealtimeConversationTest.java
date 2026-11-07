@@ -144,6 +144,26 @@ class RealtimeConversationTest {
     }
 
     @Test
+    void openingAlsoSendsWhereItIsAndWhatItIsCalledThere() {
+        // The defect this pins: the system message points at the context for the bot's own name - a server
+        // nickname is untrusted text and must stay out of the instructions - and this path sent no context
+        // at all. The bot therefore answered to the name in the configuration file, telling people "I am
+        // Fluxcord" in a server where its Discord account is called something else entirely.
+        // setUp cleared the list, so reopen to look at the opening frames.
+        sent.clear();
+        conversation.start(snapshot(), "You are Fluxcord.", "marin", "bot-1",
+                sink -> new RecordingLink());
+
+        String context = sent.stream()
+                .filter(frame -> frame.contains("conversation.item.create"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no user content was sent: " + sent));
+
+        assertTrue(context.contains("General"), "the channel it is in: " + context);
+        assertTrue(context.contains("My Server"), "the server it is on: " + context);
+    }
+
+    @Test
     void theFirstChunkFromSomebodyNamesThemAndLaterChunksDoNot() {
         conversation.hear("u1", "Victor", audio(480));
         conversation.hear("u1", "Victor", audio(480));
@@ -245,6 +265,23 @@ class RealtimeConversationTest {
         assertEquals("it says Spain won", result.get("output").getAsString());
         assertEquals("response.create", frame(sent.get(sent.size() - 1)).get("type").getAsString(),
                 "and the answer is asked to continue");
+    }
+
+    @Test
+    void everyCallOfABatchIsRunBeforeTheAnswerIsAskedToContinue() {
+        // The defect this pins: the batch used to be answered one call at a time, each followed by its own
+        // request to continue, so the model spoke after the first result and the rest were never acted on.
+        // "Add me ten tracks" added two. Every call runs first; continuing is asked for once, at the end.
+        events.accept(new RealtimeProtocol.Event.ToolCalled(List.of(
+                new ChatModel.ToolCall("a", "search_the_web", "{\"q\":1}"),
+                new ChatModel.ToolCall("b", "search_the_web", "{\"q\":2}"),
+                new ChatModel.ToolCall("c", "search_the_web", "{\"q\":3}"))));
+
+        assertEquals(List.of("search_the_web {\"q\":1}", "search_the_web {\"q\":2}",
+                "search_the_web {\"q\":3}"), ran, "all of them, in order");
+        assertEquals(1, types().stream().filter("response.create"::equals).count(),
+                "asked to continue once, not once per call");
+        assertEquals("response.create", types().get(types().size() - 1), "and only after the last result");
     }
 
     @Test

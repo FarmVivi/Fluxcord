@@ -298,9 +298,8 @@ class RealtimeSessionTest {
         }
 
         @Override
-        public String toolResult(
-                fr.farmvivi.fluxcord.plugins.aiaudio.ai.ChatModel.ToolCall call, String output) {
-            return real.toolResult(call, output);
+        public java.util.List<String> toolResults(java.util.List<ToolOutcome> outcomes) {
+            return real.toolResults(outcomes);
         }
 
         @Override

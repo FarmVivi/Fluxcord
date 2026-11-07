@@ -105,6 +105,36 @@ class RealtimeTurnTakingTest {
         return sent.stream().anyMatch(frame -> frame.contains(fragment));
     }
 
+    // ---------------------------------------------------------------- what counts as activity
+
+    /**
+     * MEASURED, 2026-10-04. The idle clock used to be refreshed by every audio packet, and JDA delivers
+     * packets for a chair, a keyboard or a fan — so the quiet window could never elapse in a room that was
+     * not silent. The session WakeGate opens in order to close it again stayed open, and billed, for as
+     * long as anybody was in the channel.
+     */
+    @Test
+    void noiseDoesNotCountAsActivityAndCannotHoldASessionOpen() {
+        long before = conversation.lastActivityMs();
+
+        now.addAndGet(10_000);
+        somebodySpeaks();
+
+        assertEquals(before, conversation.lastActivityMs(),
+                "a packet is not a conversation; only something heard or answered is");
+    }
+
+    /** And the other half: a sentence the service wrote down does hold it open. */
+    @Test
+    void somethingActuallyHeardIsActivity() {
+        long before = conversation.lastActivityMs();
+
+        now.addAndGet(10_000);
+        events.accept(new RealtimeProtocol.Event.HeardFromSomebody("Fluxcord, tu es la ?"));
+
+        assertTrue(conversation.lastActivityMs() > before);
+    }
+
     // ---------------------------------------------------------------- closing the turn
 
     @Test

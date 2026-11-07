@@ -667,7 +667,7 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
      */
     public record RealtimeSettings(boolean enabled, RealtimeApi api, String url, String apiKey, String voice,
                                    String model, boolean serviceDecidesTurns, Duration silence,
-                                   boolean wakeLocally, Duration engageWindow) {
+                                   boolean wakeLocally, Duration engageWindow, Duration followUp) {
 
         /**
          * The mini model, which is about a third of the flagship's price per minute of conversation and
@@ -698,6 +698,24 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
          * awkward "say my name again"; in the other it is a few cents.
          */
         private static final int DEFAULT_ENGAGE_WINDOW_SECONDS = 30;
+        /**
+         * How long after the last exchange a sentence needs no name and no second opinion.
+         *
+         * <p>Shorter than the session window on purpose, and the two do different jobs: the session window
+         * decides how long we keep paying to listen, this one decides how long "the next thing said" is
+         * still obviously part of the same exchange. Twelve seconds covers answering a question the bot
+         * just asked, or correcting what it just did, without claiming every sentence in a busy channel.
+         * Between this and the session window is the grey zone, and that is the only place the classifier
+         * is asked - so making this longer buys fewer questions and more interruptions, and shorter buys
+         * the opposite.
+         *
+         * <p>MEASURED live, 2026-10-04: twelve seconds was too short. "tu m as menti, fais la commande",
+         * said thirteen seconds after the bot had answered, fell outside the window by one second and the
+         * classifier then got it wrong - so an obvious follow-up went unanswered twice over. Twenty seconds
+         * sits comfortably inside the thirty-second session window: anything still being paid for is recent
+         * enough that a second-person sentence is far more likely to be ours than not.
+         */
+        private static final int DEFAULT_FOLLOW_UP_SECONDS = 20;
 
         public RealtimeSettings {
             api = api == null ? RealtimeApi.OPENAI : api;
@@ -723,21 +741,24 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
                                 String model) {
             this(enabled, api, url, apiKey, voice, model, true,
                     Duration.ofMillis(DEFAULT_REALTIME_SILENCE_MS), false,
-                    Duration.ofSeconds(DEFAULT_ENGAGE_WINDOW_SECONDS));
+                    Duration.ofSeconds(DEFAULT_ENGAGE_WINDOW_SECONDS),
+                    Duration.ofSeconds(DEFAULT_FOLLOW_UP_SECONDS));
         }
 
         /** Realtime settings from before the session was opened on demand, which means it was always open. */
         public RealtimeSettings(boolean enabled, RealtimeApi api, String url, String apiKey, String voice,
                                 String model, boolean serviceDecidesTurns, Duration silence) {
             this(enabled, api, url, apiKey, voice, model, serviceDecidesTurns, silence, false,
-                    Duration.ofSeconds(DEFAULT_ENGAGE_WINDOW_SECONDS));
+                    Duration.ofSeconds(DEFAULT_ENGAGE_WINDOW_SECONDS),
+                    Duration.ofSeconds(DEFAULT_FOLLOW_UP_SECONDS));
         }
 
         /** @return the settings used when nothing was configured */
         public static RealtimeSettings disabled() {
             return new RealtimeSettings(false, RealtimeApi.OPENAI, DEFAULT_URL, "", DEFAULT_VOICE, "",
                     false, Duration.ofMillis(DEFAULT_REALTIME_SILENCE_MS), true,
-                    Duration.ofSeconds(DEFAULT_ENGAGE_WINDOW_SECONDS));
+                    Duration.ofSeconds(DEFAULT_ENGAGE_WINDOW_SECONDS),
+                    Duration.ofSeconds(DEFAULT_FOLLOW_UP_SECONDS));
         }
 
         static RealtimeSettings from(Configuration config, Logger logger) {
@@ -762,7 +783,9 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
                             DEFAULT_REALTIME_SILENCE_MS)),
                     config.getBoolean("conversation.realtime.wake_locally", true),
                     Duration.ofSeconds(config.getInt("conversation.realtime.engage_window_seconds",
-                            DEFAULT_ENGAGE_WINDOW_SECONDS)));
+                            DEFAULT_ENGAGE_WINDOW_SECONDS)),
+                    Duration.ofSeconds(config.getInt("conversation.realtime.follow_up_seconds",
+                            DEFAULT_FOLLOW_UP_SECONDS)));
         }
 
         /**

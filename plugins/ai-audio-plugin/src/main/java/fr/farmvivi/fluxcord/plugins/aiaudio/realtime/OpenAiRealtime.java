@@ -7,6 +7,7 @@ import com.google.gson.JsonParser;
 import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.ChatModel;
 
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -186,17 +187,25 @@ public final class OpenAiRealtime implements RealtimeProtocol {
         return userText(text);
     }
 
+    /**
+     * @return one frame per result. This API has no batched form: each output is its own conversation item,
+     *         and it asks for no more than one call at a time anyway.
+     */
     @Override
-    public String toolResult(ChatModel.ToolCall call, String output) {
-        JsonObject item = new JsonObject();
-        item.addProperty("type", "function_call_output");
-        item.addProperty("call_id", call.id());
-        item.addProperty("output", output);
+    public List<String> toolResults(List<ToolOutcome> outcomes) {
+        List<String> frames = new ArrayList<>(outcomes.size());
+        for (ToolOutcome outcome : outcomes) {
+            JsonObject item = new JsonObject();
+            item.addProperty("type", "function_call_output");
+            item.addProperty("call_id", outcome.call().id());
+            item.addProperty("output", outcome.output());
 
-        JsonObject frame = new JsonObject();
-        frame.addProperty("type", "conversation.item.create");
-        frame.add("item", item);
-        return frame.toString();
+            JsonObject frame = new JsonObject();
+            frame.addProperty("type", "conversation.item.create");
+            frame.add("item", item);
+            frames.add(frame.toString());
+        }
+        return List.copyOf(frames);
     }
 
     @Override
@@ -266,8 +275,8 @@ public final class OpenAiRealtime implements RealtimeProtocol {
             return new Event.Ignored("a tool call with no name or no id");
         }
         String arguments = string(json, "arguments");
-        return new Event.ToolCalled(new ChatModel.ToolCall(callId, name,
-                arguments.isEmpty() ? "{}" : arguments));
+        return new Event.ToolCalled(List.of(new ChatModel.ToolCall(callId, name,
+                arguments.isEmpty() ? "{}" : arguments)));
     }
 
     /** The service nests its errors; a flat string is accepted too, since one proxy in front of it will. */

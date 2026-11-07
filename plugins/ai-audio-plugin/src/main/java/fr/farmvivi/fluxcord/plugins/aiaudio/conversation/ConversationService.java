@@ -3,6 +3,7 @@ package fr.farmvivi.fluxcord.plugins.aiaudio.conversation;
 import fr.farmvivi.fluxcord.api.audio.PcmAudio;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AIAudioPlugin;
 import fr.farmvivi.fluxcord.plugins.aiaudio.AiSettings;
+import fr.farmvivi.fluxcord.api.message.MessageStyle;
 import fr.farmvivi.fluxcord.plugins.aiaudio.ai.ChatModel;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationContext;
 import fr.farmvivi.fluxcord.plugins.aiaudio.memory.ConversationMemory;
@@ -299,8 +300,10 @@ public class ConversationService {
             return;
         }
         try {
-            output.sendMessage(plugin.getLanguage().getString("errors.cannot_speak",
-                    String.valueOf(cause.getMessage()))).queue();
+            output.sendMessageEmbeds(MessageStyle.ERROR.embed(
+                    plugin.getLanguage().getLanguageManager(),
+                    plugin.getLanguage().getString("errors.cannot_speak",
+                            String.valueOf(cause.getMessage())))).queue();
         } catch (RuntimeException e) {
             logger.warn("Could not report the speech failure: {}", e.getMessage());
         }
@@ -331,6 +334,8 @@ public class ConversationService {
                 return answer;
             }
             messages.add(ChatModel.Message.assistantToolCalls(answer.toolCalls()));
+            logger.debug("The model asked for {} tool call(s): {}", answer.toolCalls().size(),
+                    answer.toolCalls().stream().map(c -> c.name() + c.arguments()).toList());
             for (ChatModel.ToolCall call : answer.toolCalls()) {
                 String result = run(call, snapshot, asker);
                 logger.debug("Tool {} answered {} character(s)", call.name(), result.length());
@@ -366,6 +371,10 @@ public class ConversationService {
      * from a round where it was offered one, and either way telling it so is something it can act on.
      */
     private String run(ChatModel.ToolCall call, PersonaSnapshot snapshot, Turn asker) {
+        // Every tool, at the one place they all pass through on this path; see the twin in
+        // RealtimeConversation.
+        logger.debug("Tool call: {}({}) for {}", call.name(), call.arguments(),
+                asker == null ? "nobody in particular" : asker.speaker());
         for (ToolSource source : toolSources) {
             if (source.handles(call.name())) {
                 return source.execute(call, snapshot, clock.getAsLong(), asker);

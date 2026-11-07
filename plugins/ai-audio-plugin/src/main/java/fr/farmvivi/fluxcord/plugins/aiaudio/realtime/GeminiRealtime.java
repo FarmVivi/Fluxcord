@@ -275,26 +275,36 @@ public final class GeminiRealtime implements RealtimeProtocol {
         return frame.toString();
     }
 
+    /**
+     * @return one frame, whatever the batch size. Every result of a {@code toolCall} goes back in a single
+     *         {@code toolResponse}, which is what the published contract asks for: answering them one frame
+     *         at a time made the service act on the first and start speaking, dropping the rest.
+     */
     @Override
-    public String toolResult(ChatModel.ToolCall call, String output) {
-        JsonObject response = new JsonObject();
-        response.addProperty("result", output);
-
-        JsonObject functionResponse = new JsonObject();
-        if (call.id() != null && !call.id().isBlank()) {
-            functionResponse.addProperty("id", call.id());
+    public List<String> toolResults(List<ToolOutcome> outcomes) {
+        if (outcomes.isEmpty()) {
+            return List.of();
         }
-        functionResponse.addProperty("name", call.name());
-        functionResponse.add("response", response);
-
         JsonArray functionResponses = new JsonArray();
-        functionResponses.add(functionResponse);
+        for (ToolOutcome outcome : outcomes) {
+            ChatModel.ToolCall call = outcome.call();
+            JsonObject response = new JsonObject();
+            response.addProperty("result", outcome.output());
+
+            JsonObject functionResponse = new JsonObject();
+            if (call.id() != null && !call.id().isBlank()) {
+                functionResponse.addProperty("id", call.id());
+            }
+            functionResponse.addProperty("name", call.name());
+            functionResponse.add("response", response);
+            functionResponses.add(functionResponse);
+        }
         JsonObject toolResponse = new JsonObject();
         toolResponse.add("functionResponses", functionResponses);
 
         JsonObject frame = new JsonObject();
         frame.add("toolResponse", toolResponse);
-        return frame.toString();
+        return List.of(frame.toString());
     }
 
     /** @return no headers: this API authenticates by query parameter */
@@ -473,7 +483,8 @@ public final class GeminiRealtime implements RealtimeProtocol {
         if (!toolCall.has(FUNCTION_CALLS) || !toolCall.get(FUNCTION_CALLS).isJsonArray()) {
             return List.of(new Event.Ignored("a toolCall with no calls"));
         }
-        List<Event> events = new ArrayList<>();
+        // One event for the whole frame, not one per call: the batch is the unit the service answers in.
+        List<ChatModel.ToolCall> calls = new ArrayList<>();
         for (JsonElement element : toolCall.getAsJsonArray(FUNCTION_CALLS)) {
             if (!element.isJsonObject()) {
                 continue;
@@ -488,10 +499,10 @@ public final class GeminiRealtime implements RealtimeProtocol {
             String arguments = call.has("args") && call.get("args").isJsonObject()
                     ? call.getAsJsonObject("args").toString()
                     : "{}";
-            events.add(new Event.ToolCalled(new ChatModel.ToolCall(string(call, "id"), name, arguments)));
+            calls.add(new ChatModel.ToolCall(string(call, "id"), name, arguments));
         }
-        return events.isEmpty() ? List.of(new Event.Ignored("a toolCall with nothing callable"))
-                : List.copyOf(events);
+        return calls.isEmpty() ? List.of(new Event.Ignored("a toolCall with nothing callable"))
+                : List.of(new Event.ToolCalled(List.copyOf(calls)));
     }
 
     private static String transcript(JsonObject content, String member) {

@@ -1,5 +1,6 @@
 package fr.farmvivi.fluxcord.plugins.aiaudio.realtime;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import fr.farmvivi.fluxcord.api.audio.PcmAudio;
@@ -187,14 +188,38 @@ class GeminiRealtimeTest {
 
     @Test
     void aToolResultCarriesTheFunctionsNameAndNotOnlyItsId() {
-        // The reason toolResult takes the whole call: OpenAI matches on the id alone, this one does not.
-        JsonObject response = frame(gemini.toolResult(
-                        new ChatModel.ToolCall("call_abc", "search_the_web", "{}"), "it says Spain won"))
+        // The reason toolResults takes whole calls: OpenAI matches on the id alone, this one does not.
+        List<String> frames = gemini.toolResults(List.of(new RealtimeProtocol.ToolOutcome(
+                new ChatModel.ToolCall("call_abc", "search_the_web", "{}"), "it says Spain won")));
+        JsonObject response = frame(frames.get(0))
                 .getAsJsonObject("toolResponse").getAsJsonArray("functionResponses").get(0).getAsJsonObject();
 
         assertEquals("call_abc", response.get("id").getAsString());
         assertEquals("search_the_web", response.get("name").getAsString());
         assertEquals("it says Spain won", response.getAsJsonObject("response").get("result").getAsString());
+    }
+
+    @Test
+    void everyResultOfABatchGoesBackInOneFrameBecauseTheApiAnswersTheBatchNotTheCall() {
+        // Published contract: the client answers a toolCall "with a list of FunctionResponse objects". One
+        // frame per result made the service act on the first and start speaking, dropping the rest - which
+        // is how a request for ten tracks added two.
+        List<String> frames = gemini.toolResults(List.of(
+                new RealtimeProtocol.ToolOutcome(new ChatModel.ToolCall("a", "one", "{}"), "first"),
+                new RealtimeProtocol.ToolOutcome(new ChatModel.ToolCall("b", "two", "{}"), "second"),
+                new RealtimeProtocol.ToolOutcome(new ChatModel.ToolCall("c", "three", "{}"), "third")));
+
+        assertEquals(1, frames.size(), "one toolResponse, however many calls it answers");
+        JsonArray responses = frame(frames.get(0))
+                .getAsJsonObject("toolResponse").getAsJsonArray("functionResponses");
+        assertEquals(3, responses.size());
+        assertEquals("one", responses.get(0).getAsJsonObject().get("name").getAsString());
+        assertEquals("three", responses.get(2).getAsJsonObject().get("name").getAsString());
+    }
+
+    @Test
+    void nothingToAnswerSendsNothing() {
+        assertTrue(gemini.toolResults(List.of()).isEmpty());
     }
 
     // ---------------------------------------------------------------- the handshake
@@ -292,19 +317,22 @@ class GeminiRealtimeTest {
                 "{\"toolCall\":{\"functionCalls\":[{\"id\":\"c1\",\"name\":\"search_the_web\","
                         + "\"args\":{\"query\":\"qui a gagné\"}}]}}"));
 
-        assertEquals("c1", event.call().id());
-        assertEquals("search_the_web", event.call().name());
-        assertEquals("{\"query\":\"qui a gagné\"}", event.call().arguments());
+        assertEquals(1, event.calls().size());
+        assertEquals("c1", event.calls().get(0).id());
+        assertEquals("search_the_web", event.calls().get(0).name());
+        assertEquals("{\"query\":\"qui a gagné\"}", event.calls().get(0).arguments());
     }
 
     @Test
-    void severalToolCallsInOneFrameAreAllReported() {
+    void severalToolCallsInOneFrameStayOneBatchBecauseThatIsHowTheyAreAnswered() {
         List<RealtimeProtocol.Event> events = gemini.parseAll(
                 "{\"toolCall\":{\"functionCalls\":["
                         + "{\"id\":\"a\",\"name\":\"one\",\"args\":{}},"
                         + "{\"id\":\"b\",\"name\":\"two\",\"args\":{}}]}}");
 
-        assertEquals(2, events.size());
+        assertEquals(1, events.size(), "one event for the frame, not one per call");
+        var called = assertInstanceOf(RealtimeProtocol.Event.ToolCalled.class, events.get(0));
+        assertEquals(List.of("one", "two"), called.calls().stream().map(ChatModel.ToolCall::name).toList());
     }
 
     @Test
@@ -312,7 +340,7 @@ class GeminiRealtimeTest {
         var event = assertInstanceOf(RealtimeProtocol.Event.ToolCalled.class,
                 gemini.parse("{\"toolCall\":{\"functionCalls\":[{\"id\":\"c\",\"name\":\"n\"}]}}"));
 
-        assertEquals("{}", event.call().arguments());
+        assertEquals("{}", event.calls().get(0).arguments());
     }
 
     @Test

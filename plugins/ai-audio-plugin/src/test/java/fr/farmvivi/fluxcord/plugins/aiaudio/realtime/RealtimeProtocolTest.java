@@ -189,8 +189,8 @@ class RealtimeProtocolTest {
 
     @Test
     void aToolResultGoesBackAsAConversationItem() {
-        JsonObject item = frame(OPENAI.toolResult(
-                new ChatModel.ToolCall("call_abc", "a_tool", "{}"), "it says Spain won"))
+        JsonObject item = frame(OPENAI.toolResults(List.of(new RealtimeProtocol.ToolOutcome(
+                new ChatModel.ToolCall("call_abc", "a_tool", "{}"), "it says Spain won"))).get(0))
                 .getAsJsonObject("item");
 
         assertEquals("function_call_output", item.get("type").getAsString());
@@ -241,7 +241,7 @@ class RealtimeProtocolTest {
                 "{\"type\":\"response.function_call_arguments.done\",\"call_id\":\"call_9\","
                         + "\"name\":\"search_the_web\",\"arguments\":\"{\\\"query\\\":\\\"rhubarbe\\\"}\"}");
 
-        ChatModel.ToolCall call = ((RealtimeProtocol.Event.ToolCalled) event).call();
+        ChatModel.ToolCall call = ((RealtimeProtocol.Event.ToolCalled) event).calls().get(0);
         assertEquals("call_9", call.id());
         assertEquals("search_the_web", call.name());
         assertEquals("{\"query\":\"rhubarbe\"}", call.arguments());
@@ -251,7 +251,7 @@ class RealtimeProtocolTest {
     void aToolCallWithNoArgumentsStillHasUsableJson() {
         ChatModel.ToolCall call = ((RealtimeProtocol.Event.ToolCalled) OPENAI.parse(
                 "{\"type\":\"response.function_call_arguments.done\",\"call_id\":\"c\",\"name\":\"n\"}"))
-                .call();
+                .calls().get(0);
 
         assertEquals("{}", call.arguments(), "so the tool's own parser has something to read");
     }

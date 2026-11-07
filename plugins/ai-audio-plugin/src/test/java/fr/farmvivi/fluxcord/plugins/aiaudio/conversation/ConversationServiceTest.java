@@ -29,6 +29,7 @@ import net.dv8tion.jda.api.entities.channel.unions.AudioChannelUnion;
 import net.dv8tion.jda.api.managers.AudioManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import net.dv8tion.jda.api.entities.MessageEmbed;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 
@@ -825,7 +826,7 @@ class ConversationServiceTest {
         waitForCalls(2);
         Thread.sleep(200);
 
-        verify(output, times(1)).sendMessage(anyString());
+        verify(output, times(1)).sendMessageEmbeds(any(MessageEmbed.class));
     }
 
     @Test
@@ -846,6 +847,6 @@ class ConversationServiceTest {
         waitForCalls(2);
         Thread.sleep(200);
 
-        verify(output, times(2)).sendMessage(anyString());
+        verify(output, times(2)).sendMessageEmbeds(any(MessageEmbed.class));
     }
 }
