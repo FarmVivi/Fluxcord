@@ -1168,3 +1168,10 @@ Changelogs read for every intermediate version; nothing breaking.
 | Taken | AWS SDK 2.57.11 (Transfer Manager/presigner/CRT bugfixes, none in a path we use), eclipse-temurin `25.0.5_8-jre-noble` (October CPU, still Java 25), actions/setup-java 6.2.0, docker/login-action 4.8.0, softprops/action-gh-release 3.0.4 |
 | Checked, nothing newer | lavaplayer 2.2.7, LavaSrc 4.8.3, JDAVE 0.1.8, JDA 6.7.0, maven image 3.9.16; youtube-source: the pinned commit `2be8e542` is still master's tip and 1.18.2 still the newest release |
 | Still not taken | slf4j 2.1.0-alpha1; temurin 26 (#862/#863) — 26 is a non-LTS release already superseded by 27, so moving off 25 should go straight to the next LTS, not to 26 |
+
+**Same day, later: Dependabot replaced by Renovate.** Dependabot's Maven job had been failing daily: its
+proxy refuses hosts that are not allowlisted, so `maven.lavalink.dev` (youtube-source, published nowhere
+else) answered 403 and the job died. Renovate (Mend app) now runs from `.github/renovate.json5`; the config
+was dry-run locally before the push, which caught one rule nobody would have guessed (setup-java's
+`java-version: '25'` is a managed dependency; Renovate wanted 27 there). Bumps go through the new
+`/update-deps` skill, which also holds the pending list (youtube-source pin, next Java LTS, slf4j alpha).

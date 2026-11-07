@@ -1,0 +1,76 @@
+// Renovate configuration for Fluxcord.
+// How bumps are reviewed and applied: .claude/skills/update-deps/SKILL.md
+// Validate after editing: npx --yes --package renovate -- renovate-config-validator --strict
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    // chore(deps): ... like the history
+    ':semanticCommitTypeAll(chore)',
+  ],
+  baseBranchPatterns: ['develop'],
+  timezone: 'Europe/Paris',
+  labels: ['dependencies'],
+
+  // One issue lists everything pending, rate-limited or awaiting approval.
+  dependencyDashboard: true,
+  dependencyDashboardTitle: 'Dependency dashboard (Renovate)',
+
+  // No automerge: every bump is read against its changelog first (update-deps skill).
+  automerge: false,
+  prConcurrentLimit: 10,
+  prHourlyLimit: 4,
+
+  // Security fixes bypass the schedule and the limits below.
+  osvVulnerabilityAlerts: true,
+  vulnerabilityAlerts: {
+    labels: ['dependencies', 'security'],
+  },
+
+  packageRules: [
+    {
+      description: 'AWS SDK ships almost daily: one PR a week, not one per release.',
+      matchPackageNames: ['software.amazon.awssdk:**'],
+      schedule: ['* 0-6 * * 1'],
+      groupName: 'AWS SDK',
+    },
+    {
+      description: 'LavaSrc artifacts are released together and must stay on the same version.',
+      matchPackageNames: ['com.github.topi314.lavasrc:**'],
+      groupName: 'LavaSrc',
+    },
+    {
+      description: 'JDAVE artifacts share one version property (jdave.version).',
+      matchPackageNames: ['club.minnced:jdave-**'],
+      groupName: 'JDAVE',
+    },
+    {
+      description: 'youtube-source is pinned to a per-commit snapshot of master (see the comment in plugins/music-plugin/pom.xml). Maven ordering ranks "2be8e542...-SNAPSHOT" above every release, so Renovate cannot see a release as newer. The pin is tracked by hand in the update-deps skill ("Pending upgrades").',
+      matchPackageNames: ['dev.lavalink.youtube:**'],
+      enabled: false,
+    },
+    {
+      description: 'Temurin tags look like 25.0.5_8-jre-noble; the default docker versioning reads "_8" as a pre-release.',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['eclipse-temurin'],
+      versioning: 'regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)_(?<build>\\d+)-(?<compatibility>.+)$',
+    },
+    {
+      description: 'Stay on the Java 25 LTS: non-LTS JDKs (26, 27, 28) go end-of-life after six months. Moving to the next LTS is a deliberate change (pom java.version, setup-java, JDAVE natives) - see the update-deps skill.',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['eclipse-temurin'],
+      allowedVersions: '/^25\\./',
+    },
+    {
+      description: 'Same LTS rule for java-version in the workflows (actions/setup-java), which Renovate reads as the java-jdk package.',
+      matchPackageNames: ['java-jdk'],
+      allowedVersions: '/^25(\\.|$)/',
+    },
+    {
+      description: 'Same LTS rule for the maven build image (tag 3.9.x-eclipse-temurin-25[-alpine]).',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['maven'],
+      allowedVersions: '/^3\\./',
+    },
+  ],
+}

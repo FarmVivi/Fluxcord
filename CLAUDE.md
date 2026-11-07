@@ -26,6 +26,7 @@ Skills are this project's "experts". Each `SKILL.md` is the owner of one system 
 | `/verify` | task | after any code change; picks the right Maven command, optional `--smoke` |
 | `/refactor-module <item>` | task | running one chantier from the refactoring plan |
 | `/skill-maintenance [--audit]` | meta | end of every task that used a skill; creating or cleaning skills |
+| `/update-deps [dep or PR]` | task | bumping libraries, plugins, JDK, Docker images, actions; owns `.github/renovate.json5` |
 | `fluxcord-plugin-system` | reference | PluginManager, classloader, lifecycle, reload |
 | `fluxcord-plugin-dev` | reference | writing/modifying a plugin, poms, adapters |
 | `fluxcord-commands` | reference | command API, parsers, slash sync, cooldowns |
@@ -124,7 +125,7 @@ JDA voice requires a DAVE (E2EE) implementation since 2026-03-01. `JDADiscordAPI
 - Log/comment language is mixed French/English; user-facing strings go through `lang/*.yml` (i18n), not literals.
 - Every module shipping `lang/*.yml` has a `LanguageFilesTest` guarding three traps that each cost a real bug: a key YAML 1.1 resolves as a non-string (an unquoted `off` becomes `false`), a key present in one locale only, and a lone apostrophe in a value taking `{0}` arguments (MessageFormat then eats the placeholder). Copy that test into any new module. `PluginLanguageAdapter` also logs a `WARN` for every lookup that misses, so a smoke log grepped for `no translation for` is the quickest i18n audit.
 - `Fluxcord.PRODUCTION` is derived from whether the version ends in `-SNAPSHOT`.
-- Dependabot opens many bump PRs; the memory notes about reviewing all intermediate changelogs apply here.
+- Dependency updates come from Renovate (`.github/renovate.json5`, dashboard issue "Dependency dashboard (Renovate)"; Dependabot version updates were removed 2026-11-07). Every bump goes through `/update-deps`: changelog of each intermediate version, impact on real usage, no automerge.
 - `*.jar` under `plugins/` and `fluxcord-core/run/` are git-ignored — never commit built plugins or a local config with a token.
 
 ## Git
