@@ -257,6 +257,30 @@ class RealtimeServiceTest {
         assertEquals("\"u2\" is speaking now.", spokenNameIn(sent.get(0)));
     }
 
+    @Test
+    void aSilentPacketIsNeverPaidForAndNeverOpensATurn() {
+        // The wiring, not the gate: VoiceGateTest proves the gate, and this proves the service put one in
+        // front of the session. MEASURED 2026-11-07 with the audio ungated - six hallucinated
+        // transcriptions in 40 seconds on an empty channel, holding a paid session open on nothing.
+        service.start(guild, output);
+        sent.clear();
+
+        UserAudio silence = mock(UserAudio.class);
+        User user = mock(User.class);
+        when(user.getId()).thenReturn("u1");
+        when(silence.getUser()).thenReturn(user);
+        when(silence.getAudioData(1.0)).thenReturn(new byte[PcmAudio.DISCORD_FRAME_SIZE]);
+
+        registeredReceiver().handleUserAudio(silence);
+
+        assertTrue(sent.isEmpty(),
+                "a chair, a keyboard and a fan all get a packet delivered; none of them is worth a frame");
+
+        registeredReceiver().handleUserAudio(packetFrom("u1"));
+
+        assertFalse(sent.isEmpty(), "and a voice still gets through");
+    }
+
     /** The text of the item that names the speaker, decoded - the raw frame has it JSON-escaped. */
     private static String spokenNameIn(String frame) {
         return JsonParser.parseString(frame).getAsJsonObject().getAsJsonObject("item")
@@ -264,13 +288,33 @@ class RealtimeServiceTest {
     }
 
     /** One 20 ms packet from a speaker, as JDA delivers it: big-endian, 48 kHz stereo. */
+    /**
+     * One packet of somebody's voice, as JDA delivers it.
+     *
+     * <p>Audible, and not the frame of zeros this used to be. Since 2026-11-07 the service puts a
+     * {@link fr.farmvivi.fluxcord.plugins.aiaudio.transcription.VoiceGate} in front of the hosted session,
+     * so a silent packet is held back instead of being paid for - which means a test that feeds silence is
+     * no longer testing what reaches the service.
+     */
     private static UserAudio packetFrom(String userId) {
         User user = mock(User.class);
         when(user.getId()).thenReturn(userId);
         UserAudio packet = mock(UserAudio.class);
         when(packet.getUser()).thenReturn(user);
-        when(packet.getAudioData(1.0)).thenReturn(new byte[PcmAudio.DISCORD_FRAME_SIZE]);
+        when(packet.getAudioData(1.0)).thenReturn(voiceFrame());
         return packet;
+    }
+
+    /** 20 ms of 48 kHz stereo at a fifth of full scale: about -23 dBFS, which is somebody talking. */
+    private static byte[] voiceFrame() {
+        byte[] samples = new byte[PcmAudio.DISCORD_FRAME_SIZE];
+        java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(samples)
+                .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        for (int i = 0; buffer.remaining() >= 2; i++) {
+            buffer.putShort((short) Math.round(
+                    Math.sin(2 * Math.PI * 220 * i / 48_000.0) * 0.2 * 32767));
+        }
+        return samples;
     }
 
     private Consumer<RealtimeProtocol.Event> lastSink() {

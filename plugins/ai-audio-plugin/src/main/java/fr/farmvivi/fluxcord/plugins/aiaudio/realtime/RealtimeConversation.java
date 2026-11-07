@@ -9,6 +9,9 @@ import fr.farmvivi.fluxcord.plugins.aiaudio.persona.PersonaSnapshot;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
+import fr.farmvivi.fluxcord.plugins.aiaudio.transcription.Loudness;
+import fr.farmvivi.fluxcord.plugins.aiaudio.transcription.VoiceGate;
+
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -61,6 +64,13 @@ public class RealtimeConversation {
 
     /** How many turns of context the classifier is given. Enough to see who asked what. */
     private static final int RECENT_TURNS = 6;
+
+    /**
+     * A marker a speech service writes instead of words: {@code <noise>}, {@code [BLANK_AUDIO]},
+     * {@code [inaudible]}. Angle and square brackets only - round ones occur in real transcripts.
+     */
+    private static final java.util.regex.Pattern MARKER =
+            java.util.regex.Pattern.compile("<[^<>]{0,40}>|\\[[^\\[\\]]{0,40}]");
 
     private final Logger logger;
     private final RealtimeProtocol protocol;
@@ -120,6 +130,12 @@ public class RealtimeConversation {
 
     /** True while a question is out with the classifier, so a tick does not ask the same thing again. */
     private boolean askingAddressed;
+
+    /**
+     * What keeps noise out of the stream the service bills by the second. Open by default, so a caller that
+     * says nothing about it gets the behaviour it had before there was one.
+     */
+    private VoiceGate voice = new VoiceGate(Loudness.SILENT_DBFS);
 
     /**
      * The exact words the classifier last said were not for us.
@@ -226,6 +242,22 @@ public class RealtimeConversation {
         this.stopPlayback = stopPlayback;
         this.remember = remember;
         this.report = report;
+    }
+
+    /**
+     * Sets what decides a packet is worth paying to send.
+     *
+     * <p>Not a sixteenth positional parameter on a constructor that already has fifteen: that growth is
+     * exactly the complaint the refactoring plan records against {@code AiSettings}, and this value has one
+     * production caller and no test that cares. Called once, by whoever built this object, before
+     * {@link #start}; the gate is then only ever touched from the inbox thread like the rest of the state.
+     *
+     * @param gate the gate, or null to let everything through
+     * @return this object, so the call chains onto the construction
+     */
+    public RealtimeConversation gatedBy(VoiceGate gate) {
+        this.voice = gate == null ? new VoiceGate(Loudness.SILENT_DBFS) : gate;
+        return this;
     }
 
     /**
@@ -375,6 +407,16 @@ public class RealtimeConversation {
         if (link == null || !link.isOpen() || audio == null || audio.isEmpty()) {
             return;
         }
+        // Before anything else, and before the turn is opened: a packet that is not somebody's voice must
+        // not be paid for, and must not start a turn either. Discord's own voice detection is what decides
+        // a packet is delivered at all, and it is happy to call a chair, a keyboard or a fan speech - which
+        // is how an empty channel transcribed "<noise>", Thai and Telugu six times in 40 seconds and held a
+        // paid session open on it. The gate holds and pre-rolls rather than comparing, so a word still
+        // crosses it whole; see VoiceGate.
+        List<PcmAudio> voiced = voice.pass(audio, clock.getAsLong());
+        if (voiced.isEmpty()) {
+            return;
+        }
         if (!userId.equals(speaking)) {
             // The one thing a single input buffer cannot carry: who is talking.
             speaking = userId;
@@ -391,7 +433,12 @@ public class RealtimeConversation {
         // room that was not silent - the session WakeGate opens to be closed again stayed open, and billed,
         // for as long as anybody was in the channel. Idleness is measured from the last thing actually said
         // or answered, which is set where those happen.
-        send(protocol.appendAudio(audio));
+        //
+        // More than one packet when the gate has just opened: the pre-roll it was holding comes out first,
+        // in order, so the sentence reaches the service with its opening consonant on it.
+        for (PcmAudio chunk : voiced) {
+            send(protocol.appendAudio(chunk));
+        }
     }
 
     /**
@@ -419,7 +466,7 @@ public class RealtimeConversation {
         if (protocol.answersOnTurnEnd()) {
             // Ending the turn is this service's way of asking for an answer, so an utterance nobody
             // addressed to the bot is left open: it keeps listening and the words keep accumulating.
-            String said = heard.toString();
+            String said = words(heard.toString());
             switch (aimOf(said)) {
                 case AT_US -> {
                     lastExchangeMs = clock.getAsLong();
@@ -443,7 +490,7 @@ public class RealtimeConversation {
     private void answerWhatWasHeard() {
         turnOpen = false;
         turnStartedMs = 0;
-        String said = heard.toString().strip();
+        String said = words(heard.toString());
         heard.setLength(0);
         if (!said.isEmpty()) {
             rememberHeard(said);
@@ -488,9 +535,10 @@ public class RealtimeConversation {
      * <p>This is where a channel with eight people in it becomes usable. The bot hears every sentence and
      * remembers every sentence; what the name decides is whether it says anything back.
      */
-    private void utteranceHeard(String text) {
+    private void utteranceHeard(String raw) {
         heard.setLength(0);
-        if (text == null || text.isBlank()) {
+        String text = words(raw);
+        if (text.isEmpty()) {
             return;
         }
         rememberHeard(text);
@@ -586,6 +634,51 @@ public class RealtimeConversation {
         Turn theirs = turn(speaking.isEmpty() ? "unknown" : speaking, nameOf(speaking), text.strip());
         keep(theirs);
         remember.accept(theirs);
+    }
+
+
+    /**
+     * What a heard utterance actually says, once the service's own markers are taken off it.
+     *
+     * <p>Both services write markers into the input transcription for audio they could make nothing of, and
+     * MEASURED 2026-11-07 the literal {@code <noise>} came back three times in 40 seconds on an empty
+     * channel. Kept as it arrived, each one became a remembered turn handed to the next session as context,
+     * and - worse - each one reset the idle window, so a paid session stayed open on nothing: about 49
+     * seconds bought with no word said.
+     *
+     * <p>The markers are stripped rather than the utterance dropped, because one of those three arrived as
+     * {@code "<noise> du coup la"}: a marker glued to real speech. Dropping that line would have thrown away
+     * the sentence; keeping it whole would have remembered the bot as having heard the word "noise".
+     *
+     * <p>What is left is kept only if it still contains a letter or a digit. Punctuation and musical notes
+     * are not something somebody said.
+     *
+     * <p><strong>Deliberately not a language filter.</strong> The same session transcribed Thai and Telugu
+     * out of microphone noise, and neither is caught here. The cause of those is upstream - audio nobody
+     * should have paid to send, now held back by {@link VoiceGate} - and a rule about which scripts may
+     * appear would be wrong for a server where people speak more than one language. If they come back with
+     * the input gated, that is evidence for a filter; until then it would be a guess.
+     *
+     * <p>Applied at the two places a transcription arrives, and not only before it is remembered: with a
+     * follow-up window open, {@code aimOf("<noise>")} returns AT_US and the bot <em>answers</em> the marker;
+     * outside one it returns UNSURE, which spends a model call asking whether "&lt;noise&gt;" was addressed
+     * to it.
+     *
+     * @param text the transcription as the service sent it, possibly null
+     * @return what was said, stripped, or an empty string when nothing was
+     */
+    private String words(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        String stripped = MARKER.matcher(text).replaceAll(" ").replaceAll("\\s+", " ").strip();
+        for (int i = 0; i < stripped.length(); i++) {
+            if (Character.isLetterOrDigit(stripped.charAt(i))) {
+                return stripped;
+            }
+        }
+        logger.debug("Heard nothing anybody said, only the service's own marker: {}", text.strip());
+        return "";
     }
 
     private Turn turn(String userId, String speaker, String text) {
@@ -815,6 +908,10 @@ public class RealtimeConversation {
         speaking = "";
         turnOpen = false;
         botSpeaking = false;
+        // The pre-roll belongs to a conversation that is over. A session reopens into the same object when
+        // the service hangs up and the gate opens again, and releasing packets kept from before would open
+        // the new one with the tail of somebody's old half-word.
+        voice.reset();
     }
 
     /**

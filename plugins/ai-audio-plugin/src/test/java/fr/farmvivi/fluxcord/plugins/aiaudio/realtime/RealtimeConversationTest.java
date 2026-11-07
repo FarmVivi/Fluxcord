@@ -252,6 +252,74 @@ class RealtimeConversationTest {
         assertEquals("quelle heure il est ?", remembered.get(0).text());
     }
 
+    /**
+     * What the service writes instead of words, and what it cost. MEASURED 2026-11-07: the literal
+     * {@code <noise>} came back three times in 40 seconds on an empty channel, each one remembered as a turn
+     * and each one resetting the idle window - about 49 seconds of a paid session bought with nothing said.
+     */
+    @Test
+    void theServicesOwnMarkerIsNotSomethingSomebodySaid() {
+        conversation.hear("u1", "Victor", audio(480));
+        long before = conversation.lastActivityMs();
+
+        events.accept(new OpenAiRealtime().parse(
+                "{\"type\":\"conversation.item.input_audio_transcription.completed\","
+                        + "\"transcript\":\"<noise>\"}"));
+
+        assertTrue(remembered.isEmpty(), "nothing was said, so there is nothing to remember");
+        assertEquals(before, conversation.lastActivityMs(),
+                "and above all the idle window must still be able to elapse - that is what was being paid for");
+    }
+
+    @Test
+    void aMarkerGluedToRealSpeechIsStrippedRatherThanThrownAway() {
+        // One of the three measured lines arrived as exactly this shape. Dropping it loses the sentence;
+        // keeping it whole remembers the bot as having heard the word "noise".
+        conversation.hear("u1", "Victor", audio(480));
+
+        events.accept(new OpenAiRealtime().parse(
+                "{\"type\":\"conversation.item.input_audio_transcription.completed\","
+                        + "\"transcript\":\"<noise> du coup la playlist\"}"));
+
+        assertEquals(1, remembered.size());
+        assertEquals("du coup la playlist", remembered.get(0).text());
+    }
+
+    @Test
+    void punctuationOnItsOwnIsNotSpeechEither() {
+        conversation.hear("u1", "Victor", audio(480));
+
+        events.accept(new OpenAiRealtime().parse(
+                "{\"type\":\"conversation.item.input_audio_transcription.completed\","
+                        + "\"transcript\":\" ... \"}"));
+
+        assertTrue(remembered.isEmpty());
+    }
+
+    @Test
+    void aSquareBracketedMarkerCountsAsOneToo() {
+        conversation.hear("u1", "Victor", audio(480));
+
+        events.accept(new OpenAiRealtime().parse(
+                "{\"type\":\"conversation.item.input_audio_transcription.completed\","
+                        + "\"transcript\":\"[BLANK_AUDIO]\"}"));
+
+        assertTrue(remembered.isEmpty());
+    }
+
+    @Test
+    void aSentenceThatMerelyContainsAngleBracketsIsStillASentence() {
+        // The pattern is bounded and must not eat a real sentence that happens to use the characters.
+        conversation.hear("u1", "Victor", audio(480));
+
+        events.accept(new OpenAiRealtime().parse(
+                "{\"type\":\"conversation.item.input_audio_transcription.completed\","
+                        + "\"transcript\":\"est-ce que 3 < 5 ou pas\"}"));
+
+        assertEquals(1, remembered.size());
+        assertEquals("est-ce que 3 < 5 ou pas", remembered.get(0).text());
+    }
+
     @Test
     void aToolIsRunAndItsResultGoesBackWithTheIdTheModelUsed() {
         events.accept(new OpenAiRealtime().parse(

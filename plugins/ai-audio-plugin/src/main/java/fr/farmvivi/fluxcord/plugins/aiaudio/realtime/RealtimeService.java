@@ -233,7 +233,14 @@ public class RealtimeService {
                 // session, which made the bot a participant in every conversation held in front of it. What
                 // the name does not settle, the follow-up window and then the classifier do.
                 spoken -> settings.chat().isAddressedToUs(spoken, names),
-                inbox, workers, addressedToUs, realtime.followUp().toMillis());
+                inbox, workers, addressedToUs, realtime.followUp().toMillis())
+                // The same floor the local transcriber uses, and on purpose: it is one fact about one
+                // microphone - the level below which this room is not producing voice - so it is one knob,
+                // calibrated from one log. What differs is what is done with it: there a whole utterance is
+                // dropped, here a 20 ms packet is held back from a stream billed by the second, which is
+                // why the gate holds and pre-rolls instead of comparing.
+                .gatedBy(new fr.farmvivi.fluxcord.plugins.aiaudio.transcription.VoiceGate(
+                        settings.transcription().minLoudnessDbfs()));
 
         String instructions = ConversationPrompt.systemMessageFor(snapshot, now);
         // The bot's own names go in the vocabulary, because they are what wakes it: a name the transcriber
