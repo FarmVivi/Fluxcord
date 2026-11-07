@@ -131,6 +131,45 @@ class FluxcordRuntimeTest {
     }
 
     @Test
+    void anErrorFromAPluginsOnDisableStillLeavesDiscordDisconnected() throws Exception {
+        // MEASURED 2026-11-07, and the most expensive defect of the evening. A plugin jar had been replaced
+        // under the running JVM, so a lazy class load at shutdown read a jar the classloader no longer had
+        // open: NoClassDefFoundError - a LinkageError, an Error, which the catch here was Exception and did
+        // not cover. It came out of onDisable, up through PluginManager.close and stop(), and killed main.
+        // Discord was never disconnected, "Goodbye!" never printed, and the non-daemon threads kept the JVM
+        // and the Discord token alive for seven hours while a scheduler logged every 30 s, so the dead bot
+        // read exactly like a healthy one. With one token shared between a local run and a deployment, that
+        // is a bot answering every command twice.
+        PluginJars.plugin(root.resolve("plugins"), "alpha");
+        System.setProperty("fixture.fail", "alpha:onDisable:error");
+        runtime = new FluxcordRuntime(root.toFile(), settings, discord, InputStream.nullInputStream());
+        runtime.start();
+
+        runtime.stop();
+
+        assertTrue(runtime.isStopped(), "stop ran to the end");
+        verify(discord).disconnect();
+        assertFalse(runtime.getCommandService().isEnabled());
+        assertFalse(runtime.getConsoleCommandService().isRunning());
+    }
+
+    @Test
+    void oneBrokenPluginDoesNotStopTheNextOneBeingDisabled() throws Exception {
+        PluginJars.plugin(root.resolve("plugins"), "alpha");
+        PluginJars.plugin(root.resolve("plugins"), "beta");
+        System.setProperty("fixture.fail", "alpha:onDisable:error");
+        runtime = new FluxcordRuntime(root.toFile(), settings, discord, InputStream.nullInputStream());
+        runtime.start();
+
+        runtime.stop();
+
+        assertTrue(PluginCalls.of("beta").contains("onDisable"),
+                "a plugin is not punished for the failure of the one disabled before it");
+        assertTrue(PluginCalls.of("beta").contains("onPostDisable"));
+        verify(discord).disconnect();
+    }
+
+    @Test
     void aFailedConnectionPropagatesAndStopStillCleansUp() throws Exception {
         PluginJars.plugin(root.resolve("plugins"), "alpha");
         when(discord.connect()).thenReturn(CompletableFuture.failedFuture(new IllegalStateException("bad token")));

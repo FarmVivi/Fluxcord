@@ -385,7 +385,9 @@ public class PluginManager implements PluginLoader, Closeable {
             if (plugin.getLifecycle() == PluginLifecycle.ENABLED) {
                 try {
                     executeLifecyclePhase(plugin, PluginLifecycle.PRE_DISABLING, Plugin::onPreDisable);
-                } catch (Exception e) {
+                } catch (Throwable e) {
+                    // Throwable for the reason spelled out in disablePlugins: shutdown is where a
+                    // LinkageError is thrown, and an Error escaping here strands the whole shutdown.
                     logger.error("Error pre-disabling plugin: {} ({})", plugin.getId(), plugin.getName(), e);
                     // Continue anyway
                 }
@@ -402,7 +404,21 @@ public class PluginManager implements PluginLoader, Closeable {
             if (plugin.getLifecycle() == PluginLifecycle.PRE_DISABLING) {
                 try {
                     executeLifecyclePhase(plugin, PluginLifecycle.DISABLING, Plugin::onDisable);
-                } catch (Exception e) {
+                } catch (Throwable e) {
+                    // Throwable, not Exception, and that distinction is the whole bug. MEASURED 2026-11-07:
+                    // a plugin jar had been replaced under the running JVM, so lavaplayer's lazy load of an
+                    // Apache HttpClient inner class at shutdown read a jar its classloader no longer had
+                    // open. The result is a NoClassDefFoundError - a LinkageError, an Error, not an
+                    // Exception - so this catch did not apply, it came out of onDisable, up through
+                    // PluginManager.close and FluxcordRuntime.stop, and killed Fluxcord.main. Discord was
+                    // never disconnected, "Goodbye!" was never printed, and the non-daemon threads kept the
+                    // JVM alive for SEVEN HOURS still holding the Discord token, while a scheduler went on
+                    // logging every 30 s so a dead bot looked exactly like a healthy one.
+                    //
+                    // Shutdown is where linkage errors live: it is the last chance for a class nobody loaded
+                    // during the run to be needed. Catching Error here is the unusual choice and the right
+                    // one - the JVM is on its way out, every later step still has to run, and the
+                    // alternative is measurably a process nobody can see is dead.
                     logger.error("Error disabling plugin: {} ({})", plugin.getId(), plugin.getName(), e);
                     // Continue anyway
                 }
@@ -421,7 +437,9 @@ public class PluginManager implements PluginLoader, Closeable {
                     executeLifecyclePhase(plugin, PluginLifecycle.POST_DISABLING, Plugin::onPostDisable);
                     releaseResources(plugin);
                     markDisabled(plugin);
-                } catch (Exception e) {
+                } catch (Throwable e) {
+                    // Throwable for the reason spelled out in disablePlugins: shutdown is where a
+                    // LinkageError is thrown, and an Error escaping here strands the whole shutdown.
                     logger.error("Error post-disabling plugin: {} ({})", plugin.getId(), plugin.getName(), e);
                     // Continue anyway
                 }

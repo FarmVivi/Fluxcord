@@ -193,25 +193,46 @@ public final class FluxcordRuntime {
             return;
         }
         logger.info("Shutting down...");
-        try {
-            pluginManager.close();
-        } catch (Exception e) {
-            logger.error("Error during plugin shutdown", e);
-        }
-        commandService.disable();
-        consoleCommandService.stop();
-        try {
-            discordAPI.disconnect().join();
-        } catch (Exception e) {
-            logger.error("Failed to disconnect from Discord", e);
-        }
-        eventManager.shutdown();
-        dataStorageManager.close();
-        binaryStorageManager.close();
+        // Every step guarded, and the order kept. Six of these were unguarded, so anything thrown by one of
+        // them skipped all the rest - including the disconnection from Discord, which is the step that
+        // matters: a bot that does not disconnect keeps its gateway session, and with one Discord token
+        // shared between a local run and a deployment, a process nobody can see is dead is a process that
+        // answers every command twice.
+        //
+        // MEASURED 2026-11-07: a NoClassDefFoundError out of a plugin's onDisable came all the way up here
+        // and killed the calling thread, which was main. No disconnection, no "Goodbye!", and the
+        // non-daemon threads held the JVM - and the token - for seven hours.
+        quietly("disabling the plugins", pluginManager::close);
+        quietly("disabling the commands", commandService::disable);
+        quietly("stopping the console", consoleCommandService::stop);
+        quietly("disconnecting from Discord", () -> discordAPI.disconnect().join());
+        quietly("shutting down the events", eventManager::shutdown);
+        quietly("closing the data storage", dataStorageManager::close);
+        quietly("closing the binary storage", binaryStorageManager::close);
         if (healthServer != null) {
-            healthServer.stop();
+            quietly("stopping the health server", healthServer::stop);
         }
         logger.info("Goodbye!");
+    }
+
+    /**
+     * Runs one shutdown step, and lets nothing it throws stop the next one.
+     *
+     * <p>{@link Throwable} on purpose, which is not how application code should normally catch. Shutdown is
+     * the last chance for a class nobody needed during the run to be loaded, so it is where a
+     * {@link LinkageError} appears - and an {@code Error} let through here costs the disconnection from
+     * Discord and every release after it. The JVM is on its way out; there is nothing left to protect by
+     * propagating.
+     *
+     * @param what the step, named for the log line that will explain the failure
+     * @param step what to do
+     */
+    private void quietly(String what, Runnable step) {
+        try {
+            step.run();
+        } catch (Throwable e) {
+            logger.error("Shutdown continued after a failure while {}", what, e);
+        }
     }
 
     public boolean isStarted() {
