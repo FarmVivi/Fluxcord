@@ -1281,3 +1281,31 @@ Full reactor built on 2026-11-07 with the block in place: **BUILD SUCCESS, 1388 
 same count as on 2026-10-31, after nine commits landed underneath it (the dependency round, Renovate, the
 JDA 6.7.0 obfuscation work, the ai-audio autosave) without anybody touching these 29 files. So nothing here
 has rotted; what it has not had is a voice channel.
+
+### Committed, 2026-11-07, in five commits
+
+Victor's decision, same day, on all three questions: commit the independent work, commit the prompt rules
+*with* the tests they were missing, and commit the realtime block as one batch and test it afterwards. The
+working tree is clean for the first time since 2026-10-04.
+
+| Commit | What | Verified |
+| --- | --- | --- |
+| `5325aa2c` | `MessageStyle` / `DiscordColor` to the api | worktree, alone, 1372 tests |
+| `58ccad17` | `finish_reason` | worktree, with the next one, 1377 |
+| `9ce82eab` | the two prompt rules + the identity, **and the five tests they lacked** | idem |
+| `f70e4ee5` | the realtime block (inbox, window + classifier, tool batch, idle clock, tool logging) | worktree, alone, 1392 |
+| `4995258f` | `/converse start` engages immediately | full reactor, 1393 |
+
+Both defects the audit found are closed: `follow_up_seconds` is documented in the shipped `config.yml`, and
+`ConversationPromptTest` now pins the new branch of the system message, the fallback to the persona name,
+both rules, and `contextFor`.
+
+One ordering trap, for the next time something is carved up like this: **`/converse start` looked
+independent and was not.** Its test constructs `RealtimeSettings`, which the realtime block gives a new
+component, so it only compiles after that block — which is why it is last rather than third. A commit's
+*test* is part of what has to compile, and that is exactly what a per-commit worktree build catches and a
+single build of the finished tree does not.
+
+**Still not verified in a voice channel.** Nothing here has been heard since 2026-10-04. The addressing is a
+judgement call by a model: if the bot starts answering conversations it is not part of, or stops answering
+obvious follow-ups, `f70e4ee5` is the commit to revert.
