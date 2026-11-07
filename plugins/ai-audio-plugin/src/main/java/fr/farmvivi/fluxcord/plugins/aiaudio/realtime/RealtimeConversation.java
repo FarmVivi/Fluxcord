@@ -132,6 +132,16 @@ public class RealtimeConversation {
     private boolean askingAddressed;
 
     /**
+     * Set when the model has asked to hang up, acted on once it has finished speaking.
+     *
+     * <p>Not acted on where it is set: the tool phase runs before the model says anything, so the frames
+     * carrying its goodbye have not been sent yet and closing there cuts it off mid-word.
+     */
+    private boolean endWhenDone;
+    /** What to put in the log when that happens, which is the only record of who decided. */
+    private String endReason = "";
+
+    /**
      * What keeps noise out of the stream the service bills by the second. Open by default, so a caller that
      * says nothing about it gets the behaviour it had before there was one.
      */
@@ -258,6 +268,26 @@ public class RealtimeConversation {
     public RealtimeConversation gatedBy(VoiceGate gate) {
         this.voice = gate == null ? new VoiceGate(Loudness.SILENT_DBFS) : gate;
         return this;
+    }
+
+    /**
+     * Ends the session once the answer being spoken is finished.
+     *
+     * <p>What the model calls when the conversation is over, and the reason the engage window is no longer
+     * the only way a session ends: that window elapses after the last thing said, so every exchange used to
+     * be followed by thirty seconds of a paid connection listening to a room that had finished with it.
+     *
+     * <p>If nothing is being said, this takes effect on the next response that completes rather than
+     * immediately - which is correct: there is a response in flight whenever a tool is running, and a tool
+     * is the only thing that calls this.
+     *
+     * @param reason what to put in the log
+     */
+    public void endAfterSpeaking(String reason) {
+        onInbox(() -> {
+            endWhenDone = true;
+            endReason = reason == null || reason.isBlank() ? "asked to end" : reason;
+        });
     }
 
     /**
@@ -520,7 +550,17 @@ public class RealtimeConversation {
             case RealtimeProtocol.Event.ToolCalled called -> run(called.calls());
             case RealtimeProtocol.Event.ResponseDone _ -> {
                 botSpeaking = false;
-                finishTurn();
+                if (endWhenDone) {
+                    // The answer is out: every audio frame of it has been received and queued for playback,
+                    // and closing the link does not stop what is already queued - so the goodbye is heard in
+                    // full. letGo is the path the services' own disconnections already take, which is why
+                    // this needed no second one: WakeGate notices the session is no longer alive on its next
+                    // tick, hands the audio back to the local transcriber, and the bot is listening for its
+                    // name again.
+                    letGo(endReason);
+                } else {
+                    finishTurn();
+                }
             }
             case RealtimeProtocol.Event.ClosingSoon closing -> letGo(closing.reason());
             case RealtimeProtocol.Event.Failure failure -> fail(failure.message());
@@ -908,6 +948,8 @@ public class RealtimeConversation {
         speaking = "";
         turnOpen = false;
         botSpeaking = false;
+        endWhenDone = false;
+        endReason = "";
         // The pre-roll belongs to a conversation that is over. A session reopens into the same object when
         // the service hangs up and the gate opens again, and releasing packets kept from before would open
         // the new one with the tail of somebody's old half-word.

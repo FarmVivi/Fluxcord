@@ -258,6 +258,19 @@ class RealtimeServiceTest {
     }
 
     @Test
+    void theModelIsToldItMayHangUp() {
+        // The wiring: HangUpToolsTest proves the tool, this proves the session is offered it. The group is
+        // added here rather than in the plugin's shared list, because the turn-based path has no session to
+        // end - so nothing outside this service would notice if it went missing.
+        service.start(guild, output);
+
+        assertTrue(sent.stream().anyMatch(frame ->
+                        frame.contains(fr.farmvivi.fluxcord.plugins.aiaudio.conversation.HangUpTools
+                                .END_THE_CONVERSATION)),
+                "a session that cannot be ended costs the whole engage window after every exchange");
+    }
+
+    @Test
     void aSilentPacketIsNeverPaidForAndNeverOpensATurn() {
         // The wiring, not the gate: VoiceGateTest proves the gate, and this proves the service put one in
         // front of the session. MEASURED 2026-11-07 with the audio ungated - six hallucinated

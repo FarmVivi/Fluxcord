@@ -320,6 +320,73 @@ class RealtimeConversationTest {
         assertEquals("est-ce que 3 < 5 ou pas", remembered.get(0).text());
     }
 
+    /**
+     * The model hanging up when the conversation is over, which is what the engage window alone could never
+     * do: it elapses after the last thing said, so every exchange was followed by thirty seconds of a paid
+     * full-duplex connection listening to a room that had finished with it.
+     */
+    @org.junit.jupiter.api.Nested
+    class EndingTheConversation {
+
+        @Test
+        void askingToEndDoesNotEndItWhileThereIsStillSomethingToSay() {
+            // The tool phase runs before the model speaks: the frames carrying "de rien, a plus" have not
+            // been sent yet, so closing where the tool runs cuts the goodbye off mid-word.
+            conversation.endAfterSpeaking("the model said so");
+
+            assertTrue(conversation.isOpen(), "still open, because nothing has been said yet");
+            assertEquals(0, closes.get());
+        }
+
+        @Test
+        void theSessionClosesOnceTheAnswerIsDone() {
+            conversation.endAfterSpeaking("the model said so");
+
+            events.accept(new OpenAiRealtime().parse(
+                    "{\"type\":\"response.output_audio_transcript.delta\",\"delta\":\"de rien, a plus\"}"));
+            events.accept(new OpenAiRealtime().parse("{\"type\":\"response.done\"}"));
+
+            assertFalse(conversation.isOpen());
+            assertEquals(1, closes.get());
+        }
+
+        @Test
+        void theGoodbyeIsStillRememberedAsSomethingTheBotSaid() {
+            // Closing the link does not stop what is already queued for playback, and the words have to
+            // survive too - a conversation that ends is still a conversation that happened.
+            conversation.endAfterSpeaking("the model said so");
+
+            events.accept(new OpenAiRealtime().parse(
+                    "{\"type\":\"response.output_audio_transcript.delta\",\"delta\":\"de rien, a plus\"}"));
+            events.accept(new OpenAiRealtime().parse("{\"type\":\"response.done\"}"));
+
+            assertEquals(1, remembered.size());
+            assertEquals("de rien, a plus", remembered.get(0).text());
+            assertEquals("bot-1", remembered.get(0).userId());
+        }
+
+        @Test
+        void anAnswerNobodyAskedToEndLeavesTheSessionOpen() {
+            events.accept(new OpenAiRealtime().parse(
+                    "{\"type\":\"response.output_audio_transcript.delta\",\"delta\":\"il est six heures\"}"));
+            events.accept(new OpenAiRealtime().parse("{\"type\":\"response.done\"}"));
+
+            assertTrue(conversation.isOpen());
+            assertEquals(0, closes.get());
+        }
+
+        @Test
+        void theSessionIsNotCloseTwiceWhenTheServiceAlsoHangsUp() {
+            conversation.endAfterSpeaking("the model said so");
+            events.accept(new OpenAiRealtime().parse("{\"type\":\"response.done\"}"));
+            assertEquals(1, closes.get());
+
+            events.accept(new OpenAiRealtime().parse("{\"type\":\"response.done\"}"));
+
+            assertEquals(1, closes.get(), "letGo is guarded, and a second response cannot reopen anything");
+        }
+    }
+
     @Test
     void aToolIsRunAndItsResultGoesBackWithTheIdTheModelUsed() {
         events.accept(new OpenAiRealtime().parse(

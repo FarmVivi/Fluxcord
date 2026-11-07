@@ -210,8 +210,22 @@ public class RealtimeService {
                 ConversationContext.of(channel, memory, settings.chat().historyTurns(), 0), now);
 
         java.util.List<String> names = plugin.botNames(guild);
+        // The hang-up tool is offered here and not from the plugin's shared list, because it is the only
+        // tool whose meaning depends on there being a session: the turn-based path has nothing to end. The
+        // holder is what breaks the circle - the tool needs the conversation, the conversation needs the
+        // tool - and it is written before anything can call it, on this thread, which is why a plain
+        // reference is enough.
+        java.util.concurrent.atomic.AtomicReference<RealtimeConversation> self =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.List<ToolSource> sources = new java.util.ArrayList<>(toolSources);
+        sources.add(new fr.farmvivi.fluxcord.plugins.aiaudio.conversation.HangUpTools(reason -> {
+            RealtimeConversation open = self.get();
+            if (open != null) {
+                open.endAfterSpeaking(reason);
+            }
+        }));
         RealtimeConversation conversation = new RealtimeConversation(logger, dialect(realtime), clock,
-                toolSources,
+                sources,
                 audio -> plugin.getTextToSpeech().play(guild, audio),
                 () -> plugin.getTextToSpeech().interrupt(guild),
                 turn -> rememberAndWriteDown(guild, turn),
@@ -241,6 +255,7 @@ public class RealtimeService {
                 // why the gate holds and pre-rolls instead of comparing.
                 .gatedBy(new fr.farmvivi.fluxcord.plugins.aiaudio.transcription.VoiceGate(
                         settings.transcription().minLoudnessDbfs()));
+        self.set(conversation);
 
         String instructions = ConversationPrompt.systemMessageFor(snapshot, now);
         // The bot's own names go in the vocabulary, because they are what wakes it: a name the transcriber
