@@ -574,6 +574,13 @@ public class RealtimeConversation {
         if (text == null || text.isBlank() || snapshot == null) {
             return;
         }
+        // The counterpart of "The bot said", and the line whose absence made an unprompted answer
+        // impossible to explain: while the hosted session is open the local transcriber is diverted, so
+        // nothing else in the log says a word of what was said in the channel. Asked why the bot
+        // re-announced a queue nobody had mentioned for half a minute, the log could not even say whether
+        // anybody had spoken. Both services send the input transcription and this class already keeps it;
+        // only the log was missing.
+        logger.debug("The bot heard {}: {}", speaking.isEmpty() ? "somebody" : nameOf(speaking), text.strip());
         // Somebody said something: this is what activity means, and what the idle window is measured from.
         lastActivityMs = clock.getAsLong();
         Turn theirs = turn(speaking.isEmpty() ? "unknown" : speaking, nameOf(speaking), text.strip());
