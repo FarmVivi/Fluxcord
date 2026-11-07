@@ -1447,3 +1447,37 @@ killing its thread is worse than waiting.
   workstation truststore, so web search was dead during every local test and the model improvised its track
   lists from memory. Nothing to fix in this repo — the certificate has to reach the machine.
 - `realtime connection closed: 1011 Internal error` after seven `/play` in 16 s. Seen once, not diagnosed.
+
+### Hanging up costs the follow-up window (known, deliberately left — 2026-11-07)
+
+While a session is engaged, nobody needs to say the bot's name. Once it hangs up, every continuation needs
+it again — and people do not repeat a name when they are answering the question they were just asked.
+
+MEASURED, after the question guard was in place:
+
+```
+22:35:04  The bot said: "...Il faudrait peut-être plus de précisions pour la trouver."
+22:35:04  Disengaged
+22:35:16  Not addressed to us: "Pierre Gabriel C"        <- the answer, dropped
+```
+
+The bot was asking for information without a question mark, so the guard did not see it. Of the nine
+utterances dropped across three sessions, only two were a mangled wake word (`Bon j'ai crise` for "Bon,
+Chris"; `Pierre Gabriel C` for "...Chris") — the other seven simply contained no name at all, which is what
+continuing a conversation looks like.
+
+**Victor's decision, 2026-11-07: leave it.** The cost is one sentence repeated with the name, occasionally,
+and it has been seen once. Not worth code on a single observation.
+
+The option if it ever becomes annoying: a grace period after hanging up — for about twenty seconds, any
+sentence from somebody who was in the conversation reopens the session without the name. That is the
+`follow_up_seconds` idea applied to the local wake rather than to the open session, and it is *cheaper* than
+the behaviour it replaced, because it reopens only when somebody actually speaks instead of paying for a
+thirty-second window in silence. Widening the guard beyond "?" was considered and rejected: guessing at free
+text would both miss cases and block others wrongly.
+
+### `1007 CONTENT_TYPE_AUDIO is not supported for this model configuration` (open, unexplained)
+
+Seen once, 2026-11-07, on the third session of one run; Gemini closed the connection. An earlier run opened
+seven sessions without it, so the timer leak fixed the same evening is probably not the cause. Every frame
+except the audio is now logged, so the next occurrence will say which one provoked it. Not reproduced since.
