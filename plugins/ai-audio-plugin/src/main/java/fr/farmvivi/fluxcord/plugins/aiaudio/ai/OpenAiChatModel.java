@@ -241,11 +241,13 @@ public class OpenAiChatModel implements ChatModel {
             if (choices == null || choices.isEmpty()) {
                 throw new AiRequestException("Chat completion answered without a choice");
             }
-            JsonObject message = choices.get(0).getAsJsonObject().getAsJsonObject("message");
+            JsonObject choice = choices.get(0).getAsJsonObject();
+            JsonObject message = choice.getAsJsonObject("message");
             if (message == null) {
                 throw new AiRequestException("Chat completion answered without a message");
             }
             List<ToolCall> calls = readToolCalls(message);
+            warnIfTruncated(choice, calls.size());
             JsonObject spoken = message.getAsJsonObject("audio");
             PcmAudio voice = spoken == null ? null : readSpokenAudio(spoken);
             String content = message.has("content") && !message.get("content").isJsonNull()
@@ -264,6 +266,32 @@ public class OpenAiChatModel implements ChatModel {
         } catch (JsonParseException | IllegalStateException | ClassCastException e) {
             throw new AiRequestException("Chat completion did not answer the expected JSON: "
                     + (raw.length() > 120 ? raw.substring(0, 120) + "..." : raw), e);
+        }
+    }
+
+    /**
+     * Says so when the model was cut off mid-answer rather than having finished.
+     *
+     * <p>Added 2026-10-04, to answer a question by measurement instead of argument: asked to queue ten
+     * tracks the bot queued two or three, and whether that is the model choosing or the model being cut off
+     * is not something either of us could tell by reading the code. {@code finish_reason} is the API saying
+     * which, and it was being parsed past in silence. {@code "length"} means the budget ran out - for a
+     * round that was carrying tool calls, every call that had not been written yet is simply gone, and the
+     * budget to raise is {@code max_tool_tokens}.
+     */
+    private void warnIfTruncated(JsonObject choice, int calls) {
+        if (!choice.has("finish_reason") || choice.get("finish_reason").isJsonNull()) {
+            return;
+        }
+        String reason = choice.get("finish_reason").getAsString();
+        if (!"length".equals(reason)) {
+            return;
+        }
+        if (calls > 0) {
+            LOG.warn("The model ran out of tokens while asking for tools: {} call(s) survived."
+                    + " Anything it had not written yet is lost - raise max_tool_tokens", calls);
+        } else {
+            LOG.warn("The model ran out of tokens mid-answer; the reply is cut off");
         }
     }
 
