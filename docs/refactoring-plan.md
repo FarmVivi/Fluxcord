@@ -1309,3 +1309,77 @@ single build of the finished tree does not.
 **Still not verified in a voice channel.** Nothing here has been heard since 2026-10-04. The addressing is a
 judgement call by a model: if the bot starts answering conversations it is not part of, or stops answering
 obvious follow-ups, `f70e4ee5` is the commit to revert.
+
+## 2026-11-07 (evening) — three defects found by running the bot, not by reading it
+
+A live session on the dev bot. None of these were visible from the code, and two of them were invisible in the
+log until a log line was added for them.
+
+### "/play" posted the player message nowhere (FIXED)
+
+`fix(music): the player message went dead, and nothing in the log said why` moved the anchoring of the player
+message out of `MusicManager.preparePlayback` into `MusicCommand.player(ctx)`. `PlayCommand` and
+`PlaylistCommand` are the only two of the thirteen music commands that never call `player(ctx)` — and they are
+precisely the two that start playback. So for a whole listening session the player message had no channel:
+nothing was posted, and a later `/pause` or `/stop` was what finally made it appear, which is exactly what
+Victor reported. Evidence: `The model runs /play … (channel …)` in the log, yet
+`Saving playback: … text channel=none`, and exactly **one** `Player message anchored` line in 961.
+
+The anchor is restored in `preparePlayback`, with both call sites now covered by tests. **Lesson: when a plan
+or a comment says a responsibility "moved", check every caller of the old home before believing the move was
+complete.**
+
+### The local transcriber hallucinated the wake word (FIXED)
+
+The bot answered "Je suis là. Qu'y a-t-il ?" into a room where nobody had spoken for 92 seconds, with the
+hosted session already closed — so neither "the connection stayed open" nor "the model spoke on its own".
+MEASURED twice, on two separate sessions:
+
+| Clip | What the local transcriber returned |
+|---|---|
+| 10.60 s | `OK peace est-ce que tu est-ce que tu m'entends Chris ou pas…` |
+| 3.84 s | `Bah alors allô Chris est-ce que tu es là Chris` |
+| **0.58 s** | **`Fluxcord Chris`** |
+| **0.52 s** | **`Fluxcord Chris`** |
+
+`Fluxcord, Chris` is, word for word and in order, the vocabulary list the request had just told the model to
+expect ("These names may occur, spelled exactly like this: …"). A general chat model handed almost no signal
+answers with the only text it was given. The resulting transcription is one nothing downstream can doubt: the
+words are the bot's own name, which is the one thing the wake gate looks for.
+
+`min_segment_ms: 400` already existed for coughs and missed both clips. **Length is the wrong axis** — half a
+second of speech is a word, two seconds of noise is still noise. Fixed with an RMS gate before the request
+(`Loudness`, `transcription.min_loudness_dbfs`, default -50 dBFS, conservative on purpose), and **every
+segment's measured level is logged whether it passes or not**, so the threshold can be tightened from evidence
+rather than by feel — what counts as quiet depends on the operator's microphone and its gain.
+
+Victor's decision, same session: a sentence that is the bot's name and nothing else now opens the session
+**without being handed to it**, so the bot listens and says nothing. A summons with no request in it gets no
+answer, and a false wake that clears the gate costs a connection instead of an interruption.
+
+### An `onDisable` that throws leaves a zombie JVM holding the Discord token (NOT FIXED)
+
+Found by accident, and the most serious of the three. A plugin jar was replaced under a running JVM; at
+shutdown, lavaplayer lazily loaded a class out of a jar that was no longer the one its classloader had opened,
+and the `NoClassDefFoundError` was thrown out of `MusicPlugin.onDisable` → `PluginManager.executeLifecyclePhase`
+→ `PluginManager.close` → `FluxcordRuntime.stop` → **`Fluxcord.main`**. Killing the main thread there means:
+
+- Discord is never disconnected and no `Goodbye!` is printed;
+- the non-daemon threads keep the JVM alive — measured at **seven hours** — still holding the Discord token,
+  which is the one thing the "one process per token" rule exists to prevent;
+- a scheduler kept printing a DEBUG line every 30 s, so the log of a dead bot is indistinguishable from the
+  log of a healthy one.
+
+Replacing a jar under a live JVM is operator error and is now recorded in `/verify`. The defect is that one
+plugin's failure to disable can strand the whole shutdown: `executeLifecyclePhase` should treat a throwing
+`onDisable` the way the enable phases treat a throwing `onEnable` (log it, mark the plugin `ERROR`, carry on),
+and `FluxcordRuntime.stop` should reach `discordAPI.disconnect()` whatever the plugins did. Worth a hard
+deadline on the whole shutdown too: a plugin that hangs rather than throws produces the same zombie.
+
+### Still open for Victor
+- Revoke the OpenAI and Gemini API keys that appeared in a transcript, and delete the `DEPLOY_WEBHOOK_URL`
+  repository secret.
+- SearxNG fails from the workstation with `PKIX path building failed`: the private CA is not in the
+  workstation truststore, so web search was dead during every local test and the model improvised its track
+  lists from memory. Nothing to fix in this repo — the certificate has to reach the machine.
+- `realtime connection closed: 1011 Internal error` after seven `/play` in 16 s. Seen once, not diagnosed.
