@@ -1183,3 +1183,101 @@ green, no model-validation warning. One new kind of warning: ~180 `cached not-fo
 `go-offline`, a known Resolver 2.0.24 bug (apache/maven-resolver#2196, fixed on master, unreleased) -
 harmless, merged knowingly, 3.10.1 tracked in the update-deps skill. Also closed the last Dependabot PR
 (#871, mariadb 4.0.0 already on `develop`).
+
+## 2026-11-07 — the uncommitted block, audited file by file
+
+Thirty-four days old now. The 2026-10-30 note above described it in four paragraphs and got two things
+wrong by omission, so here is what is actually on disk: **29 files, 24 modified and 5 new, +905/-154**.
+Ten distinct pieces of work, listed with what each one can be committed without.
+
+### What is in it
+
+**1. `MessageStyle`, moved from the core to the api.** New `api/message/MessageStyle.java` (an enum of the
+four shapes a bot message takes, with the colour and the translated title) and `api/message/DiscordColor.java`;
+`core/util/DiscordColor.java` deleted. `CommandMessageBuilder` loses its own embed-building and calls the
+enum; `ShutdownCommand` and `VersionCommand` follow the import. The reason: those colours and the four
+`commands.titles.*` keys lived in the core's *command* package, so only a command reply could be a red box.
+Everything else — a voice conversation dropping, a service with no voice to answer with — went out as a line
+of prose, and prose in a chat window reads as something the bot is *saying*. Two tests move with it:
+`TranslationKeyCoverageTest` now scans the api sources as well (the four keys moved there, and the test
+duly called them orphans the moment they did), and `PluginClassLoaderTest`'s "core packages are always
+parent-first" fixture had to stop using `DiscordColor` — it uses `core.audio.AudioSettings` instead. An api
+*addition*: nothing anywhere still references the old path.
+
+**2. `finish_reason` (`OpenAiChatModel`).** One guarded method, `warnIfTruncated`. The API was already
+saying whether a round was cut off mid-answer and it was being parsed past in silence; `"length"` with tool
+calls in flight means every call not yet written is simply gone, and names `max_tool_tokens` as the budget
+to raise. Pure diagnostics, no behaviour change, one file.
+
+**3. Two rules and an identity, in `ConversationPrompt`.** `TRANSCRIPT_RULE`: a session woken by the gate is
+handed the last few turns so it can follow a conversation it did not hear, and models *acted* on them —
+asked to clear the music queue an hour earlier, a freshly woken bot cleared it again. `TOOL_NARRATION_RULE`:
+Victor's "il dit je vais régler le volume à 25% puis voilà le volume est à 25%, ça fait doublon" — nothing
+in the code asks for the first sentence, the model volunteers it, so the system message is where it has to
+be discouraged. And the identity: the system message stops asserting the persona name (a label an operator
+typed into a file) and points at the context for the name — deliberately *pointing* rather than stating,
+because a server nickname is chosen by a server owner and is therefore untrusted text that must never reach
+the operator's instructions. `ConversationPromptTest` already pins that, and it was right to fail when this
+first tried to state the name directly.
+
+**4. The context the full-duplex path never sent** (`RealtimeConversation.doStart` → `contextFor(snapshot)`).
+Without it item 3 is inert: the system message says "the context below says your name" and there was no
+context. This is what Victor validated live — the bot answers to its Discord name.
+
+**5. The event queue** (`RealtimeConversation`'s inbox, `RealtimeService`'s two executors,
+`RealtimeInboxTest`). Three threads mutated `turnOpen`, `heard`, `speaking` and two clocks with nothing
+between them — the audio thread, the turn ticker and the websocket. It happened to work, which is the worst
+state for code to be in. Everything is posted to one thread per service; tools run on a separate pool, so a
+slow web search no longer holds back the audio behind it.
+
+**6. The engagement window and the classifier** — the decision Victor took on 2026-10-04 ("les deux :
+fenêtre, puis classifieur dans le doute"). New `AddressedToUs` / `ModelAddressedToUs`; in
+`RealtimeConversation` the three-way `aimOf` / `Aim{AT_US,NOTHING,UNSURE}`, `askWhetherAddressed` with its
+`declined` memory, `turnStartedMs`, and a six-turn `recent` deque for the classifier's context;
+`conversation.realtime.follow_up_seconds` in `AiSettings`; `RealtimeAddressingTest`. Two tuning facts were
+measured live and are already folded in: the window counts from when somebody *starts* speaking, not from
+when the transcription lands, and the default is 20 s rather than 12 (at 12, "tu m'as menti, fais la
+commande" said thirteen seconds after the bot spoke fell outside by one second, and the classifier then got
+it wrong — an obvious follow-up missed twice over).
+
+**7. The tool-call batch** (`RealtimeProtocol.toolResults(List<ToolOutcome>)`, `ToolCalled(List<ToolCall>)`,
+both dialects, their tests). Google asks for several functions in one `toolCall` and its contract is one
+`toolResponse` carrying all the answers; OpenAI wants one item per result. The dialect now says how many
+frames a batch takes instead of the caller guessing. **Not** the cause of "add me ten tracks adds two" —
+that was a null channel, measured — but it is what the documentation describes.
+
+**8. `/converse start` engages immediately** (`ConverseCommand`, `ConverseCommandTest`). Running the command
+is itself being addressed; making somebody then say the name out loud is asking twice for one thing.
+
+**9. The idle clock** (`RealtimeConversation.lastActivityMs`). Idleness is measured from the last thing
+actually *said*, not from the last packet — JDA delivers packets for a cough, a keyboard, a chair.
+
+**10. Tool logging in `ConversationService`** — the turn-based twin of the `CommandTools` logging that was
+committed on 2026-10-04 (`8b8cb9af`), at the one place every tool on that path goes through.
+
+### Two defects the audit turned up
+
+- **`conversation.realtime.follow_up_seconds` is read but documented nowhere.** It is not in the plugin's
+  shipped `config.yml`, nor in its README, so nobody could discover the one knob that tunes the whole
+  arrangement. `engage_window_seconds` and `wake_locally` are both there.
+- **Items 3 and 4 have no test of their own.** `ConversationPromptTest` is unmodified: it pins the
+  injection guard (which still holds) but nothing pins the new branch of the system message, the presence
+  of the two rules, or `contextFor`.
+
+### What can be committed without what
+
+- Alone: **2** (one file), **8** (two files).
+- **1** is self-contained except that **10**'s file and `RealtimeService` both import `MessageStyle` — so
+  either 1 goes first, or those two need a hunk-level split.
+- **3** is alone in `ConversationPrompt`, but it is inert without **4**, which is inside the rewritten
+  `RealtimeConversation`.
+- **4, 5, 6, 7, 9** are one block: they all live in `RealtimeConversation`, `RealtimeService` and
+  `RealtimeProtocol`, and 6's tests exercise 5's constructor. Splitting them means rewriting the file three
+  times, not selecting hunks.
+
+### Still green
+
+Full reactor built on 2026-11-07 with the block in place: **BUILD SUCCESS, 1388 tests, 0 failures** — the
+same count as on 2026-10-31, after nine commits landed underneath it (the dependency round, Renovate, the
+JDA 6.7.0 obfuscation work, the ai-audio autosave) without anybody touching these 29 files. So nothing here
+has rotted; what it has not had is a voice channel.
