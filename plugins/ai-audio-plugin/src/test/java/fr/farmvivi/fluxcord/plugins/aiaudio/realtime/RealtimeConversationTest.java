@@ -351,6 +351,81 @@ class RealtimeConversationTest {
         }
 
         @Test
+        void itDoesNotHangUpWhenTheAnswerItJustGaveAsksAQuestion() {
+            // MEASURED 2026-11-07, twice in ninety seconds, and the reason the prompt rule alone was the
+            // wrong answer: the model called the tool and the answer from the same response was
+            // "Pourrais-tu me donner les noms des artistes ?". It hung up having just asked for something;
+            // Victor answered into a closed session, and because re-waking needs the name again and the
+            // transcriber writes "Chris" as "crise", he could not get the bot back at all.
+            //
+            // The tool phase runs BEFORE the reply is composed, so no instruction can make the model apply
+            // a rule about words it has not written yet. The words are in hand here.
+            conversation.endAfterSpeaking("the model said so");
+
+            events.accept(new OpenAiRealtime().parse(
+                    "{\"type\":\"response.output_audio_transcript.delta\","
+                            + "\"delta\":\"Pourrais-tu me donner les noms des artistes ?\"}"));
+            events.accept(new OpenAiRealtime().parse("{\"type\":\"response.done\"}"));
+
+            assertTrue(conversation.isOpen(), "a bot that has just asked something has to hear the answer");
+            assertEquals(0, closes.get());
+        }
+
+        @Test
+        void theRequestIsDroppedRatherThanDeferredToTheNextAnswer() {
+            // Not merely postponed: the conversation is not over, and if the model still wants to end it
+            // once it has what it asked for, it can say so again. Deferring would hang up on the very
+            // sentence that answered the question.
+            conversation.endAfterSpeaking("the model said so");
+            events.accept(new OpenAiRealtime().parse(
+                    "{\"type\":\"response.output_audio_transcript.delta\",\"delta\":\"laquelle des deux ?\"}"));
+            events.accept(new OpenAiRealtime().parse("{\"type\":\"response.done\"}"));
+
+            events.accept(new OpenAiRealtime().parse(
+                    "{\"type\":\"response.output_audio_transcript.delta\",\"delta\":\"c'est fait\"}"));
+            events.accept(new OpenAiRealtime().parse("{\"type\":\"response.done\"}"));
+
+            assertTrue(conversation.isOpen(), "the second answer must not inherit the cancelled request");
+            assertEquals(0, closes.get());
+        }
+
+        @Test
+        void aQuestionMarkInsideTheSentenceIsNotAQuestionAtTheEnd() {
+            conversation.endAfterSpeaking("the model said so");
+
+            events.accept(new OpenAiRealtime().parse(
+                    "{\"type\":\"response.output_audio_transcript.delta\","
+                            + "\"delta\":\"Tu demandais laquelle ? C'est celle de Bowie. Bonne soiree.\"}"));
+            events.accept(new OpenAiRealtime().parse("{\"type\":\"response.done\"}"));
+
+            assertFalse(conversation.isOpen(), "it answered the question rather than asking one");
+            assertEquals(1, closes.get());
+        }
+
+        @Test
+        void punctuationAfterTheQuestionMarkStillCounts() {
+            // A transcript closes a quote after the mark, and French puts a space before it.
+            conversation.endAfterSpeaking("the model said so");
+
+            events.accept(new OpenAiRealtime().parse(
+                    "{\"type\":\"response.output_audio_transcript.delta\",\"delta\":\"laquelle veux-tu ? \"}"));
+            events.accept(new OpenAiRealtime().parse("{\"type\":\"response.done\"}"));
+
+            assertTrue(conversation.isOpen());
+        }
+
+        @Test
+        void anAnswerWithNoWordsAtAllIsNotAQuestionAndStillEndsTheSession() {
+            // A response that said nothing has asked nothing, so the hang-up stands.
+            conversation.endAfterSpeaking("the model said so");
+
+            events.accept(new OpenAiRealtime().parse("{\"type\":\"response.done\"}"));
+
+            assertFalse(conversation.isOpen());
+            assertEquals(1, closes.get());
+        }
+
+        @Test
         void theGoodbyeIsStillRememberedAsSomethingTheBotSaid() {
             // Closing the link does not stop what is already queued for playback, and the words have to
             // survive too - a conversation that ends is still a conversation that happened.

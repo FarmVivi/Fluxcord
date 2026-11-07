@@ -258,6 +258,30 @@ class RealtimeServiceTest {
     }
 
     @Test
+    void openingAndClosingSessionsDoesNotLeaveATimerBehindEachTime() {
+        // The timer was scheduled and forgotten. Nothing noticed while a session lasted a whole
+        // conversation, because tick(guildId) looks the conversation up by id and a leftover timer simply
+        // found nothing. Then the model was given a way to hang up, sessions began opening and closing
+        // several times a minute, and every one of them left another 250 ms timer behind - driving the
+        // CURRENT conversation. MEASURED 2026-11-07: seven sessions in one run.
+        // The shared setup uses the constructor from before turn-taking was a choice, which means the
+        // service decides and no timer is scheduled at all. The timer only exists on the arrangement the
+        // plugin actually ships - this one.
+        when(plugin.getSettings()).thenReturn(AiSettings.defaults().withRealtime(
+                new AiSettings.RealtimeSettings(true, AiSettings.RealtimeApi.OPENAI,
+                        "wss://example.test/realtime", "sk-x", "marin", "", false,
+                        java.time.Duration.ofMillis(1_200), true, java.time.Duration.ofSeconds(30),
+                        java.time.Duration.ofSeconds(20))));
+
+        for (int i = 0; i < 5; i++) {
+            assertTrue(service.start(guild, output), "round " + i);
+            assertEquals(1, service.liveTickers(), "one per open session, round " + i);
+            assertTrue(service.stop(guild), "round " + i);
+            assertEquals(0, service.liveTickers(), "and none once it is closed, round " + i);
+        }
+    }
+
+    @Test
     void theModelIsToldItMayHangUp() {
         // The wiring: HangUpToolsTest proves the tool, this proves the session is offered it. The group is
         // added here rather than in the plugin's shared list, because the turn-based path has no session to

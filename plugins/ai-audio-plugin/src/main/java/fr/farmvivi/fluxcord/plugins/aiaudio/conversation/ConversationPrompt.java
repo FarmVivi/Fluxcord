@@ -90,6 +90,16 @@ public final class ConversationPrompt {
      * after a question" cannot tell the two apart: a question it needs the answer to in order to continue
      * means the request is not finished, and that is a different thing from being friendly.
      *
+     * <p><strong>And the rule is written in the future tense, because of the order things happen in.</strong>
+     * MEASURED 2026-11-07, twice in ninety seconds: the model called the tool and the answer from the same
+     * response was "Pourrais-tu me donner les noms des artistes ?" - it hung up having just asked for
+     * something, Victor answered into a closed session, and because re-waking needs the name again and the
+     * transcriber writes "Chris" as "crise" he could not get the bot back at all. The tool phase runs
+     * <em>before</em> the reply is composed, so at the moment it decides, the model does not yet know what
+     * it is about to say. Saying so is worth doing; relying on it is not, which is why
+     * {@code RealtimeConversation} now cancels the request when the answer turns out to end in a question.
+     * The prompt asks for the intention, the code checks the words.
+     *
      * <p>In the system message and not only in the tool's description, for the reason {@link #TRANSCRIPT_RULE}
      * records: a rule written beside the thing it governs is read as part of the conversation, and only the
      * system message is weighed against it.
@@ -105,10 +115,13 @@ public final class ConversationPrompt {
             in the voice channel, and whoever says your name has you straight back with this conversation
             remembered.
 
-            One case where you wait instead of ending: you asked a question whose answer you need in order
-            to carry on - which of two versions, which channel, a confirmation before deleting something.
-            That is not politeness, it is the request not being finished yet. Wait for the answer, deal with
-            it, and end then.""";
+            One case where you do not end: you are about to ask a question whose answer you need in order
+            to carry on - which of two versions, which channel, a confirmation before deleting something, or
+            anything you could not find and need more detail about. That is not politeness, it is the request
+            not being finished yet. Answer, wait, deal with what they say, and end then.
+
+            Decide that before you call the tool, not after. You call it before you have composed your
+            answer, so if there is any chance your answer ends in a question, do not call it on this turn.""";
 
 
     /** Spelled out rather than numeric, so no model has to guess whether the day or the month comes first. */

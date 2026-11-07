@@ -179,9 +179,15 @@ class ConversationPromptTest {
         String system = ConversationPrompt.systemMessageFor(
                 snapshot(Mood.neutral(NOW), List.of(), "Victor"), NOW);
 
-        assertTrue(system.contains("asked a question whose answer you need"), system);
-        assertTrue(system.contains("the request not being finished"),
+        assertTrue(system.contains("about to ask a question whose answer you need"), system);
+        // A fragment that no line wrap can split. The first version of this assertion matched across a
+        // text-block newline and failed the moment the prompt was reflowed, which says nothing about the
+        // prompt.
+        assertTrue(system.contains("not being finished yet"),
                 "stated as an unfinished request rather than as politeness, which a model can act on");
+        assertTrue(system.contains("before you have composed your"),
+                "and in the future tense: the tool phase runs before the reply exists, so a rule about what"
+                        + " the answer turned out to be is a rule the model cannot apply");
     }
 
     @Test

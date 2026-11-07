@@ -273,8 +273,18 @@ public class RealtimeService {
             handlers.add(guild.getId());
         }
         if (!realtime.serviceDecidesTurns()) {
-            ticker.scheduleWithFixedDelay(() -> tick(guild.getId()), TICK_MS, TICK_MS,
-                    java.util.concurrent.TimeUnit.MILLISECONDS);
+            // Kept, so that stop() can cancel it. It was scheduled and forgotten, and nothing noticed
+            // while a session lasted a whole conversation: tick(guildId) looks the conversation up by id,
+            // so a ticker left over from a closed session simply found nothing and returned. Then the model
+            // was given a way to hang up, sessions started opening and closing several times a minute, and
+            // every one of them left another 250 ms timer behind driving the CURRENT conversation. MEASURED
+            // 2026-11-07: seven sessions in one run, so seven tickers.
+            java.util.concurrent.ScheduledFuture<?> previous = tickers.put(guild.getId(),
+                    ticker.scheduleWithFixedDelay(() -> tick(guild.getId()), TICK_MS, TICK_MS,
+                            java.util.concurrent.TimeUnit.MILLISECONDS));
+            if (previous != null) {
+                previous.cancel(false);
+            }
         }
         if (registerHandler) {
             plugin.getContext().getAudioService().registerReceiveHandler(guild, plugin,
@@ -290,6 +300,10 @@ public class RealtimeService {
 
     /** Guilds whose receive handler this service registered, and must therefore give back. */
     private final java.util.Set<String> handlers = ConcurrentHashMap.newKeySet();
+
+    /** One turn-closing timer per guild, so that closing a session can stop its own. */
+    private final java.util.Map<String, java.util.concurrent.ScheduledFuture<?>> tickers =
+            new ConcurrentHashMap<>();
 
     /**
      * Hands one packet to a guild's conversation, for a caller that owns the receive handler itself.
@@ -349,6 +363,20 @@ public class RealtimeService {
      *
      * <p>A scheduled task that throws is never run again, and this one has to survive a bad frame.
      */
+    /**
+     * How many turn-closing timers are alive.
+     *
+     * <p>Package-private for the test that there is one per open session and not one per session ever
+     * opened. A leak of these is invisible from the outside - a stray timer finds no conversation and
+     * returns - until sessions start closing and reopening several times a minute, which is what the model
+     * being able to hang up made normal.
+     *
+     * @return the number of scheduled timers
+     */
+    int liveTickers() {
+        return tickers.size();
+    }
+
     private void tick(String guildId) {
         RealtimeConversation conversation = conversations.get(guildId);
         if (conversation == null) {
@@ -377,6 +405,12 @@ public class RealtimeService {
         // the local transcriber from hearing anything ever again.
         if (handlers.remove(guild.getId())) {
             plugin.getContext().getAudioService().deregisterReceiveHandler(guild, plugin);
+        }
+        java.util.concurrent.ScheduledFuture<?> timer = tickers.remove(guild.getId());
+        if (timer != null) {
+            // false, not true: a tick already running is holding the conversation's own inbox, and
+            // interrupting it there would leave the turn half closed.
+            timer.cancel(false);
         }
         conversation.close();
         return true;

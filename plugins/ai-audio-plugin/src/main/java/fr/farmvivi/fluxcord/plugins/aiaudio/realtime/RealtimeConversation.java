@@ -66,6 +66,15 @@ public class RealtimeConversation {
     private static final int RECENT_TURNS = 6;
 
     /**
+     * Frames longer than this are audio and are not logged.
+     *
+     * <p>One 20 ms Discord packet is 3840 bytes, so about 5 kB of base64; every other frame this class sends
+     * - setup, activity markers, turns, tool results - is far shorter. A length test rather than a parse
+     * because this runs on the path that has a 20 ms budget.
+     */
+    private static final int AUDIO_FRAME_FLOOR = 1_000;
+
+    /**
      * A marker a speech service writes instead of words: {@code <noise>}, {@code [BLANK_AUDIO]},
      * {@code [inaudible]}. Angle and square brackets only - round ones occur in real transcripts.
      */
@@ -411,6 +420,16 @@ public class RealtimeConversation {
      */
     private void send(String frame) {
         if (link != null && frame != null && !frame.isBlank()) {
+            // Everything except the audio, which is 50 frames a second of base64 and would bury the log.
+            // The rest is the session setup, the activity markers, the turns and the tool results - which
+            // is to say every frame a service could reject, and none of them was written down anywhere.
+            // MEASURED the hard way, 2026-11-07: Gemini closed a session with "1007 The audio content type
+            // (CONTENT_TYPE_AUDIO) is not supported for this model configuration" and there was no way to
+            // tell what had been sent to provoke it. The same evening's two other defects were both found
+            // by adding the missing log line first and diagnosing second.
+            if (frame.length() <= AUDIO_FRAME_FLOOR) {
+                logger.debug("Sending {}", frame);
+            }
             link.send(frame);
         }
     }
@@ -550,7 +569,28 @@ public class RealtimeConversation {
             case RealtimeProtocol.Event.ToolCalled called -> run(called.calls());
             case RealtimeProtocol.Event.ResponseDone _ -> {
                 botSpeaking = false;
-                if (endWhenDone) {
+                if (endWhenDone && endsWithAQuestion(transcript.toString())) {
+                    // The defect this exists for, MEASURED 2026-11-07, twice in ninety seconds: the model
+                    // called end_the_conversation and the answer that came out of the same response was
+                    // "Pourrais-tu me donner les noms des artistes ?". It hung up having just asked for
+                    // something - Victor answered into a closed session, and since re-waking needs the name
+                    // again and the transcriber writes "Chris" as "crise", he could not get the bot back at
+                    // all. "It does not answer me any more. It does not understand."
+                    //
+                    // No prompt rule can fix that, and the system message now carrying one was the wrong
+                    // answer: the tool phase runs BEFORE the model composes its reply, so at the moment it
+                    // decides to hang up it does not yet know it is about to ask a question. The rule can
+                    // only ever be applied to what was actually said, which is here, and the words are
+                    // already in hand.
+                    //
+                    // Dropped rather than deferred: the conversation is not over, and if the model still
+                    // wants to end it after the answer it is waiting for, it can say so again.
+                    logger.info("Not ending the conversation after all: the answer asks a question ({})",
+                            endReason);
+                    endWhenDone = false;
+                    endReason = "";
+                    finishTurn();
+                } else if (endWhenDone) {
                     // The answer is out: every audio frame of it has been received and queued for playback,
                     // and closing the link does not stop what is already queued - so the goodbye is heard in
                     // full. letGo is the path the services' own disconnections already take, which is why
@@ -719,6 +759,32 @@ public class RealtimeConversation {
         }
         logger.debug("Heard nothing anybody said, only the service's own marker: {}", text.strip());
         return "";
+    }
+
+
+    /**
+     * Whether what the bot just said ends by asking something.
+     *
+     * <p>Trailing punctuation and closing brackets are skipped, so "...les noms des artistes ?)" and
+     * "... ?" both count: a transcript puts a space before the mark in French and sometimes nothing at all.
+     * An empty answer is not a question - a response that said nothing has asked nothing.
+     */
+    private static boolean endsWithAQuestion(String said) {
+        if (said == null) {
+            return false;
+        }
+        for (int i = said.length() - 1; i >= 0; i--) {
+            char c = said.charAt(i);
+            if (c == '?') {
+                return true;
+            }
+            if (!Character.isWhitespace(c) && c != '"' && c != ')' && c != ']'
+                    // 0x00BB is the French closing quote, kept numeric so this file stays ASCII.
+                    && c != 0x00BB && c != '.' && c != '!') {
+                return false;
+            }
+        }
+        return false;
     }
 
     private Turn turn(String userId, String speaker, String text) {
