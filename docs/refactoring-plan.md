@@ -1156,3 +1156,15 @@ never within a save interval of being discarded. `aSessionListeningQuietlyLonger
 runs two simulated hours and pins it.
 
 Verified: full reactor green, 1388 tests, 4 new.
+
+## 2026-11-07 — dependency round, mostly a reminder that open PRs lie
+
+Of the seven open dependabot PRs, four were already on `develop` (JDA 6.7.0 #850, mariadb 4.0.0 #871,
+surefire 3.6.1 #873, gson 2.15.0 #875) and one was behind (AWS SDK 2.57.8 #877, while 2.57.11 existed).
+Changelogs read for every intermediate version; nothing breaking.
+
+| | |
+| --- | --- |
+| Taken | AWS SDK 2.57.11 (Transfer Manager/presigner/CRT bugfixes, none in a path we use), eclipse-temurin `25.0.5_8-jre-noble` (October CPU, still Java 25), actions/setup-java 6.2.0, docker/login-action 4.8.0, softprops/action-gh-release 3.0.4 |
+| Checked, nothing newer | lavaplayer 2.2.7, LavaSrc 4.8.3, JDAVE 0.1.8, JDA 6.7.0, maven image 3.9.16; youtube-source: the pinned commit `2be8e542` is still master's tip and 1.18.2 still the newest release |
+| Still not taken | slf4j 2.1.0-alpha1; temurin 26 (#862/#863) — 26 is a non-LTS release already superseded by 27, so moving off 25 should go straight to the next LTS, not to 26 |
