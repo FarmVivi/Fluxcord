@@ -233,6 +233,9 @@ public class SpeechRecognitionService {
         worker.execute(() -> {
             try {
                 AiSettings.TranscriptionSettings transcription = plugin.getSettings().transcription();
+                if (tooQuietToBeSpeech(guild, segment, transcription)) {
+                    return;
+                }
                 String text = provider.transcribe(segment.audio(), transcription.language(),
                         vocabulary(guild, transcription));
                 if (text == null || text.isBlank()) {
@@ -251,6 +254,44 @@ public class SpeechRecognitionService {
                 logger.warn("Transcription failed for guild {}: {}", guild.getId(), e.getMessage());
             }
         });
+    }
+
+
+    /**
+     * Whether this segment is too quiet to be somebody talking, and so must not be transcribed.
+     *
+     * <p>MEASURED twice, 2026-11-07: segments of 0.52 s and 0.58 s of microphone noise came back from the
+     * local transcriber as exactly {@code "Fluxcord Chris"} - the vocabulary list of the request, word for
+     * word and in order. The request tells the model "These names may occur, spelled exactly like this:
+     * Fluxcord, Chris", and a general chat model given almost no signal answers with the only text it has.
+     * That is a transcription nothing downstream can doubt: the words are the bot's own name, which is the
+     * one thing the wake gate is looking for, so a hosted session opened and the bot said "Je suis la.
+     * Qu'y a-t-il ?" into a room where nobody had spoken for 92 seconds.
+     *
+     * <p>{@code min_segment_ms} was already there for coughs and already missed this: at 400 ms, both
+     * clips cleared it. Length is the wrong axis - half a second of real speech is a word, and two seconds
+     * of noise is still noise. Amplitude is the right one, and it is the last place the difference is still
+     * visible, which is why this happens before the request rather than on its answer.
+     *
+     * <p>The level is logged either way, and that is deliberate: it is the only way to tighten the
+     * threshold from evidence instead of by feel, since what counts as quiet depends on the operator's
+     * microphone and gain.
+     */
+    private boolean tooQuietToBeSpeech(Guild guild, SpeechSegmenter.Segment segment,
+                                       AiSettings.TranscriptionSettings transcription) {
+        if (segment.dbfs() >= transcription.minLoudnessDbfs()) {
+            logger.debug("Segment of {} from {} measures {} dBFS, above the {} dBFS floor",
+                    segment.audio().duration(), segment.userId(),
+                    String.format(java.util.Locale.ROOT, "%.1f", segment.dbfs()),
+                    transcription.minLoudnessDbfs());
+            return false;
+        }
+        logger.debug("Dropped {} from {} in guild {}: {} dBFS is below the {} dBFS floor, too quiet to be"
+                        + " speech - a transcriber handed this answers with the names it was told to expect",
+                segment.audio().duration(), segment.userId(), guild.getId(),
+                String.format(java.util.Locale.ROOT, "%.1f", segment.dbfs()),
+                transcription.minLoudnessDbfs());
+        return true;
     }
 
     /**

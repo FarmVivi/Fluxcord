@@ -41,6 +41,19 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
     private static final int DEFAULT_SILENCE_MS = 1200;
     private static final int DEFAULT_MAX_SEGMENT_SECONDS = 25;
     private static final int DEFAULT_MIN_SEGMENT_MS = 400;
+    /**
+     * The loudness below which a segment is not speech, in dBFS.
+     *
+     * <p>Deliberately conservative: -50 dBFS is close enough to silence that no speech reaches it, so this
+     * default drops the noise that produced a hallucinated wake word without risking a quiet question.
+     * Every segment's measured level is logged whether it passes or not, which is what makes tightening
+     * this a matter of reading a log rather than guessing.
+     *
+     * <p>Whole decibels, because that is the resolution an operator reading a log would ever act on, and
+     * because {@code Configuration} has no {@code getDouble} - adding one is an addition to the public api
+     * for no gain here.
+     */
+    private static final int DEFAULT_MIN_LOUDNESS_DBFS = -50;
     private static final int DEFAULT_CHANNEL_TURNS = 40;
     private static final int DEFAULT_SERVER_TURNS = 200;
     private static final int DEFAULT_USER_TURNS = 100;
@@ -60,7 +73,7 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
      */
     public record TranscriptionSettings(AiEndpoint endpoint, SpeechApi api, String language,
                                         Duration silence, Duration maxSegment, Duration minSegment,
-                                        List<String> vocabulary) {
+                                        double minLoudnessDbfs, List<String> vocabulary) {
 
         /**
          * Keeps the one invariant the segmenter depends on: an utterance has to be allowed to last longer
@@ -70,13 +83,17 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
             if (maxSegment.compareTo(silence) <= 0) {
                 maxSegment = silence.multipliedBy(10);
             }
+            // A positive threshold would drop everything: dBFS is measured against full scale and is never
+            // above zero. Taken as a mistyped sign rather than as a request to transcribe nothing.
+            minLoudnessDbfs = Math.min(0, minLoudnessDbfs);
             vocabulary = vocabulary == null ? List.of() : List.copyOf(vocabulary);
         }
 
         /** Transcription with nothing to spell out, which is what every caller wanted before there was. */
         public TranscriptionSettings(AiEndpoint endpoint, SpeechApi api, String language,
                                      Duration silence, Duration maxSegment, Duration minSegment) {
-            this(endpoint, api, language, silence, maxSegment, minSegment, List.of());
+            this(endpoint, api, language, silence, maxSegment, minSegment, DEFAULT_MIN_LOUDNESS_DBFS,
+                    List.of());
         }
     }
 
@@ -147,6 +164,7 @@ public record AiSettings(TranscriptionSettings transcription, SpeechSettings spe
                                 DEFAULT_MAX_SEGMENT_SECONDS, "transcription.max_segment_seconds", logger)),
                         Duration.ofMillis(Math.max(0,
                                 config.getInt("transcription.min_segment_ms", DEFAULT_MIN_SEGMENT_MS))),
+                        config.getInt("transcription.min_loudness_dbfs", DEFAULT_MIN_LOUDNESS_DBFS),
                         config.getStringList("speech_to_text.vocabulary", List.of())),
                 new SpeechSettings(tts,
                         nonBlank(config.getString("text_to_speech.voice", DEFAULT_VOICE), DEFAULT_VOICE),

@@ -70,6 +70,22 @@ transcription:
   # cost a request and produce nonsense.
   min_segment_ms: 400
 
+  # The level below which a segment is not somebody talking, in dBFS (RMS against full scale, so always
+  # negative; speech on Discord sits around -30 to -20).
+  #
+  # MEASURED twice, 2026-11-07: 0.52 s and 0.58 s of microphone noise came back from the local transcriber
+  # as exactly "Fluxcord Chris" - the vocabulary list of the request, word for word. A chat model given
+  # almost no signal answers with the only text it was handed, and that transcription is indistinguishable
+  # from a real wake word, so the bot opened a paid session and answered a room where nobody had spoken for
+  # 92 seconds. min_segment_ms missed it because length is the wrong axis: half a second of speech is a
+  # word, and two seconds of noise is still noise.
+  #
+  # -50 is conservative on purpose - close enough to silence that no speech reaches it. Every segment's
+  # measured level is logged at DEBUG whether it passes or not ("measures X dBFS, above the Y dBFS floor"),
+  # so this can be tightened from the log rather than by feel; what counts as quiet depends on the
+  # microphone and its gain.
+  min_loudness_dbfs: -50
+
 # What the bot remembers of the conversations. Each history is independent and 0 turns it off, so a bot
 # can follow a live conversation without keeping any long-term record of the people in it.
 memory:

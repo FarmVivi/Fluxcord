@@ -252,14 +252,67 @@ class ServicesTest {
         return handler.getValue();
     }
 
-    /** Feeds {@code millis} of speech from {@code userId} into the handler, as JDA would. */
+    /**
+     * Feeds {@code millis} of speech from {@code userId} into the handler, as JDA would.
+     *
+     * <p>Audible speech, and not the buffer of zeros this used to pass. Since 2026-11-07 a segment quieter
+     * than {@code transcription.min_loudness_dbfs} is dropped before the request, because a sub-second clip
+     * of microphone noise was transcribed as the vocabulary hint itself and woke a paid session - so a
+     * helper called {@code speaks} that fed digital silence no longer tested transcription at all. It was
+     * worth four failures to find out that this helper had been lying about its name.
+     */
     private void speaks(AudioReceiveHandler handler, String userId, int millis) {
         User user = mock(User.class);
         when(user.getId()).thenReturn(userId);
         UserAudio audio = mock(UserAudio.class);
         when(audio.getUser()).thenReturn(user);
-        when(audio.getAudioData(1.0)).thenReturn(new byte[48 * millis * 4]);
+        when(audio.getAudioData(1.0)).thenReturn(tone(48 * millis * 4));
         handler.handleUserAudio(audio);
+    }
+
+    /** As loud as somebody talking: a sine at a fifth of full scale, 48 kHz stereo as Discord delivers it. */
+    private static byte[] tone(int bytes) {
+        byte[] samples = new byte[bytes - bytes % 2];
+        java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(samples)
+                .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        for (int i = 0; buffer.remaining() >= 2; i++) {
+            buffer.putShort((short) Math.round(Math.sin(2 * Math.PI * 220 * i / 48_000.0) * 0.2 * 32767));
+        }
+        return samples;
+    }
+
+    @Test
+    void silenceIsNotTranscribedHoweverLongItLasts() throws Exception {
+        // The defect this pins, MEASURED twice on 2026-11-07: 0.52 s and 0.58 s of microphone noise came
+        // back from the local transcriber as exactly "Fluxcord Chris" - the vocabulary list of the request,
+        // word for word. The words are the bot's own name, so the wake gate opened a paid session and the
+        // bot answered a room where nobody had spoken for 92 seconds. min_segment_ms could not catch it:
+        // length is the wrong axis, amplitude is the right one.
+        List<String> posted = new java.util.ArrayList<>();
+        List<PcmAudio> asked = new java.util.ArrayList<>();
+        AudioReceiveHandler handler = startTranscribing((audio, language, vocabulary) -> {
+            asked.add(audio);
+            return "Fluxcord";
+        }, recordingChannel(posted));
+
+        User user = mock(User.class);
+        when(user.getId()).thenReturn(USER_ID);
+        UserAudio audio = mock(UserAudio.class);
+        when(audio.getUser()).thenReturn(user);
+        when(audio.getAudioData(1.0)).thenReturn(new byte[48 * 600 * 4]);
+        handler.handleUserAudio(audio);
+        now.addAndGet(2000);
+
+        // A negative assertion needs a bound rather than a deadline: the segmenter polls every 100 ms and
+        // the drop costs no I/O, so a second is far more than the path needs and the test stays quick.
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+        while (asked.isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+
+        assertTrue(asked.isEmpty(),
+                "silence must never reach the transcriber, so there is nothing to hallucinate from");
+        assertTrue(posted.isEmpty(), "and nothing is posted or remembered");
     }
 
     private MessageChannel recordingChannel(List<String> posted) {

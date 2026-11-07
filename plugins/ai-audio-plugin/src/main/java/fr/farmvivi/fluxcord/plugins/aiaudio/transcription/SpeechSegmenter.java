@@ -122,7 +122,10 @@ public class SpeechSegmenter {
         if (audio.duration().compareTo(minSegment) < 0) {
             return java.util.Optional.empty();
         }
-        return java.util.Optional.of(new Segment(userId, audio));
+        // Measured here and carried rather than measured by whoever wants it: this is the one moment the
+        // whole utterance exists as one buffer, and the caller that decides whether it is loud enough to be
+        // speech would otherwise have to walk it again.
+        return java.util.Optional.of(new Segment(userId, audio, Loudness.dbfs(audio)));
     }
 
     /**
@@ -130,8 +133,15 @@ public class SpeechSegmenter {
      *
      * @param userId the Discord id of whoever said it
      * @param audio  what they said, at {@link #TRANSCRIPTION_SAMPLE_RATE} mono
+     * @param dbfs   how loud it is, as {@link Loudness#dbfs}; the only thing that still distinguishes
+     *               microphone noise from speech once a transcriber has put the bot's own name on it
      */
-    public record Segment(String userId, PcmAudio audio) {
+    public record Segment(String userId, PcmAudio audio, double dbfs) {
+
+        /** A segment whose loudness nobody is going to look at, which is what the tests of the cutting are. */
+        public Segment(String userId, PcmAudio audio) {
+            this(userId, audio, Loudness.dbfs(audio));
+        }
     }
 
     /** Mutable accumulator for one speaker. */
