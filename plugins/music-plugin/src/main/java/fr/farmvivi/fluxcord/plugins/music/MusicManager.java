@@ -143,10 +143,15 @@ public class MusicManager {
 
         Guild guild = optGuild.get();
         MusicPlayer player = getPlayer(guild);
-        // The anchoring moved to MusicCommand.player(ctx), so that every music command does it and not
-        // only this one. Not every invocation has a text channel - the console has none, and neither does
-        // a command the AI runs from a voice conversation - and this used to dereference it, so the command
-        // died with a NullPointerException before a single note played.
+        // Anchored here as well as in MusicCommand.player(ctx), and not only there: the two commands that
+        // actually start playback - "/play" and "/playlist" - reach the player through this method and
+        // never through player(ctx), so moving the anchor out of here left the player message homeless for
+        // the whole of a listening session. Only a later "/pause" or "/volume" brought it back.
+        //
+        // getAttachedChannel rather than getChannel, and Optional rather than a dereference: the console
+        // has no text channel, a command the AI runs from a voice conversation may have none, and a
+        // detached interaction snapshot cannot be written to once the command has returned.
+        ctx.getAttachedChannel().ifPresent(player::setMessageChannel);
 
         AudioManager audioManager = guild.getAudioManager();
         if (!audioManager.isConnected()) {

@@ -53,6 +53,7 @@ class MusicManagerTest {
 
     private static final String GUILD_ID = "100";
     private static final String VOICE_ID = "vc1";
+    private static final long TEXT_ID = 4242L;
 
     private final MemoryDataStorage storage = new MemoryDataStorage();
     private final com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager playerManager =
@@ -353,8 +354,13 @@ class MusicManagerTest {
         doAnswer(invocation -> null).when(spiedPlayerManager).loadItemOrdered(any(), anyString(), any());
         CommandContext ctx = mock(CommandContext.class);
         MessageChannel channel = mock(MessageChannel.class);
+        when(channel.getId()).thenReturn(String.valueOf(TEXT_ID));
+        when(channel.getIdLong()).thenReturn(TEXT_ID);
         when(ctx.getGuild()).thenReturn(Optional.of(guild));
         when(ctx.getChannel()).thenReturn(channel);
+        // Stubbed explicitly: getAttachedChannel is a default method of the interface, and a mock runs
+        // none of them - it answers Optional.empty() whatever getChannel() returns.
+        when(ctx.getAttachedChannel()).thenReturn(Optional.of(channel));
         when(ctx.getLocale()).thenReturn(Locale.FRANCE);
         return ctx;
     }
@@ -372,6 +378,34 @@ class MusicManagerTest {
 
     private AudioTrack testTrack(String title) {
         return TestAudioSource.trackOf(playerManager, title, 120_000);
+    }
+
+    @Test
+    void startingPlaybackAnchorsThePlayerMessageToTheChannelItWasAskedFrom() {
+        // "/play" and "/playlist" reach the player through preparePlayback and never through
+        // MusicCommand.player(ctx), so they are the only two commands that have to anchor here. When the
+        // anchor lived only in player(ctx) the player message had no channel for a whole session: nothing
+        // was ever posted, and a later "/pause" or "/stop" was what finally made it appear.
+        CommandContext ctx = loadContext();
+
+        manager.loadTrack(ctx, "ytsearch:a song", false);
+
+        assertEquals(TEXT_ID, manager.getPlayer(guild).getPlayerMessage().getChannelId(),
+                "the player message has to know where to post before the first track plays");
+    }
+
+    @Test
+    void anInvocationWithNoWritableChannelLeavesTheAnchorAlone() {
+        // The console has no text channel, and neither does a command the AI runs from a voice
+        // conversation in a channel it cannot see. Dereferencing it killed the command before a single
+        // note played; anchoring to a detached snapshot kills the player later, on a scheduler thread.
+        CommandContext ctx = loadContext();
+        when(ctx.getAttachedChannel()).thenReturn(Optional.empty());
+
+        manager.loadTrack(ctx, "ytsearch:a song", false);
+
+        assertNull(manager.getPlayer(guild).getPlayerMessage().getChannelId());
+        verify(ctx).deferReply();
     }
 
     @Test
