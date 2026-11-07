@@ -2,7 +2,7 @@ package fr.farmvivi.fluxcord.core.plugin;
 
 import fr.farmvivi.fluxcord.api.plugin.PluginLifecycle;
 import com.example.fixture.SamplePluginClass;
-import fr.farmvivi.fluxcord.core.util.DiscordColor;
+import fr.farmvivi.fluxcord.core.audio.AudioSettings;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -81,9 +81,9 @@ class PluginClassLoaderTest {
 
     @Test
     void corePackagesAreAlwaysParentFirstEvenWhenBundled(@TempDir Path dir) throws Exception {
-        File jar = buildJar(dir, List.of(DiscordColor.class), Map.of());
+        File jar = buildJar(dir, List.of(AudioSettings.class), Map.of());
         try (PluginClassLoader loader = loader(jar)) {
-            assertSame(DiscordColor.class, loader.loadClass(DiscordColor.class.getName()),
+            assertSame(AudioSettings.class, loader.loadClass(AudioSettings.class.getName()),
                     "fr.farmvivi.fluxcord.core.* must never be duplicated per plugin");
         }
     }

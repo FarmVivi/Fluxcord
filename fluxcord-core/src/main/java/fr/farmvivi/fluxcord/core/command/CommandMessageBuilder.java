@@ -2,7 +2,7 @@ package fr.farmvivi.fluxcord.core.command;
 
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.core.command.reply.ReplyTarget;
-import fr.farmvivi.fluxcord.core.util.DiscordColor;
+import fr.farmvivi.fluxcord.api.message.MessageStyle;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.components.MessageTopLevelComponent;
 import net.dv8tion.jda.api.entities.Message;
@@ -121,7 +121,7 @@ public class CommandMessageBuilder extends MessageCreateBuilder {
     }
 
     public void info(String title, String description) {
-        addTyped(DiscordColor.DISCORD_BLURPLE.getColor(), "commands.titles.info", title, description);
+        addTyped(MessageStyle.INFO, title, description);
     }
 
     public void success(String description) {
@@ -129,7 +129,7 @@ public class CommandMessageBuilder extends MessageCreateBuilder {
     }
 
     public void success(String title, String description) {
-        addTyped(DiscordColor.DISCORD_GREEN.getColor(), "commands.titles.success", title, description);
+        addTyped(MessageStyle.SUCCESS, title, description);
     }
 
     public void warning(String description) {
@@ -137,7 +137,7 @@ public class CommandMessageBuilder extends MessageCreateBuilder {
     }
 
     public void warning(String title, String description) {
-        addTyped(DiscordColor.DISCORD_YELLOW.getColor(), "commands.titles.warning", title, description);
+        addTyped(MessageStyle.WARNING, title, description);
     }
 
     public void error(String description) {
@@ -145,16 +145,11 @@ public class CommandMessageBuilder extends MessageCreateBuilder {
     }
 
     public void error(String title, String description) {
-        addTyped(DiscordColor.DISCORD_RED.getColor(), "commands.titles.error", title, description);
+        addTyped(MessageStyle.ERROR, title, description);
     }
 
-    private void addTyped(Color color, String defaultTitleKey, String title, String description) {
-        EmbedBuilder embed = new EmbedBuilder().setColor(color)
-                .setTitle(title == null || title.isEmpty() ? languageManager.getString(locale, defaultTitleKey) : title);
-        if (description != null && !description.isEmpty()) {
-            embed.setDescription(description);
-        }
-        addEmbeds(embed.build());
+    private void addTyped(MessageStyle style, String title, String description) {
+        addEmbeds(style.embed(languageManager, locale, title, description));
     }
 
     private static String truncate(String content, int maxLength) {

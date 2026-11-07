@@ -49,8 +49,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class TranslationKeyCoverageTest {
 
-    /** Where the module's own code lives, relative to the module directory Surefire runs in. */
-    private static final Path SOURCES = Path.of("src", "main", "java");
+    /**
+     * Where the code that uses these translations lives, relative to the module directory Surefire runs in.
+     *
+     * <p>The api module is in the list because the core's lang file is the one it reads: the four
+     * {@code commands.titles.*} keys moved there with {@code MessageStyle}, so that a plugin posting a
+     * failure outside a command gets the same red box, headed the same word, as a command error. Scanning
+     * the core alone would call them orphans - which the test duly did, the moment they moved.
+     */
+    private static final List<Path> SOURCES = List.of(
+            Path.of("src", "main", "java"),
+            Path.of("..", "fluxcord-api", "src", "main", "java"));
 
     /** Lowercase dotted path, the shape every key in these files has. */
     private static final Pattern KEY_SHAPE = Pattern.compile("[a-z][a-z0-9_]*(?:\\.[a-z0-9_]+)+");
@@ -111,21 +120,23 @@ class TranslationKeyCoverageTest {
     /** Every string literal of the module's sources, mapped to the files it appears in. */
     private static Map<String, Set<String>> literals() {
         Map<String, Set<String>> found = new TreeMap<>();
-        assertTrue(Files.isDirectory(SOURCES), "expected to run from the module directory, with " + SOURCES);
-        try (Stream<Path> files = Files.walk(SOURCES)) {
-            files.filter(path -> path.toString().endsWith(".java")).forEach(path -> {
-                String source = read(path);
-                Matcher matcher = LITERAL.matcher(source);
-                while (matcher.find()) {
-                    String before = source.substring(Math.max(0, matcher.start() - 60), matcher.start());
-                    if (!CONFIGURATION.matcher(before).find()) {
-                        found.computeIfAbsent(matcher.group(1), key -> new TreeSet<>())
-                                .add(path.getFileName().toString());
+        for (Path root : SOURCES) {
+            assertTrue(Files.isDirectory(root), "expected to run from the module directory, with " + root);
+            try (Stream<Path> files = Files.walk(root)) {
+                files.filter(path -> path.toString().endsWith(".java")).forEach(path -> {
+                    String source = read(path);
+                    Matcher matcher = LITERAL.matcher(source);
+                    while (matcher.find()) {
+                        String before = source.substring(Math.max(0, matcher.start() - 60), matcher.start());
+                        if (!CONFIGURATION.matcher(before).find()) {
+                            found.computeIfAbsent(matcher.group(1), key -> new TreeSet<>())
+                                    .add(path.getFileName().toString());
+                        }
                     }
-                }
-            });
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+                });
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
         }
         return found;
     }

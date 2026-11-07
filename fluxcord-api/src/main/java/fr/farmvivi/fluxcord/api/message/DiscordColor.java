@@ -1,4 +1,4 @@
-package fr.farmvivi.fluxcord.core.util;
+package fr.farmvivi.fluxcord.api.message;
 
 import java.awt.*;
 

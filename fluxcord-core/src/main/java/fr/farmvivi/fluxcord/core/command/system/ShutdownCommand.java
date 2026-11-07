@@ -6,7 +6,7 @@ import fr.farmvivi.fluxcord.api.command.CommandResult;
 import fr.farmvivi.fluxcord.api.language.LanguageManager;
 import fr.farmvivi.fluxcord.api.permissions.PermissionManager;
 import fr.farmvivi.fluxcord.core.command.SimpleCommandBuilder;
-import fr.farmvivi.fluxcord.core.util.DiscordColor;
+import fr.farmvivi.fluxcord.api.message.DiscordColor;
 import net.dv8tion.jda.api.EmbedBuilder;
 
 /**
