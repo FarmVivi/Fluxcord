@@ -73,6 +73,44 @@ public final class ConversationPrompt {
             a screen: say what it means in your own words rather than reading it out.""";
 
 
+    /**
+     * Only sent on the full-duplex path, which is the only one with a session to end.
+     *
+     * <p>Two rules rather than one, and MEASURED 2026-11-07 is why. Over three sessions the bot said 27
+     * things and <strong>14 of them ended with a question</strong> - "Comment puis-je t'aider ?", "Est-ce
+     * qu'il y a autre chose ?", "Est-ce que c'est mieux maintenant ?". Victor's rule for hanging up is the
+     * right one, that a bot which has just asked something must wait for the answer; applied on its own it
+     * would have disabled the tool in more than half of all turns, because the bot asks a question of pure
+     * politeness every other sentence. Those questions are also the complaint that opened the evening - a
+     * bot saying "yes, I am here, what can I do" to somebody who asked it nothing. So the offer of further
+     * help and the hanging up are one rule in two halves: stop filling the silence with a question, and
+     * then there is a silence worth ending.
+     *
+     * <p>The exception is stated as what it is rather than as politeness, because a model told "never end
+     * after a question" cannot tell the two apart: a question it needs the answer to in order to continue
+     * means the request is not finished, and that is a different thing from being friendly.
+     *
+     * <p>In the system message and not only in the tool's description, for the reason {@link #TRANSCRIPT_RULE}
+     * records: a rule written beside the thing it governs is read as part of the conversation, and only the
+     * system message is weighed against it.
+     */
+    private static final String CLOSING_RULE = """
+            When what was asked of you is done, stop. Do not end your turn by offering more help: "anything
+            else?", "how can I help you now?", "is that better?" are not politeness when they are spoken
+            aloud - they are one more thing somebody has to listen to and answer. Say what happened, and
+            then be quiet.
+
+            Then end the conversation, using the tool for it. Staying connected is paid for by the second,
+            including the seconds where nobody is saying anything, and ending costs nothing at all: you stay
+            in the voice channel, and whoever says your name has you straight back with this conversation
+            remembered.
+
+            One case where you wait instead of ending: you asked a question whose answer you need in order
+            to carry on - which of two versions, which channel, a confirmation before deleting something.
+            That is not politeness, it is the request not being finished yet. Wait for the answer, deal with
+            it, and end then.""";
+
+
     /** Spelled out rather than numeric, so no model has to guess whether the day or the month comes first. */
     private static final DateTimeFormatter TODAY = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.ENGLISH);
 
@@ -112,7 +150,7 @@ public final class ConversationPrompt {
         List<ChatModel.Message> messages = new ArrayList<>();
         messages.add(ChatModel.Message.system(
                 systemMessage(snapshot.persona(), snapshot.mood(), question.timestampMs(),
-                        snapshot.conversation().botName())));
+                        snapshot.conversation().botName(), false)));
         messages.add(ChatModel.Message.user(context(snapshot)));
 
         List<Turn> history = snapshot.conversation().channelTurns();
@@ -147,8 +185,11 @@ public final class ConversationPrompt {
      * @return the system message
      */
     public static String systemMessageFor(PersonaSnapshot snapshot, long nowMs) {
+        // true: this is the full-duplex path, and the only one holding a session that can be ended. The
+        // turn-based path has nothing to hang up, and telling a model to use a tool it has not been given
+        // is how it ends up describing the tool out loud instead of answering.
         return systemMessage(snapshot.persona(), snapshot.mood(), nowMs,
-                snapshot.conversation().botName());
+                snapshot.conversation().botName(), true);
     }
 
     /**
@@ -161,7 +202,8 @@ public final class ConversationPrompt {
      * date is not persuasion, it is the fact they were missing, and it belongs in the system message because
      * the plugin produces it: nothing anybody said in the channel reaches here.
      */
-    private static String systemMessage(Persona persona, Mood mood, long nowMs, String calledHere) {
+    private static String systemMessage(Persona persona, Mood mood, long nowMs, String calledHere,
+                                        boolean canEndTheConversation) {
         StringBuilder out = new StringBuilder();
         // The bot's name is its Discord identity, and in a server that renamed it, that server's name for
         // it - not the persona's, which is a label an operator typed into a configuration file. Announcing
@@ -198,6 +240,9 @@ public final class ConversationPrompt {
         out.append('\n').append(SPOKEN_REPLY_RULES);
         out.append('\n').append(TRANSCRIPT_RULE);
         out.append('\n').append(TOOL_NARRATION_RULE);
+        if (canEndTheConversation) {
+            out.append('\n').append(CLOSING_RULE);
+        }
         if (!persona.instructions().isBlank()) {
             out.append('\n').append(persona.instructions());
         }

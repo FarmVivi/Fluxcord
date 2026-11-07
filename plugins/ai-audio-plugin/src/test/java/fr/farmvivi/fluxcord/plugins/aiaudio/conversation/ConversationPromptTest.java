@@ -159,6 +159,47 @@ class ConversationPromptTest {
     }
 
     @Test
+    void theFullDuplexPathIsToldToStopOfferingMoreHelpAndToHangUp() {
+        // Two halves of one rule, and MEASURED 2026-11-07 is why they travel together: over three sessions
+        // the bot said 27 things and 14 of them ended with a question - "Comment puis-je t'aider ?",
+        // "Est-ce qu'il y a autre chose ?". Telling it only to wait whenever it has asked something would
+        // have disabled hanging up in more than half of all turns. Those questions are also the original
+        // complaint: a bot announcing itself to somebody who asked it nothing.
+        String system = ConversationPrompt.systemMessageFor(
+                snapshot(Mood.neutral(NOW), List.of(), "Victor"), NOW);
+
+        assertTrue(system.contains("Do not end your turn by offering more help"), system);
+        assertTrue(system.contains("end the conversation"), system);
+        assertTrue(system.contains("paid for by the second"), "why, not just what");
+        assertTrue(system.contains("you stay"), "that hanging up is not leaving the channel");
+    }
+
+    @Test
+    void itIsAlsoToldTheOneCaseWhereItMustWaitInstead() {
+        String system = ConversationPrompt.systemMessageFor(
+                snapshot(Mood.neutral(NOW), List.of(), "Victor"), NOW);
+
+        assertTrue(system.contains("asked a question whose answer you need"), system);
+        assertTrue(system.contains("the request not being finished"),
+                "stated as an unfinished request rather than as politeness, which a model can act on");
+    }
+
+    @Test
+    void theTurnBasedPathIsNotToldToHangUpBecauseItHasNothingToHangUp() {
+        // The two paths share this system message. The hang-up tool is offered by the realtime service
+        // alone, and a model told to use a tool it has not been given describes the tool out loud instead
+        // of answering.
+        String system = ConversationPrompt.build(
+                snapshot(Mood.neutral(NOW), List.of(), "Victor"),
+                said("u1", "Victor", "il est quelle heure"), 5, BOT).get(0).content();
+
+        assertFalse(system.contains("end the conversation"), system);
+        assertFalse(system.contains("Do not end your turn by offering more help"), system);
+        assertTrue(system.contains("do not say what you are about to do"),
+                "the rules both paths share are still there");
+    }
+
+    @Test
     void theContextBlockOnItsOwnCarriesTheNameAndThePeople() {
         // What the full-duplex path sends as user content at the start of a session. It had none of this,
         // which is how the bot ended up not knowing its own name: the system message points here, and here
