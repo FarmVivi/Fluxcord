@@ -65,6 +65,43 @@ public final class Address {
     }
 
     /**
+     * Whether the sentence is the name and nothing else.
+     *
+     * <p>Somebody who says only "Fluxcord ?" has asked for attention, not for an answer, and a bot that
+     * replies "Je suis la, qu'y a-t-il ?" has said nothing while using a turn to say it. Worse, it is the
+     * shape a false wake takes: a transcriber that hallucinates the wake word hallucinates the wake word
+     * <em>alone</em>, because the vocabulary hint is all it was given. So this is what tells the gate to
+     * open the session and keep quiet - the bot is now listening, the next sentence needs no name, and
+     * nobody was answered who had not asked anything.
+     *
+     * @param spoken what was said, as transcribed
+     * @param names  the names that count as being addressed
+     * @return true when every word of the sentence belongs to one of the names
+     */
+    public static boolean nothingBut(String spoken, Collection<String> names) {
+        Set<String> wanted = usable(names);
+        if (wanted.isEmpty() || spoken == null || spoken.isBlank()) {
+            return false;
+        }
+        // Split into the name's own words rather than compared whole, so "Fluxcord Chris" counts for a bot
+        // that answers to either - which is exactly what the hallucinated transcription was.
+        Set<String> nameWords = new LinkedHashSet<>();
+        for (String name : wanted) {
+            nameWords.addAll(java.util.Arrays.asList(name.split(" ")));
+        }
+        String normalised = normalise(spoken);
+        if (normalised.isEmpty()) {
+            return false;
+        }
+        for (String word : normalised.split(" ")) {
+            if (!nameWords.contains(word)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * Whether these words contain the name, allowing for the transcriber having got it slightly wrong.
      *
      * <p>MEASURED, 2026-10-03, on a real evening of conversation: a bot called "Poubelle" was written down as

@@ -140,4 +140,60 @@ class AddressTest {
         assertFalse(Address.addressed("Quelle belle, quel temps fait-il aujourd'hui a Paris.",
                 List.of("Poubelle")));
     }
+
+    /**
+     * The sentence that is nothing but the name, which is both a summons with no request in it and the exact
+     * shape a hallucinated wake word takes - MEASURED 2026-11-07, twice: a sub-second clip of microphone
+     * noise transcribed as "Fluxcord Chris", which is the vocabulary hint and nothing else.
+     */
+    @org.junit.jupiter.api.Nested
+    class NothingButTheName {
+
+        @Test
+        void theNameAloneIsNothingButTheName() {
+            assertTrue(Address.nothingBut("Fluxcord", NAMES));
+            assertTrue(Address.nothingBut("fluxcord", NAMES));
+            assertTrue(Address.nothingBut("Fluxcord ?", NAMES), "punctuation is not a request");
+            assertTrue(Address.nothingBut("  Tardis !  ", NAMES));
+        }
+
+        @Test
+        void twoOfTheNamesInARowAreStillNothingButTheName() {
+            // The hallucination writes the vocabulary list out in order, so this is the real case and not a
+            // constructed one.
+            assertTrue(Address.nothingBut("Fluxcord Tardis", NAMES));
+            assertTrue(Address.nothingBut("Fluxcord, Tardis", NAMES));
+        }
+
+        @Test
+        void anyWordThatIsNotANameMakesItARequest() {
+            assertFalse(Address.nothingBut("Fluxcord joue de la musique", NAMES));
+            assertFalse(Address.nothingBut("Fluxcord oui", NAMES));
+            assertFalse(Address.nothingBut("eh Fluxcord", NAMES),
+                    "a greeting before the name is a word the bot did not put there");
+        }
+
+        @Test
+        void aSentenceWithoutTheNameIsNotASummons() {
+            assertFalse(Address.nothingBut("mets de la musique", NAMES));
+            assertFalse(Address.nothingBut("", NAMES));
+            assertFalse(Address.nothingBut(null, NAMES));
+        }
+
+        @Test
+        void withNoNamesToLookForNothingIsASummons() {
+            // addressed() answers true here - no trigger means every sentence counts - and this must not
+            // follow it, or a bot with no wake word would never answer anything at all.
+            assertFalse(Address.nothingBut("Fluxcord", List.of()));
+            assertFalse(Address.nothingBut("mets de la musique", List.of()));
+        }
+
+        @Test
+        void aNameOfSeveralWordsCountsWordByWord() {
+            List<String> spaced = List.of("Fluxcord Bot");
+            assertTrue(Address.nothingBut("Fluxcord Bot", spaced));
+            assertTrue(Address.nothingBut("Bot", spaced), "half of the name is still only the name");
+            assertFalse(Address.nothingBut("Fluxcord Bot arrete", spaced));
+        }
+    }
 }

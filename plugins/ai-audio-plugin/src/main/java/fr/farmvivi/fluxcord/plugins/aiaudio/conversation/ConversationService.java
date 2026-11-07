@@ -214,9 +214,18 @@ public class ConversationService {
         if (gate != null && plugin.getSettings().realtime().isUsable()
                 && plugin.getSettings().realtime().wakeLocally()) {
             MessageChannel output = outputs.get(guild.getId());
+            // A sentence that is the bot's name and nothing else opens the session without being handed to
+            // it. The bot then listens and says nothing, which is the only honest answer to a summons with
+            // no request in it - and the one case where a session opened on a hallucinated wake word costs
+            // a connection rather than an answer nobody asked for.
+            Turn question = Address.nothingBut(turn.text(), names) ? null : turn;
+            if (question == null) {
+                logger.debug("Addressed by name with nothing asked; engaging without a question: {}",
+                        turn.text());
+            }
             worker.execute(() -> {
                 try {
-                    gate.engage(guild, output, turn);
+                    gate.engage(guild, output, question);
                 } catch (RuntimeException e) {
                     logger.warn("Could not engage the hosted session in guild {}: {}",
                             guild.getId(), e.getMessage());
