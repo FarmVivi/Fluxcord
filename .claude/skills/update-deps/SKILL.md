@@ -146,6 +146,9 @@ Only document what was verified during the run. Say in the report whether the sk
 - Harmless dry-run noise: "Maven: error fetching versions ... not-found" (one per declared repository
   tried), Docker Hub 403 on deep pagination, "pom.xml contains windows line endings" (Windows checkout;
   the repo stores LF), "does not support local presets".
+- First live run (2026-11-07) matched the dry-run exactly: onboarding PR closed by Renovate itself, one PR
+  (maven image 3.10.0), dashboard #880. Its "Maven Central rate limiting detected" warning comes from
+  Mend's hosted runner, not from our config.
 
 ## Do not bump blindly
 
