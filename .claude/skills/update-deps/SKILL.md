@@ -105,8 +105,12 @@ new pattern covers every case before applying it everywhere. Beyond ~15 call sit
 - Check the shaded jar really carries the new version:
   `unzip -p fluxcord-core/target/fluxcord-core-*-shaded.jar META-INF/maven/<group>/<artifact>/pom.properties`.
 - Runtime-only libs (JDA, JDAVE, lavaplayer, storage drivers): smoke run (`/verify --smoke`).
-- Docker base images: the `Docker Development Build` workflow on `develop` builds them; watch it with
-  `gh run list --branch develop` after the push.
+- Docker images: on a PR, `build-docker-dev` builds `Dockerfile.optimized` with a **cold** Maven repo inside
+  Docker (the runner's `.m2` cache does not reach it), so its log proves resolution from every repository:
+  `gh run view <id> --log | grep -oE "Downloading from [a-zA-Z0-9_-]+: https://[^/]+" | sort | uniq -c`.
+  Diff its WARN/ERROR lines against the last `develop` run to find new warnings. The production image
+  (`Dockerfile.buildkit`, `docker-image-ci`) is only built on push to `develop`: watch that run after merging.
+  Local Docker Desktop is often not running; do not count on a local image build.
 
 ## 7. Report
 
@@ -159,7 +163,7 @@ Only document what was verified during the run. Say in the report whether the sk
 | JDAVE | native binaries; smoke-test voice |
 | mariadb-java-client 4.x | TLS on by default (`sslMode` documented in `config.yml`, `docs/configuration.md`) |
 | lavaplayer / youtube-source / LavaSrc | shaded and relocated in music-plugin; YouTube breakage is usually not a version problem (LOGIN_REQUIRED -> OAuth/poToken) |
-| maven image 3.10 | new minor of Maven itself: read its release notes like a library |
+| maven image (Maven itself) | read its notes like a library: 3.10 brought Resolver 2 and strict model validation; prove it with a cold Docker build (below) |
 
 ## Pending upgrades
 
@@ -169,6 +173,11 @@ Only document what was verified during the run. Say in the report whether the sk
   the release and remove the `dev.lavalink.youtube` rule. Checked 2026-11-07: still 1.18.2, pin = tip of master.
 - **Next Java LTS**: Renovate is held on 25 on purpose (26/27 are non-LTS and short-lived). Move pom,
   workflows and images together, and widen the three `25` rules in `renovate.json5`.
+- **Maven 3.10.1 (or a Resolver > 2.0.24)**: 3.10.0 logs ~180 `cached not-found ... expiring` WARN lines in the
+  Docker `go-offline` step, one per artifact found in a later repository (music-plugin declares jitpack,
+  lavalink, topi before central). Known upstream bug apache/maven-resolver#2196, fixed by #2197 on master
+  2026-10-20, unreleased as of 2026-11-07. Harmless; merged anyway (Victor, 2026-11-07). Take 3.10.1 when
+  Renovate offers it and check the noise is gone.
 - **slf4j 2.1.0**: only alphas so far (Renovate ignores unstable versions while we are on a stable one).
 
 ## Learnings

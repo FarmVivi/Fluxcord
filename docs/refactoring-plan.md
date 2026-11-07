@@ -1175,3 +1175,11 @@ else) answered 403 and the job died. Renovate (Mend app) now runs from `.github/
 was dry-run locally before the push, which caught one rule nobody would have guessed (setup-java's
 `java-version: '25'` is a managed dependency; Renovate wanted 27 there). Bumps go through the new
 `/update-deps` skill, which also holds the pending list (youtube-source pin, next Java LTS, slf4j alpha).
+
+**Maven 3.10.0 (Renovate #879, merged).** Read the 3.10.0 notes: Resolver 2.0.24, strict model validation,
+relativePath validation, repository/credential hardening. Proof: the PR's `build-docker-dev` resolved
+everything cold inside Docker (central, lavalink releases and snapshots, topi, dv8tion), all 8 modules
+green, no model-validation warning. One new kind of warning: ~180 `cached not-found ... expiring` lines in
+`go-offline`, a known Resolver 2.0.24 bug (apache/maven-resolver#2196, fixed on master, unreleased) -
+harmless, merged knowingly, 3.10.1 tracked in the update-deps skill. Also closed the last Dependabot PR
+(#871, mariadb 4.0.0 already on `develop`).
