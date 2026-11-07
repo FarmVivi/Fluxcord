@@ -1097,6 +1097,52 @@ Two things this turned up on the way:
   run in ten. A tool result travels worker -> inbox -> socket, and the test released the tool then drained
   the inbox once, which only waits for what was already queued. It now waits on the condition.
 
+### Noise was costing money on the way in and credibility on the way out (FIXED)
+
+The loudness floor added earlier the same evening only covered the local transcriber. While a session is
+engaged the packets are diverted straight to the hosted service and every one is billed as audio input,
+ungated — and Discord's own voice detection, which decides a packet is delivered at all, is happy to call a
+fan speech. MEASURED on an empty channel: six input transcriptions in 40 seconds (`<noise>` ×3, Thai ×2,
+Telugu ×1), each remembered as a turn and each resetting the idle window. About **49 seconds of a paid
+session bought with nothing said**, and a history handed to the next session with `<noise>` in it as
+something somebody had told the bot.
+
+`VoiceGate` sits in front of `appendAudio` and before the turn is opened. Per packet is a different problem
+from per utterance: speech is not continuously loud, so a bare threshold on a 20 ms frame chops words into
+pieces. Hence a 400 ms **hold**, so the dip inside a word crosses whole, and a bounded **pre-roll** released
+when the gate opens, because the consonant starting a word is quieter than the vowel after it and is
+therefore exactly what a threshold eats. Same `transcription.min_loudness_dbfs`: one fact about one
+microphone is one knob.
+
+On the way out the service's markers are stripped at every point a transcription arrives, not merely before
+it is remembered — with a follow-up window open, `aimOf("<noise>")` returns `AT_US` and the bot *answers* the
+marker; outside one it returns `UNSURE`, spending a model call on it. Stripped and not dropped, because one
+measured line was `"<noise> du coup la playlist"`.
+
+Deliberately **not** a language filter: the Thai and Telugu are not caught, their cause is upstream, and a
+rule about which scripts may appear would be wrong for a multilingual server. If they survive the input gate,
+that is evidence for one.
+
+### The model can hang up (FIXED)
+
+A session only ended by running out of patience. The engage window is measured from the last thing said, so
+every exchange was followed by thirty seconds of a paid full-duplex connection listening to a room that had
+finished with it — and the model is the one thing that knows the request was dealt with.
+
+`end_the_conversation`, no arguments, described by what staying open costs rather than by a rule about when
+hanging up is allowed. It ends **after** the answer: the tool phase runs before the model speaks, so closing
+where the tool runs cuts the goodbye off mid-word. And hanging up is not leaving — it goes through `letGo`,
+the path the services' own disconnections already take, so the bot stays in the voice channel and the next
+person to say its name reopens a session with the recent turns.
+
+### The same test-helper lesson three times in one evening
+
+`ServicesTest.speaks(...)`, `RealtimeServiceTest.packetFrom(...)` and `RealtimeConversationTest.audio(...)`
+were all feeding buffers of zeros into code that handles audio, with mocked transcribers and services that
+answered whatever the test wanted. None of it was noticed until production started *measuring* the audio, at
+which point six tests failed at once. A test that feeds synthetic audio to something that measures audio has
+to feed plausible audio.
+
 ### Still open for Victor
 
 - The **temurin 26** images (PRs 862/863): his call, needs an image build to validate.
@@ -1357,7 +1403,7 @@ Victor's decision, same session: a sentence that is the bot's name and nothing e
 **without being handed to it**, so the bot listens and says nothing. A summons with no request in it gets no
 answer, and a false wake that clears the gate costs a connection instead of an interruption.
 
-### An `onDisable` that throws leaves a zombie JVM holding the Discord token (NOT FIXED)
+### An `onDisable` that throws leaves a zombie JVM holding the Discord token (FIXED)
 
 Found by accident, and the most serious of the three. A plugin jar was replaced under a running JVM; at
 shutdown, lavaplayer lazily loaded a class out of a jar that was no longer the one its classloader had opened,
@@ -1370,11 +1416,29 @@ and the `NoClassDefFoundError` was thrown out of `MusicPlugin.onDisable` → `Pl
 - a scheduler kept printing a DEBUG line every 30 s, so the log of a dead bot is indistinguishable from the
   log of a healthy one.
 
-Replacing a jar under a live JVM is operator error and is now recorded in `/verify`. The defect is that one
-plugin's failure to disable can strand the whole shutdown: `executeLifecyclePhase` should treat a throwing
-`onDisable` the way the enable phases treat a throwing `onEnable` (log it, mark the plugin `ERROR`, carry on),
-and `FluxcordRuntime.stop` should reach `discordAPI.disconnect()` whatever the plugins did. Worth a hard
-deadline on the whole shutdown too: a plugin that hangs rather than throws produces the same zombie.
+Replacing a jar under a live JVM is operator error and is now recorded in `/verify`. The engine's share of it
+turned out to be narrower and sharper than the note first written here, which said the guard was missing:
+
+**the guard was already there, and it said `catch (Exception)`.** `NoClassDefFoundError` is a `LinkageError`,
+which is an `Error`, so it did not apply. One word, and shutdown is exactly where it matters — it is the last
+chance for a class nobody needed during the run to be loaded, so it is where linkage errors live. The three
+disable phases now catch `Throwable`.
+
+`FluxcordRuntime.stop()` had the same hole in a larger form: six of its nine steps were not guarded at all,
+so anything thrown by one skipped every step after it, `discordAPI.disconnect()` among them. Each step now
+runs through a `quietly()` helper named for the log line that will explain its failure, and the sequence
+always reaches `Goodbye!`.
+
+Catching `Error` is the unusual choice and the deliberate one: the JVM is on its way out, nothing is left to
+protect by propagating, and the measured alternative is a zombie holding a token.
+
+Proved by the absurd rather than asserted — with the catch put back to `Exception`, both new tests fail with
+the original error. The fixture plugin grew an `<id>:<phase>:error` form for that, because a shutdown that
+catches `Exception` is indistinguishable from one that catches `Throwable` until something throws an `Error`.
+
+**Still open:** a plugin that *hangs* rather than throws produces the same zombie. The shutdown wants a
+deadline, which is a separate change — there is no obvious correct action when a plugin will not let go, and
+killing its thread is worse than waiting.
 
 ### Still open for Victor
 - Revoke the OpenAI and Gemini API keys that appeared in a transcript, and delete the `DEPLOY_WEBHOOK_URL`
